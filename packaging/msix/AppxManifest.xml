@@ -7,13 +7,13 @@
   IgnorableNamespaces="uap uap3 rescap">
 
   <Identity
-    Name="GameRoll.DnDDiceRoller"
+    Name="DnDGameRolls.DiceRoller"
     Publisher="CN=PUBLISHER_ID"
     Version="0.1.0.0"
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>D&amp;D Dice Roller</DisplayName>
+    <DisplayName>DnD Game Rolls</DisplayName>
     <PublisherDisplayName>Edgar Sanchez</PublisherDisplayName>
     <Logo>assets\store\StoreLogo.png</Logo>
     <Description>A D&amp;D dice roller with CLI and 3D visualization</Description>
@@ -30,7 +30,7 @@
   <Applications>
     <Application Id="Dice3D" Executable="dice3d.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="D&amp;D Dice Roller 3D"
+        DisplayName="DnD Game Rolls 3D"
         Description="Roll dice in stunning 3D!"
         BackgroundColor="#1a1a2e"
         Square150x150Logo="assets\store\Square150x150Logo.png"
@@ -42,7 +42,7 @@
         <uap3:Extension Category="windows.appExecutionAlias">
           <uap3:AppExecutionAlias>
             <uap3:ExecutionAlias Alias="dice3d.exe" />
-            <uap3:ExecutionAlias Alias="gameroll.exe" />
+            <uap3:ExecutionAlias Alias="dndgamerolls.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
       </Extensions>

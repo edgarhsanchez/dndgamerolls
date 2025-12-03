@@ -1746,6 +1746,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dndgamerolls"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_rapier3d",
+ "clap",
+ "colored",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1972,19 +1985,6 @@ dependencies = [
  "futures-io",
  "parking",
  "pin-project-lite",
-]
-
-[[package]]
-name = "gameroll"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_rapier3d",
- "clap",
- "colored",
- "rand",
- "serde",
- "serde_json",
 ]
 
 [[package]]

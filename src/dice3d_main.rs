@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use clap::Parser;
 
-use gameroll::dice3d::{
+use dndgamerolls::dice3d::{
     check_dice_settled, handle_command_input, handle_input, rotate_camera, setup,
     update_results_display, CharacterData, CommandHistory, CommandInput, DiceConfig, DiceResults,
     DiceType, RollState,

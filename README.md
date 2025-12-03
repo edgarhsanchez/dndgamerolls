@@ -1,4 +1,4 @@
-# GameRoll - D&D Dice Roller
+# DnD Game Rolls - D&D Dice Roller
 
 A command-line dice roller for D&D 5e that uses your character stats from a JSON file.  
 Includes a **3D Dice Simulator** powered by Bevy game engine!
@@ -9,7 +9,7 @@ Includes a **3D Dice Simulator** powered by Bevy game engine!
 
 ```bash
 # Install both CLI and 3D simulator
-cargo install gameroll
+cargo install dndgamerolls
 ```
 
 ### From Microsoft Store (Windows)
@@ -27,7 +27,7 @@ cargo build --release
 ```
 
 The executables will be at:
-- `target/release/gameroll.exe` - CLI dice roller
+- `target/release/dndgamerolls.exe` - CLI dice roller
 - `target/release/dice3d.exe` - 3D dice simulator
 
 ### From GitHub Releases

@@ -46,7 +46,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path msix-content\assets\store
           
           # Copy binaries
-          Copy-Item target\release\gameroll.exe msix-content\
+          Copy-Item target\release\dndgamerolls.exe msix-content\
           Copy-Item target\release\dice3d.exe msix-content\
           
           # Copy app manifest
@@ -103,7 +103,7 @@ jobs:
         with:
           name: windows-binaries
           path: |
-            target/release/gameroll.exe
+            target/release/dndgamerolls.exe
             target/release/dice3d.exe
 
       - name: Upload MSIX package
@@ -119,7 +119,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            target/release/gameroll.exe
+            target/release/dndgamerolls.exe
             target/release/dice3d.exe
             *.msix
         env:

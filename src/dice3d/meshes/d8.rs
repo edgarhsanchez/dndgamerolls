@@ -35,34 +35,69 @@ pub fn create_d8() -> (Mesh, Collider, Vec<(Vec3, u32)>) {
 
 fn create_octahedron_mesh(size: f32) -> Mesh {
     let positions = vec![
-        [0.0, size, 0.0], [size, 0.0, 0.0], [0.0, 0.0, size],
-        [0.0, size, 0.0], [0.0, 0.0, size], [-size, 0.0, 0.0],
-        [0.0, size, 0.0], [-size, 0.0, 0.0], [0.0, 0.0, -size],
-        [0.0, size, 0.0], [0.0, 0.0, -size], [size, 0.0, 0.0],
-        [0.0, -size, 0.0], [0.0, 0.0, size], [size, 0.0, 0.0],
-        [0.0, -size, 0.0], [-size, 0.0, 0.0], [0.0, 0.0, size],
-        [0.0, -size, 0.0], [0.0, 0.0, -size], [-size, 0.0, 0.0],
-        [0.0, -size, 0.0], [size, 0.0, 0.0], [0.0, 0.0, -size],
+        [0.0, size, 0.0],
+        [size, 0.0, 0.0],
+        [0.0, 0.0, size],
+        [0.0, size, 0.0],
+        [0.0, 0.0, size],
+        [-size, 0.0, 0.0],
+        [0.0, size, 0.0],
+        [-size, 0.0, 0.0],
+        [0.0, 0.0, -size],
+        [0.0, size, 0.0],
+        [0.0, 0.0, -size],
+        [size, 0.0, 0.0],
+        [0.0, -size, 0.0],
+        [0.0, 0.0, size],
+        [size, 0.0, 0.0],
+        [0.0, -size, 0.0],
+        [-size, 0.0, 0.0],
+        [0.0, 0.0, size],
+        [0.0, -size, 0.0],
+        [0.0, 0.0, -size],
+        [-size, 0.0, 0.0],
+        [0.0, -size, 0.0],
+        [size, 0.0, 0.0],
+        [0.0, 0.0, -size],
     ];
 
     let n = 0.577_f32;
     let normals = vec![
-        [n, n, n], [n, n, n], [n, n, n],
-        [-n, n, n], [-n, n, n], [-n, n, n],
-        [-n, n, -n], [-n, n, -n], [-n, n, -n],
-        [n, n, -n], [n, n, -n], [n, n, -n],
-        [n, -n, n], [n, -n, n], [n, -n, n],
-        [-n, -n, n], [-n, -n, n], [-n, -n, n],
-        [-n, -n, -n], [-n, -n, -n], [-n, -n, -n],
-        [n, -n, -n], [n, -n, -n], [n, -n, -n],
+        [n, n, n],
+        [n, n, n],
+        [n, n, n],
+        [-n, n, n],
+        [-n, n, n],
+        [-n, n, n],
+        [-n, n, -n],
+        [-n, n, -n],
+        [-n, n, -n],
+        [n, n, -n],
+        [n, n, -n],
+        [n, n, -n],
+        [n, -n, n],
+        [n, -n, n],
+        [n, -n, n],
+        [-n, -n, n],
+        [-n, -n, n],
+        [-n, -n, n],
+        [-n, -n, -n],
+        [-n, -n, -n],
+        [-n, -n, -n],
+        [n, -n, -n],
+        [n, -n, -n],
+        [n, -n, -n],
     ];
 
     let uvs: Vec<[f32; 2]> = (0..24).map(|_| [0.5, 0.5]).collect();
     let indices: Vec<u32> = (0..24).collect();
 
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-        .with_inserted_indices(Indices::U32(indices))
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(Indices::U32(indices))
 }

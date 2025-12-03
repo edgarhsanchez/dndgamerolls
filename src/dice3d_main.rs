@@ -44,19 +44,28 @@ struct Args {
 
 fn parse_dice_arg(s: &str) -> Result<(usize, DiceType), String> {
     let s = s.to_lowercase();
-    
+
     // Handle formats: "2d6", "d20", "1d8"
     let (count_str, die_str) = if s.starts_with('d') {
         ("1", s.as_str())
     } else if let Some(pos) = s.find('d') {
         (&s[..pos], &s[pos..])
     } else {
-        return Err(format!("Invalid dice format: {}. Use format like '2d6' or 'd20'", s));
+        return Err(format!(
+            "Invalid dice format: {}. Use format like '2d6' or 'd20'",
+            s
+        ));
     };
 
-    let count: usize = count_str.parse().map_err(|_| format!("Invalid count: {}", count_str))?;
-    let die_type = DiceType::from_str(die_str)
-        .ok_or_else(|| format!("Unknown die type: {}. Valid: d4, d6, d8, d10, d12, d20", die_str))?;
+    let count: usize = count_str
+        .parse()
+        .map_err(|_| format!("Invalid count: {}", count_str))?;
+    let die_type = DiceType::parse(die_str).ok_or_else(|| {
+        format!(
+            "Unknown die type: {}. Valid: d4, d6, d8, d10, d12, d20",
+            die_str
+        )
+    })?;
 
     Ok((count, die_type))
 }
@@ -76,10 +85,10 @@ fn main() {
     if let Some(check) = &args.checkon {
         // Try to find the modifier from skill, ability, or save
         let check_lower = check.to_lowercase();
-        
+
         if let Some(skill_mod) = character_data.get_skill_modifier(&check_lower) {
             modifier += skill_mod;
-            modifier_name = format!("{}", check);
+            modifier_name = check.to_string();
         } else if let Some(ability_mod) = character_data.get_ability_modifier(&check_lower) {
             modifier += ability_mod;
             modifier_name = format!("{} check", check);
@@ -104,7 +113,7 @@ fn main() {
             modifier_name = check.clone();
             eprintln!("Warning: '{}' not found in character sheet", check);
         }
-        
+
         // Add dice from --dice arguments
         if let Some(dice_args) = &args.dice {
             for (count, die_type) in dice_args {
@@ -131,7 +140,10 @@ fn main() {
             modifier_name = format!("{} check", ability);
         } else {
             modifier_name = ability.clone();
-            eprintln!("Warning: Ability '{}' not found in character sheet", ability);
+            eprintln!(
+                "Warning: Ability '{}' not found in character sheet",
+                ability
+            );
         }
     } else if let Some(save) = &args.save {
         dice_to_roll.push(DiceType::D20);
@@ -140,7 +152,10 @@ fn main() {
             modifier_name = format!("{} save", save);
         } else {
             modifier_name = save.clone();
-            eprintln!("Warning: Saving throw '{}' not found in character sheet", save);
+            eprintln!(
+                "Warning: Saving throw '{}' not found in character sheet",
+                save
+            );
         }
     } else if let Some(dice_args) = &args.dice {
         // Parse dice arguments
@@ -157,7 +172,10 @@ fn main() {
     }
 
     // Print what we're rolling
-    println!("Rolling: {:?}", dice_to_roll.iter().map(|d| d.name()).collect::<Vec<_>>());
+    println!(
+        "Rolling: {:?}",
+        dice_to_roll.iter().map(|d| d.name()).collect::<Vec<_>>()
+    );
     if modifier != 0 {
         let sign = if modifier >= 0 { "+" } else { "" };
         println!("Modifier: {}{} ({})", sign, modifier, modifier_name);

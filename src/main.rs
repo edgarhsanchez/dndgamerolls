@@ -30,48 +30,48 @@ enum Commands {
     /// Roll a strength check
     #[command(visible_alias = "str")]
     Strength,
-    
+
     /// Roll a dexterity check
     #[command(visible_alias = "dex")]
     Dexterity,
-    
+
     /// Roll a constitution check
     #[command(visible_alias = "con")]
     Constitution,
-    
+
     /// Roll an intelligence check
     #[command(visible_alias = "int")]
     Intelligence,
-    
+
     /// Roll a wisdom check
     #[command(visible_alias = "wis")]
     Wisdom,
-    
+
     /// Roll a charisma check
     #[command(visible_alias = "cha")]
     Charisma,
-    
+
     /// Roll an initiative check (Dexterity based)
     Initiative,
-    
+
     /// Roll a skill check
     Skill {
         /// Skill name (e.g., stealth, perception, acrobatics)
         name: String,
     },
-    
+
     /// Roll a saving throw
     Save {
         /// Ability name (str, dex, con, int, wis, cha)
         ability: String,
     },
-    
+
     /// Roll an attack
     Attack {
         /// Weapon name
         weapon: String,
     },
-    
+
     /// Display character stats
     Stats,
 }
@@ -230,19 +230,25 @@ fn display_roll_result(
     disadvantage: bool,
 ) {
     println!("\n{}", "═══════════════════════════════════════".cyan());
-    println!("{} {}", "Rolling:".bold().white(), roll_type.bold().yellow());
-    
+    println!(
+        "{} {}",
+        "Rolling:".bold().white(),
+        roll_type.bold().yellow()
+    );
+
     if let Some(dropped) = dropped_roll {
         if advantage {
-            println!("{} {} {} (dropped {})", 
-                "Dice:".bold().white(), 
+            println!(
+                "{} {} {} (dropped {})",
+                "Dice:".bold().white(),
                 format!("[{}]", dice_roll).bright_green().bold(),
                 "(advantage)".green(),
                 format!("[{}]", dropped).dimmed()
             );
         } else if disadvantage {
-            println!("{} {} {} (dropped {})", 
-                "Dice:".bold().white(), 
+            println!(
+                "{} {} {} (dropped {})",
+                "Dice:".bold().white(),
                 format!("[{}]", dice_roll).bright_red().bold(),
                 "(disadvantage)".red(),
                 format!("[{}]", dropped).dimmed()
@@ -256,14 +262,14 @@ fn display_roll_result(
         };
         println!("{} {}", "Dice:".bold().white(), dice_color);
     }
-    
+
     let modifier_str = if modifier >= 0 {
         format!("+{}", modifier).cyan()
     } else {
         format!("{}", modifier).cyan()
     };
     println!("{} {}", "Modifier:".bold().white(), modifier_str);
-    
+
     let total_color = if dice_roll == 20 {
         format!("{}", total).bright_green().bold()
     } else if dice_roll == 1 {
@@ -277,15 +283,21 @@ fn display_roll_result(
     } else {
         format!("{}", total).red()
     };
-    
+
     println!("{} {}", "Total:".bold().white(), total_color);
-    
+
     if dice_roll == 20 {
-        println!("{}", "🎉 NATURAL 20! CRITICAL SUCCESS! 🎉".bright_green().bold());
+        println!(
+            "{}",
+            "🎉 NATURAL 20! CRITICAL SUCCESS! 🎉".bright_green().bold()
+        );
     } else if dice_roll == 1 {
-        println!("{}", "💀 NATURAL 1! CRITICAL FAILURE! 💀".bright_red().bold());
+        println!(
+            "{}",
+            "💀 NATURAL 1! CRITICAL FAILURE! 💀".bright_red().bold()
+        );
     }
-    
+
     println!("{}", "═══════════════════════════════════════".cyan());
 }
 
@@ -297,7 +309,7 @@ fn load_character(path: &PathBuf) -> Result<Character, Box<dyn std::error::Error
 
 fn get_skill_by_name<'a>(skills: &'a Skills, name: &str) -> Option<(&'static str, &'a Skill)> {
     let name_lower = name.to_lowercase().replace(" ", "");
-    
+
     match name_lower.as_str() {
         "acrobatics" => Some(("Acrobatics", &skills.acrobatics)),
         "animalhandling" | "animal" => Some(("Animal Handling", &skills.animal_handling)),
@@ -326,14 +338,14 @@ fn display_stats(character: &Character) {
     println!("\n{}", "═══════════════════════════════════════".cyan());
     println!("{}", "CHARACTER STATS".bold().yellow());
     println!("{}", "═══════════════════════════════════════".cyan());
-    
+
     let name_display = if let Some(alter_ego) = &info.alter_ego {
         format!("{} ({})", info.name, alter_ego)
     } else {
         info.name.clone()
     };
     println!("{} {}", "Name:".bold().white(), name_display.green());
-    
+
     let class_display = if let Some(subclass) = &info.subclass {
         format!("{} ({})", info.class, subclass)
     } else {
@@ -341,25 +353,73 @@ fn display_stats(character: &Character) {
     };
     println!("{} {}", "Class:".bold().white(), class_display.cyan());
     println!("{} {}", "Race:".bold().white(), info.race.cyan());
-    println!("{} {}", "Level:".bold().white(), info.level.to_string().yellow());
-    
+    println!(
+        "{} {}",
+        "Level:".bold().white(),
+        info.level.to_string().yellow()
+    );
+
     println!("\n{}", "ABILITIES".bold().yellow());
-    println!("{} {} ({})", "STR:".bold(), character.attributes.strength, format_modifier(character.modifiers.strength));
-    println!("{} {} ({})", "DEX:".bold(), character.attributes.dexterity, format_modifier(character.modifiers.dexterity));
-    println!("{} {} ({})", "CON:".bold(), character.attributes.constitution, format_modifier(character.modifiers.constitution));
-    println!("{} {} ({})", "INT:".bold(), character.attributes.intelligence, format_modifier(character.modifiers.intelligence));
-    println!("{} {} ({})", "WIS:".bold(), character.attributes.wisdom, format_modifier(character.modifiers.wisdom));
-    println!("{} {} ({})", "CHA:".bold(), character.attributes.charisma, format_modifier(character.modifiers.charisma));
-    
+    println!(
+        "{} {} ({})",
+        "STR:".bold(),
+        character.attributes.strength,
+        format_modifier(character.modifiers.strength)
+    );
+    println!(
+        "{} {} ({})",
+        "DEX:".bold(),
+        character.attributes.dexterity,
+        format_modifier(character.modifiers.dexterity)
+    );
+    println!(
+        "{} {} ({})",
+        "CON:".bold(),
+        character.attributes.constitution,
+        format_modifier(character.modifiers.constitution)
+    );
+    println!(
+        "{} {} ({})",
+        "INT:".bold(),
+        character.attributes.intelligence,
+        format_modifier(character.modifiers.intelligence)
+    );
+    println!(
+        "{} {} ({})",
+        "WIS:".bold(),
+        character.attributes.wisdom,
+        format_modifier(character.modifiers.wisdom)
+    );
+    println!(
+        "{} {} ({})",
+        "CHA:".bold(),
+        character.attributes.charisma,
+        format_modifier(character.modifiers.charisma)
+    );
+
     println!("\n{}", "COMBAT".bold().yellow());
-    println!("{} {}", "AC:".bold(), character.combat.armor_class.to_string().green());
-    println!("{} {}/{}", "HP:".bold(), 
+    println!(
+        "{} {}",
+        "AC:".bold(),
+        character.combat.armor_class.to_string().green()
+    );
+    println!(
+        "{} {}/{}",
+        "HP:".bold(),
         character.combat.hit_points.current.to_string().red(),
         character.combat.hit_points.maximum.to_string().red()
     );
-    println!("{} {}", "Initiative:".bold(), format_modifier(character.combat.initiative));
-    println!("{} {}", "Proficiency Bonus:".bold(), format_modifier(character.proficiency_bonus));
-    
+    println!(
+        "{} {}",
+        "Initiative:".bold(),
+        format_modifier(character.combat.initiative)
+    );
+    println!(
+        "{} {}",
+        "Proficiency Bonus:".bold(),
+        format_modifier(character.proficiency_bonus)
+    );
+
     println!("{}", "═══════════════════════════════════════".cyan());
 }
 
@@ -373,62 +433,133 @@ fn format_modifier(modifier: i32) -> String {
 
 fn main() {
     let cli = Cli::parse();
-    
+
     let character = match load_character(&cli.file) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("{} Failed to load character file: {}", "Error:".red().bold(), e);
-            eprintln!("Make sure '{}' exists in the current directory", cli.file.display());
+            eprintln!(
+                "{} Failed to load character file: {}",
+                "Error:".red().bold(),
+                e
+            );
+            eprintln!(
+                "Make sure '{}' exists in the current directory",
+                cli.file.display()
+            );
             std::process::exit(1);
         }
     };
-    
+
     match &cli.command {
         Some(Commands::Strength) => {
-            let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+            let (dice_roll, dropped) =
+                roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
             let modifier = character.modifiers.strength;
             let total = dice_roll + modifier;
-            display_roll_result("Strength Check", dice_roll, modifier, total, dropped, cli.advantage, cli.disadvantage);
+            display_roll_result(
+                "Strength Check",
+                dice_roll,
+                modifier,
+                total,
+                dropped,
+                cli.advantage,
+                cli.disadvantage,
+            );
         }
         Some(Commands::Dexterity) => {
-            let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+            let (dice_roll, dropped) =
+                roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
             let modifier = character.modifiers.dexterity;
             let total = dice_roll + modifier;
-            display_roll_result("Dexterity Check", dice_roll, modifier, total, dropped, cli.advantage, cli.disadvantage);
+            display_roll_result(
+                "Dexterity Check",
+                dice_roll,
+                modifier,
+                total,
+                dropped,
+                cli.advantage,
+                cli.disadvantage,
+            );
         }
         Some(Commands::Constitution) => {
-            let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+            let (dice_roll, dropped) =
+                roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
             let modifier = character.modifiers.constitution;
             let total = dice_roll + modifier;
-            display_roll_result("Constitution Check", dice_roll, modifier, total, dropped, cli.advantage, cli.disadvantage);
+            display_roll_result(
+                "Constitution Check",
+                dice_roll,
+                modifier,
+                total,
+                dropped,
+                cli.advantage,
+                cli.disadvantage,
+            );
         }
         Some(Commands::Intelligence) => {
-            let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+            let (dice_roll, dropped) =
+                roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
             let modifier = character.modifiers.intelligence;
             let total = dice_roll + modifier;
-            display_roll_result("Intelligence Check", dice_roll, modifier, total, dropped, cli.advantage, cli.disadvantage);
+            display_roll_result(
+                "Intelligence Check",
+                dice_roll,
+                modifier,
+                total,
+                dropped,
+                cli.advantage,
+                cli.disadvantage,
+            );
         }
         Some(Commands::Wisdom) => {
-            let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+            let (dice_roll, dropped) =
+                roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
             let modifier = character.modifiers.wisdom;
             let total = dice_roll + modifier;
-            display_roll_result("Wisdom Check", dice_roll, modifier, total, dropped, cli.advantage, cli.disadvantage);
+            display_roll_result(
+                "Wisdom Check",
+                dice_roll,
+                modifier,
+                total,
+                dropped,
+                cli.advantage,
+                cli.disadvantage,
+            );
         }
         Some(Commands::Charisma) => {
-            let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+            let (dice_roll, dropped) =
+                roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
             let modifier = character.modifiers.charisma;
             let total = dice_roll + modifier;
-            display_roll_result("Charisma Check", dice_roll, modifier, total, dropped, cli.advantage, cli.disadvantage);
+            display_roll_result(
+                "Charisma Check",
+                dice_roll,
+                modifier,
+                total,
+                dropped,
+                cli.advantage,
+                cli.disadvantage,
+            );
         }
         Some(Commands::Initiative) => {
-            let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+            let (dice_roll, dropped) =
+                roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
             let modifier = character.combat.initiative;
             let total = dice_roll + modifier;
-            display_roll_result("Initiative", dice_roll, modifier, total, dropped, cli.advantage, cli.disadvantage);
+            display_roll_result(
+                "Initiative",
+                dice_roll,
+                modifier,
+                total,
+                dropped,
+                cli.advantage,
+                cli.disadvantage,
+            );
         }
         Some(Commands::Skill { name }) => {
             if let Some((skill_name, skill)) = get_skill_by_name(&character.skills, name) {
-                let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+                let (dice_roll, dropped) =
+                    roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
                 let modifier = skill.modifier;
                 let total = dice_roll + modifier;
                 let expertise_note = if skill.expertise { " (Expertise)" } else { "" };
@@ -439,7 +570,7 @@ fn main() {
                     total,
                     dropped,
                     cli.advantage,
-                    cli.disadvantage
+                    cli.disadvantage,
                 );
             } else {
                 eprintln!("{} Skill '{}' not found", "Error:".red().bold(), name);
@@ -461,8 +592,9 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-            
-            let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+
+            let (dice_roll, dropped) =
+                roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
             let modifier = save.modifier;
             let total = dice_roll + modifier;
             display_roll_result(
@@ -472,15 +604,19 @@ fn main() {
                 total,
                 dropped,
                 cli.advantage,
-                cli.disadvantage
+                cli.disadvantage,
             );
         }
         Some(Commands::Attack { weapon }) => {
             let weapon_lower = weapon.to_lowercase();
-            if let Some(wpn) = character.equipment.weapons.iter()
-                .find(|w| w.name.to_lowercase().contains(&weapon_lower)) {
-                
-                let (dice_roll, dropped) = roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
+            if let Some(wpn) = character
+                .equipment
+                .weapons
+                .iter()
+                .find(|w| w.name.to_lowercase().contains(&weapon_lower))
+            {
+                let (dice_roll, dropped) =
+                    roll_with_advantage_disadvantage(cli.advantage, cli.disadvantage);
                 let modifier = wpn.attack_bonus;
                 let total = dice_roll + modifier;
                 display_roll_result(
@@ -490,11 +626,16 @@ fn main() {
                     total,
                     dropped,
                     cli.advantage,
-                    cli.disadvantage
+                    cli.disadvantage,
                 );
-                
+
                 if dice_roll == 20 {
-                    println!("\n{}", "Roll damage dice twice for critical hit!".bright_green().bold());
+                    println!(
+                        "\n{}",
+                        "Roll damage dice twice for critical hit!"
+                            .bright_green()
+                            .bold()
+                    );
                 }
                 println!("{} {}", "Damage:".bold().white(), wpn.damage.yellow());
             } else {

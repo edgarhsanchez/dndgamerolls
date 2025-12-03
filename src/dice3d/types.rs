@@ -53,16 +53,16 @@ impl DiceType {
     pub fn color(&self) -> Color {
         // Translucent crystal-like colors
         match self {
-            DiceType::D4 => Color::srgba(0.3, 0.4, 0.9, 0.85),   // Blue crystal
-            DiceType::D6 => Color::srgba(0.1, 0.1, 0.1, 0.9),    // Black/smoke crystal
-            DiceType::D8 => Color::srgba(0.6, 0.2, 0.8, 0.85),   // Purple crystal
+            DiceType::D4 => Color::srgba(0.3, 0.4, 0.9, 0.85), // Blue crystal
+            DiceType::D6 => Color::srgba(0.1, 0.1, 0.1, 0.9),  // Black/smoke crystal
+            DiceType::D8 => Color::srgba(0.6, 0.2, 0.8, 0.85), // Purple crystal
             DiceType::D10 => Color::srgba(0.95, 0.95, 0.95, 0.85), // White/clear crystal
             DiceType::D12 => Color::srgba(0.95, 0.5, 0.1, 0.85), // Orange crystal
             DiceType::D20 => Color::srgba(0.95, 0.85, 0.2, 0.85), // Yellow crystal
         }
     }
 
-    pub fn from_str(s: &str) -> Option<DiceType> {
+    pub fn parse(s: &str) -> Option<DiceType> {
         match s.to_lowercase().as_str() {
             "d4" => Some(DiceType::D4),
             "d6" => Some(DiceType::D6),
@@ -207,15 +207,9 @@ pub struct Skill {
     pub expertise: Option<bool>,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct CharacterData {
     pub sheet: Option<CharacterSheet>,
-}
-
-impl Default for CharacterData {
-    fn default() -> Self {
-        Self { sheet: None }
-    }
 }
 
 impl CharacterData {
@@ -239,14 +233,15 @@ impl CharacterData {
     }
 
     pub fn get_skill_modifier(&self, skill: &str) -> Option<i32> {
-        self.sheet.as_ref().and_then(|s| {
-            s.skills.get(skill).map(|sk| sk.modifier)
-        })
+        self.sheet
+            .as_ref()
+            .and_then(|s| s.skills.get(skill).map(|sk| sk.modifier))
     }
 
     pub fn get_ability_modifier(&self, ability: &str) -> Option<i32> {
-        self.sheet.as_ref().map(|s| {
-            match ability.to_lowercase().as_str() {
+        self.sheet
+            .as_ref()
+            .map(|s| match ability.to_lowercase().as_str() {
                 "str" | "strength" => s.modifiers.strength,
                 "dex" | "dexterity" => s.modifiers.dexterity,
                 "con" | "constitution" => s.modifiers.constitution,
@@ -254,14 +249,14 @@ impl CharacterData {
                 "wis" | "wisdom" => s.modifiers.wisdom,
                 "cha" | "charisma" => s.modifiers.charisma,
                 _ => 0,
-            }
-        })
+            })
     }
 
     pub fn get_saving_throw_modifier(&self, ability: &str) -> Option<i32> {
         self.sheet.as_ref().and_then(|s| {
-            s.saving_throws.get(&ability.to_lowercase()).map(|st| st.modifier)
+            s.saving_throws
+                .get(&ability.to_lowercase())
+                .map(|st| st.modifier)
         })
     }
 }
-

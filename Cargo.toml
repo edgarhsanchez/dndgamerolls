@@ -2,6 +2,20 @@
 name = "gameroll"
 version = "0.1.0"
 edition = "2021"
+authors = ["Edgar Sanchez <esanchez@m2iab.com>"]
+description = "D&D dice roller with CLI and 3D visualization using Bevy"
+license = "MIT"
+repository = "https://github.com/edgarhsanchez/dndgamerolls"
+homepage = "https://github.com/edgarhsanchez/dndgamerolls"
+readme = "README.md"
+keywords = ["dnd", "dice", "rpg", "bevy", "game"]
+categories = ["games", "command-line-utilities", "visualization"]
+exclude = [
+    "assets/*",
+    ".github/*",
+    "*.msix",
+    "target/*",
+]
 
 [dependencies]
 # CLI

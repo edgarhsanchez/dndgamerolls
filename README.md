@@ -5,13 +5,34 @@ Includes a **3D Dice Simulator** powered by Bevy game engine!
 
 ## Installation
 
+### From crates.io (Recommended)
+
 ```bash
+# Install both CLI and 3D simulator
+cargo install gameroll
+```
+
+### From Microsoft Store (Windows)
+
+[![Get it from Microsoft Store](https://get.microsoft.com/images/en-us%20dark.svg)](https://apps.microsoft.com/store/detail/STORE_ID)
+
+*Coming soon!*
+
+### From Source
+
+```bash
+git clone https://github.com/edgarhsanchez/dndgamerolls.git
+cd dndgamerolls
 cargo build --release
 ```
 
 The executables will be at:
 - `target/release/gameroll.exe` - CLI dice roller
 - `target/release/dice3d.exe` - 3D dice simulator
+
+### From GitHub Releases
+
+Download pre-built binaries from the [Releases](https://github.com/edgarhsanchez/dndgamerolls/releases) page.
 
 ---
 

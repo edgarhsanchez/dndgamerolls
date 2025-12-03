@@ -3,6 +3,18 @@
 A command-line dice roller for D&D 5e that uses your character stats from a JSON file.  
 Includes a **3D Dice Simulator** powered by Bevy game engine!
 
+## Screenshots
+
+### 3D Dice Simulator
+
+| Rolling Dice | Results Display |
+|:------------:|:---------------:|
+| ![Dice Rolling](screenshots/dice3d/dice3d-rolling.png) | ![Dice Results](screenshots/dice3d/dice3d-results.png) |
+
+| Command Input | Command History |
+|:-------------:|:---------------:|
+| ![Command Input](screenshots/dice3d/dice3d-command-input.png) | ![Command History](screenshots/dice3d/dice3d-history.png) |
+
 ## Examples
 
 For detailed examples with output, see the [screenshots directory](screenshots/README.md):

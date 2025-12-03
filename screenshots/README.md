@@ -2,41 +2,38 @@
 
 This directory contains screenshots and examples of the DnD Game Rolls application.
 
+## 3D Dice Simulator Preview
+
+![3D Dice Results](dice3d/dice3d-results.png)
+
 ## Directory Structure
 
 ```
 screenshots/
-├── cli/                    # CLI dice roller examples
+├── cli/                           # CLI dice roller examples
 │   ├── README.md
-│   ├── stats.txt           # Character stats display
-│   ├── skill-stealth.txt   # Stealth check (Expertise)
+│   ├── stats.txt                  # Character stats display
+│   ├── skill-stealth.txt          # Stealth check (Expertise)
 │   ├── skill-perception-advantage.txt
-│   ├── ability-dex.txt     # Dexterity ability check
-│   ├── save-dex.txt        # DEX saving throw
-│   └── attack-dagger.txt   # Dagger attack roll
+│   ├── ability-dex.txt            # Dexterity ability check
+│   ├── save-dex.txt               # DEX saving throw
+│   └── attack-dagger.txt          # Dagger attack roll
 │
-└── dice3d/                 # 3D dice simulator examples
+└── dice3d/                        # 3D dice simulator examples
     ├── README.md
-    ├── basic-roll.md       # Basic d20 roll
-    ├── skill-check.md      # Roll with skill modifier
-    ├── rolling.png         # (add screenshot)
-    ├── results.png         # (add screenshot)
-    └── command-input.png   # (add screenshot)
+    ├── basic-roll.md              # Basic d20 roll
+    ├── skill-check.md             # Roll with skill modifier
+    ├── dice3d-basic.png           # Default view
+    ├── dice3d-rolling.png         # Dice in motion
+    ├── dice3d-results.png         # Results display
+    ├── dice3d-command-input.png   # Command input mode
+    └── dice3d-history.png         # Command history
 ```
 
-## Adding Screenshots
+## Quick Links
 
-### For dice3d (graphical)
-1. Run `cargo run --bin dice3d`
-2. Use Windows Snipping Tool (Win + Shift + S)
-3. Save as PNG in `screenshots/dice3d/`
-
-### For CLI
-The text examples are already captured in the `cli/` folder.
-To create image screenshots:
-1. Run the command in Windows Terminal
-2. Screenshot the terminal output
-3. Save as PNG in `screenshots/cli/`
+- [CLI Examples](cli/README.md) - Text output samples
+- [3D Simulator Examples](dice3d/README.md) - Visual screenshots and usage
 
 ## Screenshot Checklist
 

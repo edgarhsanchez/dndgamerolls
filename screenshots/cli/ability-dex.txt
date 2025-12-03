@@ -1,0 +1,11 @@
+$ dndgamerolls dex
+
+═══════════════════════════════════════
+Rolling: Dexterity Check
+Dice: [15]
+Modifier: +5
+Total: 20
+═══════════════════════════════════════
+
+Note: Raw ability check using Dexterity modifier only.
+Aliases: dex, dexterity

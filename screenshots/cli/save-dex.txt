@@ -1,0 +1,11 @@
+$ dndgamerolls save dex
+
+═══════════════════════════════════════
+Rolling: Dexterity Saving Throw
+Dice: [9]
+Modifier: +7
+Total: 16
+═══════════════════════════════════════
+
+Note: Saving throw uses proficiency if proficient.
+Strawberry Picker is proficient in DEX saves (+7 = +5 DEX + +2 proficiency)

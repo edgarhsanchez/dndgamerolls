@@ -3,6 +3,39 @@
 A command-line dice roller for D&D 5e that uses your character stats from a JSON file.  
 Includes a **3D Dice Simulator** powered by Bevy game engine!
 
+## Examples
+
+For detailed examples with output, see the [screenshots directory](screenshots/README.md):
+
+- **[CLI Examples](screenshots/cli/README.md)** - Command-line dice roller output samples
+- **[3D Dice Simulator](screenshots/dice3d/README.md)** - Visual dice rolling examples
+
+### Quick CLI Examples
+
+```bash
+# View character stats
+dndgamerolls stats
+
+# Skill check with expertise
+dndgamerolls skill stealth
+# 🎲 Stealth Check (Expertise)
+# Roll: 15 + 9 = 24
+
+# Skill check with advantage (flag BEFORE subcommand)
+dndgamerolls --advantage skill perception
+# 🎲 Perception Check (Proficient) [Advantage]
+# Rolls: 18, 7 → Using: 18
+# Roll: 18 + 5 = 23
+
+# Attack roll with damage
+dndgamerolls attack dagger
+# ⚔️ Dagger Attack
+# Attack Roll: 12 + 7 = 19
+# Damage: 1d4+5 → 7
+```
+
+---
+
 ## Installation
 
 ### From crates.io (Recommended)
@@ -36,7 +69,23 @@ A visual 3D dice rolling experience with physics simulation.
 
 ### Running the 3D Simulator
 ```bash
+# From source
 cargo run --bin dice3d
+
+# If installed via cargo install
+dice3d
+```
+
+### Command-Line Options
+```bash
+# Roll specific dice
+dice3d --dice 1d20 --dice 2d6
+
+# Roll with skill check modifier
+dice3d --dice 1d20 --checkon stealth
+
+# Combined options
+dice3d --dice 1d20 --dice 1d8 --modifier 3
 ```
 
 ### Controls
@@ -54,13 +103,23 @@ cargo run --bin dice3d
 | **W/A/S/D** | Move camera |
 | **Q/E** | Rotate camera |
 
+### Command Input Mode
+
+Press `/` or `Enter` to open command input, then type commands like:
+- `--dice 2d6 --checkon stealth` - Roll 2d6 with stealth modifier
+- `1d20 --checkon perception` - Roll d20 with perception modifier
+- `--dice 1d20 --dice 1d8 --modifier 3` - Roll multiple dice with bonus
+
+Press **1-9** to quickly reroll from command history shown on the right.
+
 ### Features
 - 🎲 All standard D&D dice types (D4, D6, D8, D10, D12, D20)
 - ⚡ Real-time physics simulation with Rapier3D
-- 🎨 Color-coded dice for easy identification
-- 📦 Wooden dice box with realistic bouncing
+- 🎨 Crystal-themed translucent dice
+- 📦 Glass dice box with realistic bouncing
 - 🎯 Automatic result detection when dice stop
 - 💡 Dynamic lighting and shadows
+- 📝 Command history for quick rerolls
 
 ### Custom 3D Models
 
@@ -72,68 +131,70 @@ You can add your own dice models in the `assets/models/` folder. See `assets/mod
 
 ---
 
-## CLI Dice Roller (gameroll)
+## CLI Dice Roller (dndgamerolls)
 
-## Usage
+A command-line dice roller that uses your character stats from a JSON file.
 
-### Ability Checks
+### Usage
+
+#### Ability Checks
 Roll ability checks using the full name or abbreviation:
 
 ```bash
-gameroll strength      # or gameroll str
-gameroll dexterity     # or gameroll dex
-gameroll constitution  # or gameroll con
-gameroll intelligence  # or gameroll int
-gameroll wisdom        # or gameroll wis
-gameroll charisma      # or gameroll cha
+dndgamerolls strength      # or dndgamerolls str
+dndgamerolls dexterity     # or dndgamerolls dex
+dndgamerolls constitution  # or dndgamerolls con
+dndgamerolls intelligence  # or dndgamerolls int
+dndgamerolls wisdom        # or dndgamerolls wis
+dndgamerolls charisma      # or dndgamerolls cha
 ```
 
-### Initiative
+#### Initiative
 ```bash
-gameroll initiative
+dndgamerolls initiative
 ```
 
-### Skill Checks
+#### Skill Checks
 ```bash
-gameroll skill stealth
-gameroll skill perception
-gameroll skill acrobatics
-gameroll skill investigation
+dndgamerolls skill stealth
+dndgamerolls skill perception
+dndgamerolls skill acrobatics
+dndgamerolls skill investigation
 ```
 
-### Saving Throws
+#### Saving Throws
 ```bash
-gameroll save dex
-gameroll save int
-gameroll save wisdom
+dndgamerolls save dex
+dndgamerolls save int
+dndgamerolls save wisdom
 ```
 
-### Attack Rolls
+#### Attack Rolls
 ```bash
-gameroll attack shortsword
-gameroll attack shortbow
-gameroll attack dagger
+dndgamerolls attack shortsword
+dndgamerolls attack shortbow
+dndgamerolls attack dagger
 ```
 
-### Advantage/Disadvantage
-Add `-a` for advantage or `-d` for disadvantage:
+#### Advantage/Disadvantage
+Add `--advantage` or `--disadvantage` **BEFORE** the subcommand:
 
 ```bash
-gameroll dex -a              # Roll with advantage
-gameroll skill stealth -d    # Roll with disadvantage
-gameroll attack shortsword -a
+dndgamerolls --advantage dex              # Roll with advantage
+dndgamerolls --disadvantage skill stealth # Roll with disadvantage
+dndgamerolls --advantage attack shortsword
 ```
 
-### View Character Stats
+#### View Character Stats
 ```bash
-gameroll stats
+dndgamerolls stats
 ```
 
-### Custom Character File
+#### Custom Character File
 By default, the tool looks for `dnd_stats.json` in the current directory. You can specify a different file:
 
 ```bash
-gameroll -f path/to/character.json intelligence
+dndgamerolls -f path/to/character.json intelligence
 ```
 
 ## Features
@@ -160,26 +221,6 @@ gameroll -f path/to/character.json intelligence
 
 The tool expects a JSON file with your character stats. See `dnd_stats.json` for the full structure.
 
-## Examples
-
-```bash
-# Strawberry Picker (Blackberry) rolls stealth with expertise
-gameroll skill stealth
-# Output: d20 roll + 9 modifier (with expertise)
-
-# Roll intelligence check with advantage
-gameroll int -a
-# Output: Rolls twice, takes higher + 1 modifier
-
-# Attack with shortsword
-gameroll attack shortsword
-# Output: d20 + 7 attack bonus, shows 1d6+5 damage
-
-# Check initiative
-gameroll initiative
-# Output: d20 + 5 (Dexterity modifier)
-```
-
 ## Building for Release
 
 ```bash
@@ -189,7 +230,15 @@ cargo build --release
 Copy the executable to a directory in your PATH for easy access:
 
 ```powershell
-copy target\release\gameroll.exe C:\Users\YourName\.cargo\bin\
+# Windows
+copy target\release\dndgamerolls.exe C:\Users\YourName\.cargo\bin\
+
+# Or install directly from source
+cargo install --path .
 ```
 
-Now you can run `gameroll` from anywhere!
+Now you can run `dndgamerolls` from anywhere!
+
+## License
+
+See [LICENSE](LICENSE) for details.

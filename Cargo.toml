@@ -11,9 +11,7 @@ readme = "README.md"
 keywords = ["dnd", "dice", "rpg", "bevy", "game"]
 categories = ["games", "command-line-utilities", "visualization"]
 exclude = [
-    "assets/*",
     ".github/*",
-    "*.msix",
     "target/*",
 ]
 

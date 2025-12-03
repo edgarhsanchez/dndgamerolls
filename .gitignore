@@ -6,9 +6,6 @@
 *.dll
 *.so
 *.dylib
-*.deb
-*.rpm
-*.msi
 
 # Cargo lock file (optional for binaries, remove this line if you want to commit it)
 # Cargo.lock
@@ -17,7 +14,6 @@
 *.dSYM/
 *.su
 *.idb
-*.pdb
 
 # IDEs and editors
 .vscode/
@@ -45,4 +41,3 @@ Thumbs.db
 .env
 .env.local
 *.local
-

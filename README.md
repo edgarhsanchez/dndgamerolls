@@ -12,12 +12,6 @@ Includes a **3D Dice Simulator** powered by Bevy game engine!
 cargo install dndgamerolls
 ```
 
-### From Microsoft Store (Windows)
-
-[![Get it from Microsoft Store](https://get.microsoft.com/images/en-us%20dark.svg)](https://apps.microsoft.com/store/detail/STORE_ID)
-
-*Coming soon!*
-
 ### From Source
 
 ```bash

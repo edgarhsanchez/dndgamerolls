@@ -1,0 +1,191 @@
+{
+  "character": {
+    "name": "Strawberry Picker",
+    "alterEgo": "Blackberry",
+    "familyName": "House of Enui",
+    "shopName": "Finder's Hollow",
+    "class": "Rogue",
+    "subclass": "Thief",
+    "race": "Kenku",
+    "level": 3,
+    "experience": 0,
+    "alignment": "Neutral Good",
+    "background": "Charlatan",
+    "languages": ["Thieves' Cant", "Common (mimicry)"]
+  },
+  "attributes": {
+    "strength": 14,
+    "dexterity": 20,
+    "constitution": 15,
+    "intelligence": 13,
+    "wisdom": 13,
+    "charisma": 7
+  },
+  "modifiers": {
+    "strength": 2,
+    "dexterity": 5,
+    "constitution": 2,
+    "intelligence": 1,
+    "wisdom": 1,
+    "charisma": -2
+  },
+  "combat": {
+    "armorClass": 16,
+    "initiative": 5,
+    "speed": 30,
+    "hitPoints": {
+      "current": 25,
+      "maximum": 25,
+      "temporary": 0
+    },
+    "hitDice": {
+      "total": "3d8",
+      "current": 3
+    },
+    "deathSaves": {
+      "successes": 0,
+      "failures": 0
+    }
+  },
+  "proficiencyBonus": 2,
+  "savingThrows": {
+    "strength": {
+      "proficient": false,
+      "modifier": 2
+    },
+    "dexterity": {
+      "proficient": true,
+      "modifier": 7
+    },
+    "constitution": {
+      "proficient": false,
+      "modifier": 2
+    },
+    "intelligence": {
+      "proficient": true,
+      "modifier": 3
+    },
+    "wisdom": {
+      "proficient": false,
+      "modifier": 1
+    },
+    "charisma": {
+      "proficient": false,
+      "modifier": -2
+    }
+  },
+  "skills": {
+    "acrobatics": { "proficient": true, "proficiencyType": "racial", "modifier": 7 },
+    "animalHandling": { "proficient": false, "modifier": 1 },
+    "arcana": { "proficient": false, "modifier": 1 },
+    "athletics": { "proficient": false, "modifier": 2 },
+    "deception": { "proficient": true, "proficiencyType": "background", "modifier": 0 },
+    "history": { "proficient": false, "modifier": 1 },
+    "insight": { "proficient": false, "modifier": 1 },
+    "intimidation": { "proficient": false, "modifier": -2 },
+    "investigation": { "proficient": true, "proficiencyType": "class", "modifier": 3 },
+    "medicine": { "proficient": false, "modifier": 1 },
+    "nature": { "proficient": false, "modifier": 1 },
+    "perception": { "proficient": true, "proficiencyType": "class", "modifier": 3 },
+    "performance": { "proficient": true, "proficiencyType": "class", "modifier": 0 },
+    "persuasion": { "proficient": true, "proficiencyType": "class", "modifier": 0 },
+    "religion": { "proficient": false, "modifier": 1 },
+    "sleightOfHand": { "proficient": true, "proficiencyType": "background", "modifier": 7 },
+    "stealth": { "proficient": true, "proficiencyType": "racial", "expertise": true, "modifier": 9 },
+    "survival": { "proficient": false, "modifier": 1 }
+  },
+  "equipment": {
+    "weapons": [
+      {
+        "name": "Shortsword",
+        "attackBonus": 7,
+        "damage": "1d6+5",
+        "damageType": "piercing",
+        "properties": ["finesse", "light"]
+      },
+      {
+        "name": "Dagger",
+        "attackBonus": 7,
+        "damage": "1d4+5",
+        "damageType": "piercing",
+        "properties": ["finesse", "light", "thrown"]
+      },
+      {
+        "name": "Shortbow",
+        "attackBonus": 7,
+        "damage": "1d6+5",
+        "damageType": "piercing",
+        "properties": ["ammunition", "range", "two-handed"]
+      }
+    ],
+    "armor": {
+      "name": "Leather Armor",
+      "armorClass": 11,
+      "armorClassWithDex": 16,
+      "type": "light"
+    },
+    "items": [
+      "Thieves' Tools",
+      "Backpack",
+      "Bedroll",
+      "Mess kit",
+      "Tinderbox",
+      "10 torches",
+      "10 days of rations",
+      "Waterskin",
+      "50 feet of hempen rope",
+      "Disguise kit",
+      "Fine clothes",
+      "Con tools"
+    ],
+    "currency": {
+      "copper": 0,
+      "silver": 0,
+      "electrum": 0,
+      "gold": 15,
+      "platinum": 0
+    }
+  },
+  "features": [
+    {
+      "name": "Sneak Attack",
+      "description": "Once per turn, you can deal an extra 2d6 damage to one creature you hit with an attack if you have advantage on the attack roll. The attack must use a finesse or ranged weapon.",
+      "damage": "2d6"
+    },
+    {
+      "name": "Cunning Action",
+      "description": "Starting at 2nd level, your quick thinking and agility allow you to move and act quickly. You can take a bonus action on each of your turns in combat. This action can be used only to take the Dash, Disengage, or Hide action."
+    },
+    {
+      "name": "Fast Hands (Thief)",
+      "description": "Starting at 3rd level, you can use the bonus action granted by your Cunning Action to make a Dexterity (Sleight of Hand) check, use your thieves' tools to disarm a trap or open a lock, or take the Use an Object action."
+    },
+    {
+      "name": "Second-Story Work (Thief)",
+      "description": "When you choose this archetype at 3rd level, you gain the ability to climb faster than normal; climbing no longer costs you extra movement. In addition, when you make a running jump, the distance you cover increases by a number of feet equal to your Dexterity modifier (5 feet)."
+    },
+    {
+      "name": "Expert Forgery (Kenku)",
+      "description": "You can duplicate other creatures' handwriting and craftwork. You have advantage on all checks made to produce forgeries or duplicates of existing objects."
+    },
+    {
+      "name": "Kenku Training",
+      "description": "You are proficient in your choice of two of the following skills: Acrobatics, Deception, Stealth, and Sleight of Hand."
+    },
+    {
+      "name": "Mimicry (Kenku)",
+      "description": "You can mimic sounds you have heard, including voices. A creature that hears the sounds you make can tell they are imitations with a successful Wisdom (Insight) check opposed by your Charisma (Deception) check."
+    },
+    {
+      "name": "False Identity (Charlatan)",
+      "description": "You have created a second identity that includes documentation, established acquaintances, and disguises that allow you to assume that persona."
+    }
+  ],
+  "spells": {
+    "spellcastingAbility": null,
+    "spellSaveDC": null,
+    "spellAttackBonus": null,
+    "spellSlots": {},
+    "knownSpells": []
+  }
+}

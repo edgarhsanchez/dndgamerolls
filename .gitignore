@@ -1,0 +1,48 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+*.deb
+*.rpm
+*.msi
+
+# Cargo lock file (optional for binaries, remove this line if you want to commit it)
+# Cargo.lock
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Bevy/Game assets (if generated)
+*.wasm
+*.wasm.gz
+
+# Local configuration
+.env
+.env.local
+*.local
+

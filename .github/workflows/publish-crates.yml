@@ -53,14 +53,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Verify package
-        run: cargo package --list
+        run: cargo package --allow-dirty --list
 
       - name: Dry run publish
         if: github.event.inputs.dry_run == 'true'
-        run: cargo publish --dry-run
+        run: cargo publish --allow-dirty --dry-run
 
       - name: Publish to crates.io
         if: github.event_name == 'release' || github.event.inputs.dry_run == 'false'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: cargo publish
+        run: cargo publish --allow-dirty

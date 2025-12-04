@@ -1,0 +1,43 @@
+name: Tweet on Release
+
+on:
+  workflow_run:
+    workflows: ["Publish to crates.io"]
+    types:
+      - completed
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tweet:
+    name: Tweet Release Announcement
+    runs-on: ubuntu-latest
+    # Only tweet if the publish workflow succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Send Tweet
+        uses: ethomson/send-tweet-action@v1
+        with:
+          status: |
+            🎲 DnD Game Rolls v${{ steps.version.outputs.version }} released!
+
+            A D&D 5e dice roller with CLI + 3D physics simulator built in Rust 🦀
+
+            📦 cargo install dndgamerolls
+            🔗 https://github.com/edgarhsanchez/dndgamerolls
+
+            #Rust #DnD #GameDev #OpenSource
+          consumer-key: ${{ secrets.TWITTER_API_KEY }}
+          consumer-secret: ${{ secrets.TWITTER_API_SECRET }}
+          access-token: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          access-token-secret: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}

@@ -1,5 +1,9 @@
 # DnD Game Rolls - D&D Dice Roller
 
+[![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/dndgamerolls.svg)](https://crates.io/crates/dndgamerolls)
+[![License](https://img.shields.io/crates/l/dndgamerolls.svg)](https://github.com/edgarhsanchez/dndgamerolls/blob/main/LICENSE)
+
 A command-line dice roller for D&D 5e that uses your character stats from a JSON file.  
 Includes a **3D Dice Simulator** powered by Bevy game engine!
 

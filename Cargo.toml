@@ -34,7 +34,7 @@ bevy_rapier3d = { version = "0.27", features = ["simd-stable"] }
 
 [[bin]]
 name = "dndgamerolls"
-path = "src/unified_main.rs"
+path = "src/main.rs"
 
 [profile.dev]
 opt-level = 1

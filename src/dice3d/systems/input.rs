@@ -80,6 +80,7 @@ pub fn handle_input(
 }
 
 /// Handle command input from the user
+#[allow(clippy::too_many_arguments)]
 pub fn handle_command_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,

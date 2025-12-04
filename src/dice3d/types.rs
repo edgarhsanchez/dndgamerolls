@@ -141,6 +141,42 @@ impl CommandHistory {
     }
 }
 
+/// Resource for camera zoom level
+#[derive(Resource)]
+pub struct ZoomState {
+    pub level: f32, // 0.0 = closest, 1.0 = farthest
+    pub min_distance: f32,
+    pub max_distance: f32,
+}
+
+impl Default for ZoomState {
+    fn default() -> Self {
+        Self {
+            level: 0.3,        // Start closer (30% of range)
+            min_distance: 4.0, // Can zoom in much closer
+            max_distance: 25.0,
+        }
+    }
+}
+
+impl ZoomState {
+    pub fn get_distance(&self) -> f32 {
+        self.min_distance + self.level * (self.max_distance - self.min_distance)
+    }
+}
+
+/// Component for the zoom slider container
+#[derive(Component)]
+pub struct ZoomSliderContainer;
+
+/// Component for the zoom slider handle
+#[derive(Component)]
+pub struct ZoomSliderHandle;
+
+/// Component for the zoom slider track
+#[derive(Component)]
+pub struct ZoomSliderTrack;
+
 // Character data structures for JSON loading
 #[derive(Debug, Deserialize, Clone)]
 pub struct CharacterSheet {
@@ -258,5 +294,97 @@ impl CharacterData {
                 .get(&ability.to_lowercase())
                 .map(|st| st.modifier)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dice_type_max_value() {
+        assert_eq!(DiceType::D4.max_value(), 4);
+        assert_eq!(DiceType::D6.max_value(), 6);
+        assert_eq!(DiceType::D8.max_value(), 8);
+        assert_eq!(DiceType::D10.max_value(), 10);
+        assert_eq!(DiceType::D12.max_value(), 12);
+        assert_eq!(DiceType::D20.max_value(), 20);
+    }
+
+    #[test]
+    fn test_dice_type_name() {
+        assert_eq!(DiceType::D4.name(), "D4");
+        assert_eq!(DiceType::D6.name(), "D6");
+        assert_eq!(DiceType::D20.name(), "D20");
+    }
+
+    #[test]
+    fn test_dice_type_parse() {
+        assert_eq!(DiceType::parse("d4"), Some(DiceType::D4));
+        assert_eq!(DiceType::parse("D4"), Some(DiceType::D4));
+        assert_eq!(DiceType::parse("d20"), Some(DiceType::D20));
+        assert_eq!(DiceType::parse("D20"), Some(DiceType::D20));
+        assert_eq!(DiceType::parse("invalid"), None);
+        assert_eq!(DiceType::parse("d100"), None);
+    }
+
+    #[test]
+    fn test_dice_config_default() {
+        let config = DiceConfig::default();
+        assert_eq!(config.dice_to_roll, vec![DiceType::D20]);
+        assert_eq!(config.modifier, 0);
+        assert!(config.modifier_name.is_empty());
+    }
+
+    #[test]
+    fn test_command_history_add() {
+        let mut history = CommandHistory::default();
+        assert!(history.commands.is_empty());
+
+        history.add_command("--dice 2d6".to_string());
+        assert_eq!(history.commands.len(), 1);
+        assert_eq!(history.commands[0], "--dice 2d6");
+
+        // Adding same command should not duplicate
+        history.add_command("--dice 2d6".to_string());
+        assert_eq!(history.commands.len(), 1);
+
+        // Adding different command should add
+        history.add_command("--dice 1d20".to_string());
+        assert_eq!(history.commands.len(), 2);
+
+        // Empty command should not be added
+        history.add_command("".to_string());
+        history.add_command("   ".to_string());
+        assert_eq!(history.commands.len(), 2);
+    }
+
+    #[test]
+    fn test_command_input_default() {
+        let input = CommandInput::default();
+        assert!(input.text.is_empty());
+        assert!(!input.active);
+    }
+
+    #[test]
+    fn test_dice_results_default() {
+        let results = DiceResults::default();
+        assert!(results.results.is_empty());
+    }
+
+    #[test]
+    fn test_roll_state_default() {
+        let state = RollState::default();
+        assert!(!state.rolling);
+        assert_eq!(state.settle_timer, 0.0);
+    }
+
+    #[test]
+    fn test_character_data_default() {
+        let data = CharacterData::default();
+        assert!(data.sheet.is_none());
+        assert!(data.get_skill_modifier("stealth").is_none());
+        assert!(data.get_ability_modifier("dex").is_none());
+        assert!(data.get_saving_throw_modifier("dex").is_none());
     }
 }

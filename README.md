@@ -4,8 +4,8 @@
 [![Crates.io](https://img.shields.io/crates/v/dndgamerolls.svg)](https://crates.io/crates/dndgamerolls)
 [![License](https://img.shields.io/crates/l/dndgamerolls.svg)](https://github.com/edgarhsanchez/dndgamerolls/blob/main/LICENSE)
 
-A command-line dice roller for D&D 5e that uses your character stats from a JSON file.  
-Includes a **3D Dice Simulator** powered by Bevy game engine!
+A D&D 5e dice roller with both **CLI** and **3D visualization** in a single binary!  
+Powered by Bevy game engine with real physics simulation.
 
 ## Screenshots
 
@@ -19,37 +19,6 @@ Includes a **3D Dice Simulator** powered by Bevy game engine!
 |:-------------:|:---------------:|
 | ![Command Input](screenshots/dice3d/dice3d-command-input.png) | ![Command History](screenshots/dice3d/dice3d-history.png) |
 
-## Examples
-
-For detailed examples with output, see the [screenshots directory](screenshots/README.md):
-
-- **[CLI Examples](screenshots/cli/README.md)** - Command-line dice roller output samples
-- **[3D Dice Simulator](screenshots/dice3d/README.md)** - Visual dice rolling examples
-
-### Quick CLI Examples
-
-```bash
-# View character stats
-dndgamerolls stats
-
-# Skill check with expertise
-dndgamerolls skill stealth
-# 🎲 Stealth Check (Expertise)
-# Roll: 15 + 9 = 24
-
-# Skill check with advantage (flag BEFORE subcommand)
-dndgamerolls --advantage skill perception
-# 🎲 Perception Check (Proficient) [Advantage]
-# Rolls: 18, 7 → Using: 18
-# Roll: 18 + 5 = 23
-
-# Attack roll with damage
-dndgamerolls attack dagger
-# ⚔️ Dagger Attack
-# Attack Roll: 12 + 7 = 19
-# Damage: 1d4+5 → 7
-```
-
 ---
 
 ## Installation
@@ -57,7 +26,6 @@ dndgamerolls attack dagger
 ### From crates.io (Recommended)
 
 ```bash
-# Install both CLI and 3D simulator
 cargo install dndgamerolls
 ```
 
@@ -69,40 +37,73 @@ cd dndgamerolls
 cargo build --release
 ```
 
-The executables will be at:
-- `target/release/dndgamerolls.exe` - CLI dice roller
-- `target/release/dice3d.exe` - 3D dice simulator
-
-### From GitHub Releases
-
-Download pre-built binaries from the [Releases](https://github.com/edgarhsanchez/dndgamerolls/releases) page.
+The executable will be at: `target/release/dndgamerolls.exe`
 
 ---
 
-## 3D Dice Simulator (dice3d)
+## Usage
+
+### 3D Mode (Default)
+
+Simply run without `--cli` to launch the 3D dice simulator:
+
+```bash
+# Launch 3D simulator with default d20
+dndgamerolls
+
+# Launch with specific dice
+dndgamerolls --dice 2d6 --dice 1d20
+
+# Launch with skill modifier applied
+dndgamerolls --dice 1d20 --checkon stealth
+```
+
+### CLI Mode
+
+Use `--cli` for headless command-line rolling:
+
+```bash
+# Roll dice with skill modifier (no GUI)
+dndgamerolls --cli --dice 2d10 --checkon perception
+
+# Roll with advantage
+dndgamerolls --cli --dice 1d20 --checkon stealth --advantage
+
+# Traditional subcommands also work
+dndgamerolls skill stealth
+dndgamerolls --advantage skill perception
+dndgamerolls attack dagger
+dndgamerolls stats
+```
+
+### Quick Examples
+
+```bash
+# View character stats
+dndgamerolls stats
+
+# Skill check with expertise
+dndgamerolls skill stealth
+# 🎲 Stealth Check (Expertise)
+# Roll: 15 + 9 = 24
+
+# Skill check with advantage
+dndgamerolls --advantage skill perception
+
+# Attack roll with damage
+dndgamerolls attack dagger
+
+# CLI mode: Roll 2d10 + perception modifier
+dndgamerolls --cli --dice 2d10 --checkon perception
+```
+
+For more examples, see the [screenshots directory](screenshots/README.md).
+
+---
+
+## 3D Dice Simulator
 
 A visual 3D dice rolling experience with physics simulation.
-
-### Running the 3D Simulator
-```bash
-# From source
-cargo run --bin dice3d
-
-# If installed via cargo install
-dice3d
-```
-
-### Command-Line Options
-```bash
-# Roll specific dice
-dice3d --dice 1d20 --dice 2d6
-
-# Roll with skill check modifier
-dice3d --dice 1d20 --checkon stealth
-
-# Combined options
-dice3d --dice 1d20 --dice 1d8 --modifier 3
-```
 
 ### Controls
 
@@ -137,73 +138,61 @@ Press **1-9** to quickly reroll from command history shown on the right.
 - 💡 Dynamic lighting and shadows
 - 📝 Command history for quick rerolls
 
-### Custom 3D Models
-
-You can add your own dice models in the `assets/models/` folder. See `assets/models/README.md` for detailed instructions on:
-- Supported formats (GLTF/GLB recommended)
-- Model requirements and scale
-- Converting FBX to GLTF
-- Creating dice in Blender
-
 ---
 
-## CLI Dice Roller (dndgamerolls)
+## CLI Mode
 
-A command-line dice roller that uses your character stats from a JSON file.
+The CLI mode provides quick command-line dice rolling without the 3D GUI.
 
-### Usage
-
-#### Ability Checks
-Roll ability checks using the full name or abbreviation:
+### Traditional Subcommands
 
 ```bash
-dndgamerolls strength      # or dndgamerolls str
-dndgamerolls dexterity     # or dndgamerolls dex
-dndgamerolls constitution  # or dndgamerolls con
-dndgamerolls intelligence  # or dndgamerolls int
-dndgamerolls wisdom        # or dndgamerolls wis
-dndgamerolls charisma      # or dndgamerolls cha
-```
+# Ability Checks
+dndgamerolls strength      # or str
+dndgamerolls dexterity     # or dex
 
-#### Initiative
-```bash
-dndgamerolls initiative
-```
-
-#### Skill Checks
-```bash
+# Skill Checks
 dndgamerolls skill stealth
 dndgamerolls skill perception
-dndgamerolls skill acrobatics
-dndgamerolls skill investigation
-```
 
-#### Saving Throws
-```bash
+# Saving Throws
 dndgamerolls save dex
-dndgamerolls save int
 dndgamerolls save wisdom
-```
 
-#### Attack Rolls
-```bash
+# Attack Rolls
 dndgamerolls attack shortsword
-dndgamerolls attack shortbow
 dndgamerolls attack dagger
-```
 
-#### Advantage/Disadvantage
-Add `--advantage` or `--disadvantage` **BEFORE** the subcommand:
-
-```bash
-dndgamerolls --advantage dex              # Roll with advantage
-dndgamerolls --disadvantage skill stealth # Roll with disadvantage
-dndgamerolls --advantage attack shortsword
-```
-
-#### View Character Stats
-```bash
+# View Character Stats
 dndgamerolls stats
+```
+
+### Advanced CLI Mode
+
+Use `--cli` with `--dice` and `--checkon` for flexible dice rolling:
+
+```bash
+# Roll 2d10 with perception modifier
+dndgamerolls --cli --dice 2d10 --checkon perception
+
+# Roll 1d20 with stealth and advantage
+dndgamerolls --cli --dice 1d20 --checkon stealth --advantage
+
+# Roll multiple dice types
+dndgamerolls --cli --dice 1d20 --dice 2d6 --modifier 5
+
+# Add custom modifier
+dndgamerolls --cli --dice 3d8 --modifier 10
+```
+
+### Advantage/Disadvantage
+
+Add `--advantage` or `--disadvantage` before the subcommand:
+
+```bash
+dndgamerolls --advantage skill stealth
+dndgamerolls --disadvantage attack shortsword
+dndgamerolls --cli --dice 1d20 --checkon perception --advantage
 ```
 
 #### Custom Character File

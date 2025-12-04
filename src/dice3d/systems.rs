@@ -11,11 +11,15 @@ pub fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     dice_config: Res<DiceConfig>,
     character_data: Res<CharacterData>,
+    zoom_state: Res<ZoomState>,
 ) {
-    // Camera - closer for smaller box
+    // Camera - position based on zoom state (closer by default)
+    let camera_distance = zoom_state.get_distance();
+    let camera_height = camera_distance * 0.7; // Maintain angle ratio
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_xyz(0.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(0.0, camera_height, camera_distance * 0.7)
+                .looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
         MainCamera,
@@ -215,6 +219,80 @@ pub fn setup(
         .with_background_color(Color::srgba(0.0, 0.0, 0.0, 0.5)),
         CommandHistoryList,
     ));
+
+    // Zoom slider on the lower left - vertical orientation
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(20.0),
+                    bottom: Val::Px(60.0),
+                    width: Val::Px(30.0),
+                    height: Val::Px(200.0),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                ..default()
+            },
+            ZoomSliderContainer,
+        ))
+        .with_children(|parent| {
+            // "+" label at top (zoom in)
+            parent.spawn(TextBundle::from_section(
+                "+",
+                TextStyle {
+                    font_size: 20.0,
+                    color: Color::srgba(0.9, 0.9, 0.9, 0.8),
+                    ..default()
+                },
+            ));
+
+            // Slider track
+            parent
+                .spawn((
+                    NodeBundle {
+                        style: Style {
+                            width: Val::Px(8.0),
+                            height: Val::Px(160.0),
+                            margin: UiRect::vertical(Val::Px(5.0)),
+                            ..default()
+                        },
+                        background_color: Color::srgba(0.3, 0.3, 0.3, 0.7).into(),
+                        ..default()
+                    },
+                    ZoomSliderTrack,
+                ))
+                .with_children(|track| {
+                    // Slider handle - position based on zoom level
+                    track.spawn((
+                        NodeBundle {
+                            style: Style {
+                                position_type: PositionType::Absolute,
+                                width: Val::Px(20.0),
+                                height: Val::Px(20.0),
+                                left: Val::Px(-6.0), // Center handle on track
+                                top: Val::Percent(zoom_state.level * 100.0),
+                                ..default()
+                            },
+                            background_color: Color::srgba(0.8, 0.8, 0.2, 0.9).into(),
+                            ..default()
+                        },
+                        ZoomSliderHandle,
+                    ));
+                });
+
+            // "-" label at bottom (zoom out)
+            parent.spawn(TextBundle::from_section(
+                "-",
+                TextStyle {
+                    font_size: 20.0,
+                    color: Color::srgba(0.9, 0.9, 0.9, 0.8),
+                    ..default()
+                },
+            ));
+        });
 }
 
 fn calculate_dice_position(index: usize, total: usize) -> Vec3 {
@@ -352,27 +430,27 @@ fn spawn_die(
 }
 
 fn get_label_offset(die_type: DiceType) -> f32 {
-    // Offset from center of die - place label just outside the face surface
-    // Slightly more than face distance to avoid z-fighting
+    // Offset from center of die - place label flush on the face surface
+    // Reduced offsets to prevent floating appearance
     match die_type {
-        DiceType::D4 => 0.32,  // Tetrahedron face distance + buffer
-        DiceType::D6 => 0.32,  // Cube is 0.6 units, face at 0.3 + buffer
-        DiceType::D8 => 0.34,  // Octahedron
-        DiceType::D10 => 0.37, // Pentagonal trapezohedron
-        DiceType::D12 => 0.40, // Dodecahedron
-        DiceType::D20 => 0.37, // Icosahedron
+        DiceType::D4 => 0.28,  // Tetrahedron - closer to face
+        DiceType::D6 => 0.301, // Cube is 0.6 units, face at 0.3 + tiny buffer
+        DiceType::D8 => 0.30,  // Octahedron
+        DiceType::D10 => 0.33, // Pentagonal trapezohedron
+        DiceType::D12 => 0.36, // Dodecahedron
+        DiceType::D20 => 0.33, // Icosahedron
     }
 }
 
 fn get_label_scale(die_type: DiceType) -> f32 {
-    // Scale for number labels - make them large and clear
+    // Scale for number labels - clear and readable
     match die_type {
-        DiceType::D4 => 0.25,
-        DiceType::D6 => 0.28,
-        DiceType::D8 => 0.22,
-        DiceType::D10 => 0.18,
-        DiceType::D12 => 0.16,
-        DiceType::D20 => 0.14,
+        DiceType::D4 => 0.22,
+        DiceType::D6 => 0.24,
+        DiceType::D8 => 0.18,
+        DiceType::D10 => 0.15,
+        DiceType::D12 => 0.13,
+        DiceType::D20 => 0.11,
     }
 }
 
@@ -505,108 +583,251 @@ fn generate_number_geometry(value: u32) -> (Vec<[f32; 3]>, Vec<u32>) {
 }
 
 fn get_digit_geometry(digit: u32, offset_x: f32) -> (Vec<[f32; 3]>, Vec<u32>) {
-    // Simple 7-segment style digit representation - THICK 3D boxes
-    let w = 0.5; // segment width (wide for visibility)
-    let h = 0.55; // half height
-    let t = 0.2; // thickness (segment thickness)
-    let d = 0.1; // depth (3D depth of segments)
+    // Smooth curved digit representation using rounded segments
+    let stroke_width = 0.12; // Thinner stroke for cleaner look
+    let h = 0.5; // Half height
+    let w = 0.35; // Half width
+    let d = 0.02; // Very thin depth - flat on surface
+    let curve_segments = 6; // Segments for curves
 
     let mut positions = Vec::new();
     let mut indices = Vec::new();
 
-    // Segments: top, top-left, top-right, middle, bottom-left, bottom-right, bottom
-    let segments: [bool; 7] = match digit {
-        0 => [true, true, true, false, true, true, true],
-        1 => [false, false, true, false, false, true, false],
-        2 => [true, false, true, true, true, false, true],
-        3 => [true, false, true, true, false, true, true],
-        4 => [false, true, true, true, false, true, false],
-        5 => [true, true, false, true, false, true, true],
-        6 => [true, true, false, true, true, true, true],
-        7 => [true, false, true, false, false, true, false],
-        8 => [true, true, true, true, true, true, true],
-        9 => [true, true, true, true, false, true, true],
-        _ => [true, true, true, true, true, true, true],
+    // Helper to add a rounded rectangle segment (pill shape)
+    let add_segment = |positions: &mut Vec<[f32; 3]>,
+                       indices: &mut Vec<u32>,
+                       x1: f32,
+                       y1: f32,
+                       x2: f32,
+                       y2: f32| {
+        let base_idx = positions.len() as u32;
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let len = (dx * dx + dy * dy).sqrt();
+        if len < 0.001 {
+            return;
+        }
+
+        // Perpendicular direction for width
+        let px = -dy / len * stroke_width / 2.0;
+        let py = dx / len * stroke_width / 2.0;
+
+        // Front face - quad along the segment
+        positions.push([offset_x + x1 - px, y1 - py, d / 2.0]);
+        positions.push([offset_x + x1 + px, y1 + py, d / 2.0]);
+        positions.push([offset_x + x2 + px, y2 + py, d / 2.0]);
+        positions.push([offset_x + x2 - px, y2 - py, d / 2.0]);
+        indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
+        indices.extend_from_slice(&[base_idx, base_idx + 2, base_idx + 3]);
+
+        // Back face
+        let base_idx = positions.len() as u32;
+        positions.push([offset_x + x1 + px, y1 + py, -d / 2.0]);
+        positions.push([offset_x + x1 - px, y1 - py, -d / 2.0]);
+        positions.push([offset_x + x2 - px, y2 - py, -d / 2.0]);
+        positions.push([offset_x + x2 + px, y2 + py, -d / 2.0]);
+        indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
+        indices.extend_from_slice(&[base_idx, base_idx + 2, base_idx + 3]);
     };
 
-    // Segment positions and orientations
-    let segment_defs: [(f32, f32, bool); 7] = [
-        (0.0, h, true),              // top (horizontal)
-        (-w / 2.0, h / 2.0, false),  // top-left (vertical)
-        (w / 2.0, h / 2.0, false),   // top-right (vertical)
-        (0.0, 0.0, true),            // middle (horizontal)
-        (-w / 2.0, -h / 2.0, false), // bottom-left (vertical)
-        (w / 2.0, -h / 2.0, false),  // bottom-right (vertical)
-        (0.0, -h, true),             // bottom (horizontal)
-    ];
+    // Helper to add curved segment
+    let add_curve = |positions: &mut Vec<[f32; 3]>,
+                     indices: &mut Vec<u32>,
+                     cx: f32,
+                     cy: f32,
+                     radius: f32,
+                     start_angle: f32,
+                     end_angle: f32| {
+        for i in 0..curve_segments {
+            let t1 = i as f32 / curve_segments as f32;
+            let t2 = (i + 1) as f32 / curve_segments as f32;
+            let a1 = start_angle + (end_angle - start_angle) * t1;
+            let a2 = start_angle + (end_angle - start_angle) * t2;
+            let x1 = cx + radius * a1.cos();
+            let y1 = cy + radius * a1.sin();
+            let x2 = cx + radius * a2.cos();
+            let y2 = cy + radius * a2.sin();
+            add_segment(positions, indices, x1, y1, x2, y2);
+        }
+    };
 
-    for (i, &enabled) in segments.iter().enumerate() {
-        if enabled {
-            let (sx, sy, horizontal) = segment_defs[i];
+    let pi = std::f32::consts::PI;
+    let half_pi = std::f32::consts::FRAC_PI_2;
 
-            // Create a 3D box for each segment
-            let (box_w, box_h) = if horizontal {
-                (w - t, t) // wide and short
-            } else {
-                (t, h - t) // narrow and tall
-            };
-
-            let cx = offset_x + sx;
-            let cy = sy;
-
-            // Front face (z = d/2)
-            let base_idx = positions.len() as u32;
-            positions.push([cx - box_w / 2.0, cy + box_h / 2.0, d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy + box_h / 2.0, d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy - box_h / 2.0, d / 2.0]);
-            positions.push([cx - box_w / 2.0, cy - box_h / 2.0, d / 2.0]);
-            indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
-            indices.extend_from_slice(&[base_idx, base_idx + 2, base_idx + 3]);
-
-            // Back face (z = -d/2)
-            let base_idx = positions.len() as u32;
-            positions.push([cx + box_w / 2.0, cy + box_h / 2.0, -d / 2.0]);
-            positions.push([cx - box_w / 2.0, cy + box_h / 2.0, -d / 2.0]);
-            positions.push([cx - box_w / 2.0, cy - box_h / 2.0, -d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy - box_h / 2.0, -d / 2.0]);
-            indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
-            indices.extend_from_slice(&[base_idx, base_idx + 2, base_idx + 3]);
-
-            // Top face
-            let base_idx = positions.len() as u32;
-            positions.push([cx - box_w / 2.0, cy + box_h / 2.0, -d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy + box_h / 2.0, -d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy + box_h / 2.0, d / 2.0]);
-            positions.push([cx - box_w / 2.0, cy + box_h / 2.0, d / 2.0]);
-            indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
-            indices.extend_from_slice(&[base_idx, base_idx + 2, base_idx + 3]);
-
-            // Bottom face
-            let base_idx = positions.len() as u32;
-            positions.push([cx - box_w / 2.0, cy - box_h / 2.0, d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy - box_h / 2.0, d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy - box_h / 2.0, -d / 2.0]);
-            positions.push([cx - box_w / 2.0, cy - box_h / 2.0, -d / 2.0]);
-            indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
-            indices.extend_from_slice(&[base_idx, base_idx + 2, base_idx + 3]);
-
-            // Left face
-            let base_idx = positions.len() as u32;
-            positions.push([cx - box_w / 2.0, cy + box_h / 2.0, -d / 2.0]);
-            positions.push([cx - box_w / 2.0, cy + box_h / 2.0, d / 2.0]);
-            positions.push([cx - box_w / 2.0, cy - box_h / 2.0, d / 2.0]);
-            positions.push([cx - box_w / 2.0, cy - box_h / 2.0, -d / 2.0]);
-            indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
-            indices.extend_from_slice(&[base_idx, base_idx + 2, base_idx + 3]);
-
-            // Right face
-            let base_idx = positions.len() as u32;
-            positions.push([cx + box_w / 2.0, cy + box_h / 2.0, d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy + box_h / 2.0, -d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy - box_h / 2.0, -d / 2.0]);
-            positions.push([cx + box_w / 2.0, cy - box_h / 2.0, d / 2.0]);
-            indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
-            indices.extend_from_slice(&[base_idx, base_idx + 2, base_idx + 3]);
+    // Define digit paths using line segments and curves
+    match digit {
+        0 => {
+            // Oval shape
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                h * 0.5,
+                w * 0.6,
+                half_pi,
+                pi + half_pi,
+            );
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                -h * 0.5,
+                w * 0.6,
+                -half_pi,
+                half_pi,
+            );
+            add_segment(
+                &mut positions,
+                &mut indices,
+                -w * 0.6,
+                h * 0.5,
+                -w * 0.6,
+                -h * 0.5,
+            );
+            add_segment(
+                &mut positions,
+                &mut indices,
+                w * 0.6,
+                h * 0.5,
+                w * 0.6,
+                -h * 0.5,
+            );
+        }
+        1 => {
+            // Simple vertical line with small top serif
+            add_segment(&mut positions, &mut indices, 0.0, h, 0.0, -h);
+            add_segment(&mut positions, &mut indices, -w * 0.3, h * 0.6, 0.0, h);
+        }
+        2 => {
+            // Top curve, diagonal, bottom
+            add_curve(&mut positions, &mut indices, 0.0, h * 0.5, w * 0.5, 0.0, pi);
+            add_segment(&mut positions, &mut indices, w * 0.5, h * 0.5, -w * 0.6, -h);
+            add_segment(&mut positions, &mut indices, -w * 0.6, -h, w * 0.6, -h);
+        }
+        3 => {
+            // Two curves stacked
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                h * 0.5,
+                w * 0.5,
+                -half_pi,
+                pi,
+            );
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                -h * 0.5,
+                w * 0.5,
+                -pi,
+                half_pi,
+            );
+        }
+        4 => {
+            // Angled line with vertical
+            add_segment(&mut positions, &mut indices, -w * 0.6, h, -w * 0.6, 0.0);
+            add_segment(&mut positions, &mut indices, -w * 0.6, 0.0, w * 0.6, 0.0);
+            add_segment(&mut positions, &mut indices, w * 0.4, h, w * 0.4, -h);
+        }
+        5 => {
+            // Top, down, curve bottom
+            add_segment(&mut positions, &mut indices, w * 0.5, h, -w * 0.5, h);
+            add_segment(&mut positions, &mut indices, -w * 0.5, h, -w * 0.5, 0.0);
+            add_segment(&mut positions, &mut indices, -w * 0.5, 0.0, w * 0.3, 0.0);
+            add_curve(
+                &mut positions,
+                &mut indices,
+                w * 0.1,
+                -h * 0.5,
+                w * 0.5,
+                half_pi,
+                -pi,
+            );
+        }
+        6 => {
+            // Top curve into full bottom circle
+            add_curve(&mut positions, &mut indices, 0.0, h * 0.3, w * 0.5, 0.0, pi);
+            add_segment(
+                &mut positions,
+                &mut indices,
+                -w * 0.5,
+                h * 0.3,
+                -w * 0.5,
+                -h * 0.3,
+            );
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                -h * 0.4,
+                w * 0.5,
+                0.0,
+                2.0 * pi,
+            );
+        }
+        7 => {
+            // Top line with diagonal
+            add_segment(&mut positions, &mut indices, -w * 0.5, h, w * 0.5, h);
+            add_segment(&mut positions, &mut indices, w * 0.5, h, -w * 0.2, -h);
+        }
+        8 => {
+            // Two stacked circles
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                h * 0.5,
+                w * 0.4,
+                0.0,
+                2.0 * pi,
+            );
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                -h * 0.45,
+                w * 0.5,
+                0.0,
+                2.0 * pi,
+            );
+        }
+        9 => {
+            // Top circle with tail
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                h * 0.4,
+                w * 0.5,
+                0.0,
+                2.0 * pi,
+            );
+            add_segment(
+                &mut positions,
+                &mut indices,
+                w * 0.5,
+                h * 0.2,
+                w * 0.5,
+                -h * 0.3,
+            );
+            add_curve(
+                &mut positions,
+                &mut indices,
+                0.0,
+                -h * 0.3,
+                w * 0.5,
+                0.0,
+                -pi,
+            );
+        }
+        _ => {
+            // Fallback: simple box
+            add_segment(&mut positions, &mut indices, -w * 0.5, h, w * 0.5, h);
+            add_segment(&mut positions, &mut indices, w * 0.5, h, w * 0.5, -h);
+            add_segment(&mut positions, &mut indices, w * 0.5, -h, -w * 0.5, -h);
+            add_segment(&mut positions, &mut indices, -w * 0.5, -h, -w * 0.5, h);
         }
     }
 
@@ -842,8 +1063,11 @@ pub fn rotate_camera(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     mut camera_query: Query<&mut Transform, With<MainCamera>>,
+    mut zoom_state: ResMut<ZoomState>,
+    mut handle_query: Query<&mut Style, With<ZoomSliderHandle>>,
 ) {
     let rotation_speed = 1.0;
+    let zoom_speed = 0.5;
 
     for mut transform in camera_query.iter_mut() {
         let mut angle = 0.0;
@@ -863,18 +1087,78 @@ pub fn rotate_camera(
             *transform = transform.looking_at(Vec3::ZERO, Vec3::Y);
         }
 
+        // Keyboard zoom with updated limits
         if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
-            let distance = transform.translation.length();
-            if distance > 8.0 {
-                let dir = transform.translation.normalize();
-                transform.translation -= dir * 5.0 * time.delta_seconds();
-            }
+            zoom_state.level = (zoom_state.level - zoom_speed * time.delta_seconds()).max(0.0);
         }
         if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
-            let distance = transform.translation.length();
-            if distance < 25.0 {
-                let dir = transform.translation.normalize();
-                transform.translation += dir * 5.0 * time.delta_seconds();
+            zoom_state.level = (zoom_state.level + zoom_speed * time.delta_seconds()).min(1.0);
+        }
+
+        // Apply zoom to camera
+        let target_distance = zoom_state.get_distance();
+        let current_dir = transform.translation.normalize();
+        transform.translation = current_dir * target_distance;
+        *transform = transform.looking_at(Vec3::ZERO, Vec3::Y);
+
+        // Update slider handle position
+        for mut style in handle_query.iter_mut() {
+            style.top = Val::Percent(zoom_state.level * 100.0);
+        }
+    }
+}
+
+/// Handle mouse interaction with the zoom slider
+pub fn handle_zoom_slider(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    mut zoom_state: ResMut<ZoomState>,
+    track_query: Query<(&Node, &GlobalTransform), With<ZoomSliderTrack>>,
+    mut handle_query: Query<&mut Style, With<ZoomSliderHandle>>,
+    mut camera_query: Query<&mut Transform, With<MainCamera>>,
+    windows: Query<&Window>,
+) {
+    // Only handle when left mouse button is pressed
+    if !mouse_button.pressed(MouseButton::Left) {
+        return;
+    }
+
+    let Ok(window) = windows.get_single() else {
+        return;
+    };
+
+    let Some(cursor_position) = window.cursor_position() else {
+        return;
+    };
+
+    // Check if cursor is within the slider track area
+    for (node, global_transform) in track_query.iter() {
+        let track_rect = node.logical_rect(global_transform);
+
+        // Expand the click area horizontally for easier interaction
+        let expanded_rect = bevy::math::Rect {
+            min: Vec2::new(track_rect.min.x - 15.0, track_rect.min.y),
+            max: Vec2::new(track_rect.max.x + 15.0, track_rect.max.y),
+        };
+
+        if expanded_rect.contains(cursor_position) {
+            // Calculate zoom level from cursor Y position within track
+            let relative_y = cursor_position.y - track_rect.min.y;
+            let track_height = track_rect.height();
+            let new_level = (relative_y / track_height).clamp(0.0, 1.0);
+
+            zoom_state.level = new_level;
+
+            // Update handle position
+            for mut style in handle_query.iter_mut() {
+                style.top = Val::Percent(new_level * 100.0);
+            }
+
+            // Update camera position
+            for mut transform in camera_query.iter_mut() {
+                let target_distance = zoom_state.get_distance();
+                let current_dir = transform.translation.normalize();
+                transform.translation = current_dir * target_distance;
+                *transform = transform.looking_at(Vec3::ZERO, Vec3::Y);
             }
         }
     }

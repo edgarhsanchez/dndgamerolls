@@ -657,3 +657,172 @@ fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_roll_d20_in_range() {
+        for _ in 0..100 {
+            let roll = roll_d20();
+            assert!(roll >= 1 && roll <= 20, "Roll {} out of range", roll);
+        }
+    }
+
+    #[test]
+    fn test_advantage_disadvantage_cancel() {
+        // When both advantage and disadvantage, should roll once (no dropped roll)
+        for _ in 0..10 {
+            let (_, dropped) = roll_with_advantage_disadvantage(true, true);
+            assert!(dropped.is_none(), "Should cancel out with no dropped roll");
+        }
+    }
+
+    #[test]
+    fn test_normal_roll_no_dropped() {
+        for _ in 0..10 {
+            let (_, dropped) = roll_with_advantage_disadvantage(false, false);
+            assert!(dropped.is_none(), "Normal roll should have no dropped roll");
+        }
+    }
+
+    #[test]
+    fn test_advantage_has_dropped_roll() {
+        for _ in 0..10 {
+            let (used, dropped) = roll_with_advantage_disadvantage(true, false);
+            assert!(dropped.is_some(), "Advantage should have dropped roll");
+            let dropped_val = dropped.unwrap();
+            assert!(used >= dropped_val, "Advantage should use higher roll");
+        }
+    }
+
+    #[test]
+    fn test_disadvantage_has_dropped_roll() {
+        for _ in 0..10 {
+            let (used, dropped) = roll_with_advantage_disadvantage(false, true);
+            assert!(dropped.is_some(), "Disadvantage should have dropped roll");
+            let dropped_val = dropped.unwrap();
+            assert!(used <= dropped_val, "Disadvantage should use lower roll");
+        }
+    }
+
+    #[test]
+    fn test_load_character_valid_json() {
+        let test_json = r#"{
+            "character": {
+                "name": "Test Character",
+                "class": "Fighter",
+                "race": "Human",
+                "level": 1
+            },
+            "attributes": {
+                "strength": 16,
+                "dexterity": 14,
+                "constitution": 15,
+                "intelligence": 10,
+                "wisdom": 12,
+                "charisma": 8
+            },
+            "modifiers": {
+                "strength": 3,
+                "dexterity": 2,
+                "constitution": 2,
+                "intelligence": 0,
+                "wisdom": 1,
+                "charisma": -1
+            },
+            "combat": {
+                "armorClass": 16,
+                "initiative": 2,
+                "hitPoints": { "current": 12, "maximum": 12 }
+            },
+            "proficiencyBonus": 2,
+            "savingThrows": {
+                "strength": { "proficient": true, "modifier": 5 },
+                "dexterity": { "proficient": false, "modifier": 2 },
+                "constitution": { "proficient": true, "modifier": 4 },
+                "intelligence": { "proficient": false, "modifier": 0 },
+                "wisdom": { "proficient": false, "modifier": 1 },
+                "charisma": { "proficient": false, "modifier": -1 }
+            },
+            "skills": {
+                "acrobatics": { "proficient": false, "modifier": 2 },
+                "animalHandling": { "proficient": false, "modifier": 1 },
+                "arcana": { "proficient": false, "modifier": 0 },
+                "athletics": { "proficient": true, "modifier": 5 },
+                "deception": { "proficient": false, "modifier": -1 },
+                "history": { "proficient": false, "modifier": 0 },
+                "insight": { "proficient": false, "modifier": 1 },
+                "intimidation": { "proficient": false, "modifier": -1 },
+                "investigation": { "proficient": false, "modifier": 0 },
+                "medicine": { "proficient": false, "modifier": 1 },
+                "nature": { "proficient": false, "modifier": 0 },
+                "perception": { "proficient": false, "modifier": 1 },
+                "performance": { "proficient": false, "modifier": -1 },
+                "persuasion": { "proficient": false, "modifier": -1 },
+                "religion": { "proficient": false, "modifier": 0 },
+                "sleightOfHand": { "proficient": false, "modifier": 2 },
+                "stealth": { "proficient": false, "modifier": 2 },
+                "survival": { "proficient": false, "modifier": 1 }
+            },
+            "equipment": {
+                "weapons": [
+                    { "name": "Longsword", "attackBonus": 5, "damage": "1d8+3", "damageType": "Slashing" }
+                ]
+            }
+        }"#;
+
+        let character: Result<Character, _> = serde_json::from_str(test_json);
+        assert!(character.is_ok(), "Should parse valid JSON");
+
+        let char = character.unwrap();
+        assert_eq!(char.character.name, "Test Character");
+        assert_eq!(char.attributes.strength, 16);
+        assert_eq!(char.modifiers.strength, 3);
+        assert_eq!(char.proficiency_bonus, 2);
+    }
+
+    #[test]
+    fn test_get_skill_by_name() {
+        let skills = Skills {
+            acrobatics: Skill { proficient: false, modifier: 2, expertise: false },
+            animal_handling: Skill { proficient: false, modifier: 1, expertise: false },
+            arcana: Skill { proficient: false, modifier: 0, expertise: false },
+            athletics: Skill { proficient: true, modifier: 5, expertise: false },
+            deception: Skill { proficient: false, modifier: -1, expertise: false },
+            history: Skill { proficient: false, modifier: 0, expertise: false },
+            insight: Skill { proficient: false, modifier: 1, expertise: false },
+            intimidation: Skill { proficient: false, modifier: -1, expertise: false },
+            investigation: Skill { proficient: false, modifier: 0, expertise: false },
+            medicine: Skill { proficient: false, modifier: 1, expertise: false },
+            nature: Skill { proficient: false, modifier: 0, expertise: false },
+            perception: Skill { proficient: true, modifier: 3, expertise: false },
+            performance: Skill { proficient: false, modifier: -1, expertise: false },
+            persuasion: Skill { proficient: false, modifier: -1, expertise: false },
+            religion: Skill { proficient: false, modifier: 0, expertise: false },
+            sleight_of_hand: Skill { proficient: false, modifier: 2, expertise: false },
+            stealth: Skill { proficient: true, modifier: 4, expertise: true },
+            survival: Skill { proficient: false, modifier: 1, expertise: false },
+        };
+
+        // Test exact matches
+        assert!(get_skill_by_name(&skills, "stealth").is_some());
+        assert_eq!(get_skill_by_name(&skills, "stealth").unwrap().0, "Stealth");
+        assert_eq!(get_skill_by_name(&skills, "stealth").unwrap().1.modifier, 4);
+
+        // Test case insensitivity
+        assert!(get_skill_by_name(&skills, "STEALTH").is_some());
+        assert!(get_skill_by_name(&skills, "Perception").is_some());
+
+        // Test aliases
+        assert!(get_skill_by_name(&skills, "animalhandling").is_some());
+        assert!(get_skill_by_name(&skills, "animal").is_some());
+        assert!(get_skill_by_name(&skills, "sleightofhand").is_some());
+        assert!(get_skill_by_name(&skills, "sleight").is_some());
+
+        // Test invalid skill
+        assert!(get_skill_by_name(&skills, "invalid").is_none());
+        assert!(get_skill_by_name(&skills, "flying").is_none());
+    }
+}

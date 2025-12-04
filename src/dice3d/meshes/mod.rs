@@ -13,7 +13,7 @@ use crate::dice3d::types::DiceType;
 pub use d10::create_d10;
 pub use d12::create_d12;
 pub use d20::create_d20;
-pub use d4::create_d4;
+pub use d4::{create_d4, get_d4_number_positions};
 pub use d6::create_d6;
 pub use d8::create_d8;
 

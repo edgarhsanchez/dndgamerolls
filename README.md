@@ -1,4 +1,4 @@
-# DnD Game Rolls - D&D Dice Roller
+# DnD Game Rolls
 
 [![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/dndgamerolls.svg)](https://crates.io/crates/dndgamerolls)

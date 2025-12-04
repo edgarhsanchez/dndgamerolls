@@ -13,13 +13,13 @@ use dndgamerolls::dice3d::{
     DiceResults, DiceType, RollState, ZoomState,
 };
 
-/// D&D Dice Roller - CLI and 3D Visualization
+/// DnD Game Rolls - CLI and 3D Visualization
 #[derive(Parser)]
 #[command(name = "dndgamerolls")]
 #[command(
     author,
     version,
-    about = "D&D dice roller with CLI and 3D visualization"
+    about = "DnD Game Rolls - D&D dice roller with CLI and 3D visualization"
 )]
 struct Cli {
     /// Run in CLI mode (no GUI)
@@ -229,7 +229,7 @@ fn run_3d_mode(cli: Cli) {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "D&D Dice Roller 3D".to_string(),
+                title: "DnD Game Rolls".to_string(),
                 resolution: (1280.0, 720.0).into(),
                 ..default()
             }),

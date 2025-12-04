@@ -53,11 +53,11 @@ impl DiceType {
     pub fn color(&self) -> Color {
         // Slightly translucent crystal-like colors
         match self {
-            DiceType::D4 => Color::srgba(0.3, 0.4, 0.9, 0.92),    // Blue crystal
-            DiceType::D6 => Color::srgba(0.1, 0.1, 0.1, 0.95),    // Black/smoke crystal
-            DiceType::D8 => Color::srgba(0.6, 0.2, 0.8, 0.92),    // Purple crystal
+            DiceType::D4 => Color::srgba(0.3, 0.4, 0.9, 0.92), // Blue crystal
+            DiceType::D6 => Color::srgba(0.1, 0.1, 0.1, 0.95), // Black/smoke crystal
+            DiceType::D8 => Color::srgba(0.6, 0.2, 0.8, 0.92), // Purple crystal
             DiceType::D10 => Color::srgba(0.95, 0.95, 0.95, 0.92), // White/clear crystal
-            DiceType::D12 => Color::srgba(0.95, 0.5, 0.1, 0.92),  // Orange crystal
+            DiceType::D12 => Color::srgba(0.95, 0.5, 0.1, 0.92), // Orange crystal
             DiceType::D20 => Color::srgba(0.95, 0.85, 0.2, 0.92), // Yellow crystal
         }
     }

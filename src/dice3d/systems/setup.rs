@@ -329,7 +329,7 @@ pub fn spawn_die(
     position: Vec3,
 ) {
     use crate::dice3d::meshes::get_d4_number_positions;
-    
+
     let die_material = materials.add(StandardMaterial {
         base_color: die_type.color(),
         alpha_mode: AlphaMode::Blend,
@@ -405,7 +405,7 @@ pub fn spawn_die(
                 for (pos, rotation, value) in get_d4_number_positions() {
                     // Calculate the face normal from position (pointing outward)
                     let normal = pos.normalize();
-                    
+
                     // Spawn black outline
                     let outline_mesh = create_number_mesh(value, meshes);
                     let outline_pos = pos - normal * 0.002;

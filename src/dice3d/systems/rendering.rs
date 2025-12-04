@@ -24,7 +24,7 @@ pub fn get_label_offset(die_type: DiceType) -> f32 {
 pub fn get_label_scale(die_type: DiceType) -> f32 {
     // Scale for number labels - clear and readable
     match die_type {
-        DiceType::D4 => 0.08,  // Small numbers for 3-per-face layout
+        DiceType::D4 => 0.08, // Small numbers for 3-per-face layout
         DiceType::D6 => 0.24,
         DiceType::D8 => 0.18,
         DiceType::D10 => 0.15,

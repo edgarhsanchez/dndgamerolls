@@ -20,11 +20,7 @@ pub fn create_d10() -> (Mesh, Collider, Vec<(Vec3, u32)>) {
     let mut upper_ring = Vec::new();
     for i in 0..5 {
         let a = i as f32 * angle * 2.0;
-        let v = Vec3::new(
-            a.cos() * size * 0.7,
-            size * 0.3,
-            a.sin() * size * 0.7,
-        );
+        let v = Vec3::new(a.cos() * size * 0.7, size * 0.3, a.sin() * size * 0.7);
         upper_ring.push(v);
         vertices.push(v);
     }
@@ -33,11 +29,7 @@ pub fn create_d10() -> (Mesh, Collider, Vec<(Vec3, u32)>) {
     let mut lower_ring = Vec::new();
     for i in 0..5 {
         let a = (i as f32 + 0.5) * angle * 2.0;
-        let v = Vec3::new(
-            a.cos() * size * 0.7,
-            -size * 0.3,
-            a.sin() * size * 0.7,
-        );
+        let v = Vec3::new(a.cos() * size * 0.7, -size * 0.3, a.sin() * size * 0.7);
         lower_ring.push(v);
         vertices.push(v);
     }
@@ -45,18 +37,19 @@ pub fn create_d10() -> (Mesh, Collider, Vec<(Vec3, u32)>) {
     // Calculate actual face normals for the 10 kite-shaped faces
     // The face normal is the direction from center pointing outward through the face center
     let mut face_normals: Vec<(Vec3, u32)> = Vec::new();
-    
+
     for i in 0..5 {
         let next = (i + 1) % 5;
-        
+
         // Upper face: top, upper[i], lower[i], upper[next]
         // Face center is the average of the 4 vertices
         let upper_face_center = (top + upper_ring[i] + lower_ring[i] + upper_ring[next]) / 4.0;
         // Use normalized face center as the direction for label placement
         face_normals.push((upper_face_center.normalize(), (i * 2 + 1) as u32));
-        
+
         // Lower face: bottom, lower[next], upper[next], lower[i]
-        let lower_face_center = (bottom + lower_ring[next] + upper_ring[next] + lower_ring[i]) / 4.0;
+        let lower_face_center =
+            (bottom + lower_ring[next] + upper_ring[next] + lower_ring[i]) / 4.0;
         face_normals.push((lower_face_center.normalize(), (i * 2 + 2) as u32));
     }
 

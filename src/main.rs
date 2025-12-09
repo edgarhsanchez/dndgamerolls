@@ -3,6 +3,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use bevy::prelude::*;
+use bevy::winit::WinitWindows;
 use bevy_rapier3d::prelude::*;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -278,6 +279,58 @@ fn run_3d_mode(cli: Cli) {
         println!("Modifier: {}{} ({})", sign, modifier, modifier_name);
     }
 
+    // System to set the window icon from embedded resources
+    fn set_window_icon(
+        windows: NonSend<WinitWindows>,
+        primary_query: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    ) {
+        let primary_entity = primary_query.single();
+        let Some(primary) = windows.get_window(primary_entity) else {
+            return;
+        };
+
+        // Try multiple icon locations (in order of preference)
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        
+        let mut icon_paths = vec![
+            // Development paths
+            std::path::PathBuf::from("assets/icon.ico"),
+            std::path::PathBuf::from("../assets/icon.ico"),
+            // Installed path (icon in root of install folder)
+            std::path::PathBuf::from("icon.ico"),
+        ];
+        
+        // Add paths relative to executable location
+        if let Some(ref exe_dir) = exe_dir {
+            icon_paths.push(exe_dir.join("assets/icon.ico"));
+            icon_paths.push(exe_dir.join("icon.ico"));
+        }
+
+        for path in &icon_paths {
+            if path.exists() {
+                if let Ok(icon_data) = std::fs::read(path) {
+                    // Parse ICO file - ICO files have a header followed by image data
+                    // We'll use the image crate to decode it
+                    if let Ok(img) = image::load_from_memory(&icon_data) {
+                        let rgba = img.to_rgba8();
+                        let (width, height) = rgba.dimensions();
+                        let icon = winit::window::Icon::from_rgba(
+                            rgba.into_raw(),
+                            width,
+                            height,
+                        );
+                        if let Ok(icon) = icon {
+                            primary.set_window_icon(Some(icon));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let dice_config = DiceConfig {
         dice_to_roll,
         modifier,
@@ -310,6 +363,7 @@ fn run_3d_mode(cli: Cli) {
         .add_systems(
             Startup,
             (
+                set_window_icon,
                 load_icons,
                 init_character_manager,
                 init_contributors,

@@ -1,8 +1,18 @@
 # DnD Game Rolls
 
+<!-- Build & Quality Badges -->
 [![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+[![Security Audit](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?event=schedule)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+
+<!-- Package Badges -->
 [![Crates.io](https://img.shields.io/crates/v/dndgamerolls.svg)](https://crates.io/crates/dndgamerolls)
+[![Downloads](https://img.shields.io/crates/d/dndgamerolls.svg)](https://crates.io/crates/dndgamerolls)
+[![docs.rs](https://img.shields.io/docsrs/dndgamerolls)](https://docs.rs/dndgamerolls)
+
+<!-- Project Info Badges -->
 [![License](https://img.shields.io/crates/l/dndgamerolls.svg)](https://github.com/edgarhsanchez/dndgamerolls/blob/main/LICENSE)
+[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/edgarhsanchez/dndgamerolls)
 
 A D&D 5e dice roller with both **CLI** and **3D visualization** in a single binary!  
 Powered by Bevy game engine with real physics simulation.
@@ -25,7 +35,7 @@ Powered by Bevy game engine with real physics simulation.
 
 ### Windows Installer (Recommended for Windows)
 
-Download the latest MSI installer from the [Releases page](https://github.com/edgarhsanchez/dndgamerolls/releases):
+Download the latest MSI installer from the [Releases page](https://github.com/edgarhsanchez/dndgamerolls_windows/releases):
 - `dndgamerolls-installer.msi` - Full Windows installer with Start Menu shortcut and PATH integration
 
 Or download the portable ZIP:
@@ -33,7 +43,7 @@ Or download the portable ZIP:
 
 ### macOS (Recommended)
 
-Download the DMG installer from [Releases](https://github.com/edgarhsanchez/dndgamerolls/releases):
+Download the DMG installer from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases):
 - `DnDGameRolls-x.x.x-universal-apple-darwin.dmg` - Universal binary (Intel + Apple Silicon)
 - `DnDGameRolls-x.x.x-aarch64-apple-darwin.dmg` - Apple Silicon (M1/M2/M3)
 - `DnDGameRolls-x.x.x-x86_64-apple-darwin.dmg` - Intel Macs
@@ -45,7 +55,7 @@ Download the DMG installer from [Releases](https://github.com/edgarhsanchez/dndg
 
 ### Linux (DEB Package)
 
-Download the `.deb` package from [Releases](https://github.com/edgarhsanchez/dndgamerolls/releases) and install:
+Download the `.deb` package from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases) and install:
 
 ```bash
 sudo dpkg -i dndgamerolls_*.deb

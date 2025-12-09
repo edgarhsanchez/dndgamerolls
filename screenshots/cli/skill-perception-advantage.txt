@@ -1,0 +1,11 @@
+$ dndgamerolls --advantage skill perception
+
+═══════════════════════════════════════
+Rolling: Perception Check
+Dice: [17] (advantage) (dropped [12])
+Modifier: +3
+Total: 20
+═══════════════════════════════════════
+
+Note: With advantage, two d20s are rolled and the higher is kept.
+The dropped roll [12] is shown for reference.

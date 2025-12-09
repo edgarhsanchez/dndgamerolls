@@ -1,0 +1,104 @@
+[workspace]
+members = [".", "crates/dndgamerolls-cli"]
+
+[package]
+name = "dndgamerolls"
+version = "0.2.8"
+edition = "2021"
+authors = ["Edgar Sanchez <esanchez@m2iab.com>"]
+description = "DnD Game Rolls - D&D dice roller with CLI and 3D visualization using Bevy"
+license = "MIT"
+repository = "https://github.com/edgarhsanchez/dndgamerolls"
+homepage = "https://github.com/edgarhsanchez/dndgamerolls"
+readme = "README.md"
+keywords = ["dnd", "dice", "rpg", "bevy", "game"]
+categories = ["games", "command-line-utilities", "visualization"]
+publish = false
+exclude = [
+    ".github/*",
+    ".wix/*",
+    "target/*",
+    "assets/*",
+    "docs/*",
+    "screenshots/*",
+    "scripts/*",
+    "store-images/*",
+    "msix/*",
+    "wix/*",
+    "tests/*",
+    "*.msix",
+    "*.msi",
+    "*.cer",
+    "*.bat",
+    "settings.json",
+]
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "zip"
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+colored = "2.1"
+
+# HTTP and Image Loading (for profile avatars and GitHub API)
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+image = "0.25"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Bevy Game Engine
+# Note: dynamic_linking is only for dev - release builds use static linking
+bevy = "0.14"
+bevy_rapier3d = { version = "0.27", features = ["simd-stable"] }
+
+[[bin]]
+name = "dndgamerolls"
+path = "src/main.rs"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Enable dynamic linking only for dev builds (faster compile times)
+[profile.dev.package.bevy_dylib]
+opt-level = 3
+
+# Highly optimized release builds for distribution
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[features]
+default = []
+dev = ["bevy/dynamic_linking"]
+
+# Debian package configuration for cargo-deb
+[package.metadata.deb]
+maintainer = "Edgar Sanchez <esanchez@m2iab.com>"
+copyright = "2024, Edgar Sanchez"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+DnD Game Rolls is a D&D 5e dice roller featuring both a command-line interface \
+and a stunning 3D visualization powered by the Bevy game engine. \
+Roll dice with real physics simulation, track character stats, \
+and enjoy a beautiful dice rolling experience."""
+depends = "$auto"
+section = "games"
+priority = "optional"
+assets = [
+    ["target/release/dndgamerolls", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/dndgamerolls/", "644"],
+    ["LICENSE", "usr/share/doc/dndgamerolls/", "644"],
+]

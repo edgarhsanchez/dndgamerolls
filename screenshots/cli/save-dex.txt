@@ -1,0 +1,10 @@
+$ dndgamerolls save dex
+
+═══════════════════════════════════════
+Rolling: Dexterity Saving Throw
+Dice: [9]
+Modifier: +7
+Total: 16
+═══════════════════════════════════════
+
+Note: Saving throw uses proficiency if proficient.

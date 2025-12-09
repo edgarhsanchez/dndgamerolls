@@ -1,0 +1,12 @@
+$ dndgamerolls attack dagger
+
+═══════════════════════════════════════
+Rolling: Dagger Attack
+Dice: [17]
+Modifier: +7
+Total: 24
+═══════════════════════════════════════
+Damage: 1d4+5
+
+Note: Attack roll uses weapon's attack bonus.
+On a hit, roll the damage dice shown (1d4+5 for dagger with DEX).

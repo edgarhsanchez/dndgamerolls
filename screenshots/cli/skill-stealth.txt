@@ -1,0 +1,11 @@
+$ dndgamerolls skill stealth
+
+═══════════════════════════════════════
+Rolling: Stealth Check (Expertise)
+Dice: [18]
+Modifier: +9
+Total: 27
+═══════════════════════════════════════
+
+Note: Strawberry Picker has Expertise in Stealth, 
+giving double proficiency bonus (+9 = +5 DEX + 2x2 proficiency)

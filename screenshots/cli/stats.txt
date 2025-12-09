@@ -1,0 +1,24 @@
+$ dndgamerolls stats
+
+═══════════════════════════════════════
+CHARACTER STATS
+═══════════════════════════════════════
+Name: Strawberry Picker (Blackberry)
+Class: Rogue (Thief)
+Race: Kenku
+Level: 3
+
+ABILITIES
+STR: 14 (+2)
+DEX: 20 (+5)
+CON: 15 (+2)
+INT: 13 (+1)
+WIS: 13 (+1)
+CHA: 7 (-2)
+
+COMBAT
+AC: 16
+HP: 25/25
+Initiative: +5
+Proficiency Bonus: +2
+═══════════════════════════════════════

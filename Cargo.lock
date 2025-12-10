@@ -1905,7 +1905,7 @@ dependencies = [
 
 [[package]]
 name = "dndgamerolls"
-version = "0.2.9"
+version = "0.2.13"
 dependencies = [
  "bevy",
  "bevy_rapier3d",

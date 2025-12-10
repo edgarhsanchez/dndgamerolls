@@ -3,12 +3,15 @@
 
 fn main() {
     // Only compile resources for Windows builds
+    // Use CARGO_CFG_TARGET_OS to check the target (not host) platform
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if target_os == "windows" {
+        #[cfg(windows)]
         embed_windows_resources();
     }
 }
 
+#[cfg(windows)]
 fn embed_windows_resources() {
     // Get package info from Cargo environment variables (set by Cargo during build)
     let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_string());

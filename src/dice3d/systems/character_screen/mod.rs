@@ -57,33 +57,22 @@ pub const MD3_SUCCESS: Color = Color::srgb(0.30, 0.70, 0.30);
 // ============================================================================
 
 pub use character_list::{
-	spawn_character_list_panel,
-	handle_character_list_clicks,
-	handle_new_character_click,
-	handle_roll_all_stats_click,
-	update_character_list_modified_indicator,
+    handle_character_list_clicks, handle_new_character_click, handle_roll_all_stats_click,
+    spawn_character_list_panel, update_character_list_modified_indicator,
 };
 pub use components::*;
 pub use handlers::{
-	handle_stat_field_click, handle_label_click, handle_text_input, update_editing_display,
-	handle_group_edit_toggle, handle_group_add_click, handle_new_entry_confirm,
-	handle_new_entry_cancel, handle_new_entry_input, update_new_entry_input_display,
-	handle_delete_click, handle_expertise_toggle, handle_roll_attribute_click, handle_roll_skill_click,
-	handle_save_click, update_save_button_appearance,
-	handle_scroll_input,
-	ensure_buttons_have_interaction,
-	rebuild_character_list_on_change, rebuild_character_panel_on_change, refresh_character_display,
-	setup_dnd_info_screen,
-	init_character_manager,
-	record_character_screen_roll_on_settle, sync_character_screen_roll_result_texts,
-	handle_character_sheet_settings_button_click,
-	manage_character_sheet_settings_modal,
-	handle_character_sheet_die_type_select_change,
-	handle_character_sheet_settings_save_click,
-	handle_character_sheet_settings_cancel_click,
+    ensure_buttons_have_interaction, handle_character_sheet_die_type_select_change,
+    handle_character_sheet_settings_button_click, handle_character_sheet_settings_cancel_click,
+    handle_character_sheet_settings_save_click, handle_delete_click, handle_expertise_toggle,
+    handle_group_add_click, handle_group_edit_toggle, handle_label_click, handle_new_entry_cancel,
+    handle_new_entry_confirm, handle_new_entry_input, handle_roll_attribute_click,
+    handle_roll_skill_click, handle_save_click, handle_scroll_input, handle_stat_field_click,
+    handle_text_input, init_character_manager, manage_character_sheet_settings_modal,
+    rebuild_character_list_on_change, rebuild_character_panel_on_change,
+    record_character_screen_roll_on_settle, refresh_character_display, setup_dnd_info_screen,
+    sync_character_screen_roll_result_texts, update_editing_display,
+    update_new_entry_input_display, update_save_button_appearance,
 };
-pub use tab_bar::{setup_tab_bar, handle_tab_clicks, update_tab_styles, update_tab_visibility};
+pub use tab_bar::{handle_tab_clicks, setup_tab_bar, update_tab_styles, update_tab_visibility};
 pub use tabs::setup_character_screen;
-
-
-

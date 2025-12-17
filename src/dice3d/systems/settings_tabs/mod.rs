@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
+use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
 pub mod colors;
@@ -24,7 +24,11 @@ pub fn spawn_scrollable_tab_content(
             height: Val::Percent(100.0),
             min_width: Val::Px(0.0),
             min_height: Val::Px(0.0),
-            display: if visible { Display::Flex } else { Display::None },
+            display: if visible {
+                Display::Flex
+            } else {
+                Display::None
+            },
             flex_direction: FlexDirection::Column,
             ..default()
         },

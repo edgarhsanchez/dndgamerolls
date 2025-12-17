@@ -8,8 +8,8 @@ use crate::dice3d::types::{
 };
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
-use bevy_material_ui::prelude::*;
 use bevy_material_ui::icons::MaterialIconFont;
+use bevy_material_ui::prelude::*;
 
 /// Initialize contributors data
 pub fn init_contributors(mut commands: Commands) {

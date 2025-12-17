@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
+use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
 use crate::dice3d::types::SettingsResetLayoutButton;
@@ -31,7 +31,9 @@ pub fn build_layout_tab(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme
         })
         .with_children(|slot| {
             slot.spawn((
-                MaterialButtonBuilder::new("Reset layout").outlined().build(theme),
+                MaterialButtonBuilder::new("Reset layout")
+                    .outlined()
+                    .build(theme),
                 SettingsResetLayoutButton,
             ))
             .with_children(|btn| {

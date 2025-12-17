@@ -1,6 +1,6 @@
 # Privacy Policy for DnD Game Rolls
 
-**Last Updated:** December 8, 2025
+**Last Updated:** December 17, 2025
 
 ## Overview
 
@@ -10,27 +10,29 @@ DnD Game Rolls is a desktop application for rolling dice and managing D&D charac
 
 **We do not collect any personal information.**
 
-DnD Game Rolls is a fully offline, standalone application that:
+DnD Game Rolls is a standalone desktop application that:
 
-- Does **not** connect to the internet
-- Does **not** collect, transmit, or store any personal data
 - Does **not** use analytics, telemetry, or tracking
 - Does **not** require user registration or accounts
-- Does **not** access any online services
+- Does **not** transmit your character data or settings anywhere
+
+The app may make a network request to GitHub to fetch the public contributors list (and optionally download public avatar images) for the Contributors screen.
 
 ## Local Data Storage
 
 The only data stored by this application is:
 
-- **Character sheet files** (`.json` files) - These are saved locally on your computer in the application's working directory. You have full control over these files and can view, edit, copy, or delete them at any time.
+- **Character data** - Stored locally on your computer (in a SQLite database for the 3D app, and/or as `.json` files when using file-based flows).
 
-- **Application settings** - Any preferences are stored locally on your device.
+- **Application settings** - Stored locally on your device (in SQLite; older installs may have a legacy `settings.json` that is migrated).
 
-All data remains entirely on your computer and is never transmitted anywhere.
+All character data and settings remain entirely on your computer and are never transmitted anywhere.
 
 ## Third-Party Services
 
-DnD Game Rolls does **not** integrate with any third-party services, APIs, or cloud storage.
+DnD Game Rolls does **not** use analytics or cloud storage.
+
+The Contributors screen may call the public GitHub API and fetch public avatar images.
 
 ## Children's Privacy
 

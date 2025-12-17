@@ -2407,7 +2407,7 @@ dependencies = [
 
 [[package]]
 name = "dndgamerolls"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "bevy",
  "bevy_material_ui",

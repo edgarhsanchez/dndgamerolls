@@ -3,11 +3,11 @@
 //! This module renders the character sheet as a wrapping grid of group cards.
 
 use bevy::prelude::*;
-use bevy_material_ui::prelude::*;
 use bevy_material_ui::icons::MaterialIconFont;
+use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::*;
+use crate::dice3d::types::*;
 
 // Submodules for each tab
 mod attributes;
@@ -150,14 +150,12 @@ fn spawn_all_groups_area(
         ))
         .with_children(|container| {
             container
-                .spawn((
-                    Node {
-                        flex_direction: FlexDirection::Column,
-                        row_gap: Val::Px(16.0),
-                        padding: UiRect::all(Val::Px(16.0)),
-                        ..default()
-                    },
-                ))
+                .spawn((Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(16.0),
+                    padding: UiRect::all(Val::Px(16.0)),
+                    ..default()
+                },))
                 .with_children(|content| {
                     if let Some(sheet) = &character_data.sheet {
                         spawn_header_row(
@@ -396,4 +394,3 @@ fn spawn_no_character_message(
             }
         });
 }
-

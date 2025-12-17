@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::super::*;
+use crate::dice3d::types::*;
 
 /// Spawn the Combat tab content
 pub fn spawn_combat_content(
@@ -25,10 +25,7 @@ pub fn spawn_combat_content(
     // Card container
     parent
         .spawn((
-            CardBuilder::new()
-                .outlined()
-                .padding(16.0)
-                .build(theme),
+            CardBuilder::new().outlined().padding(16.0).build(theme),
             StatGroup {
                 name: "Combat".to_string(),
                 group_type: group_type.clone(),
@@ -74,7 +71,11 @@ pub fn spawn_combat_content(
                 "Initiative",
                 &format!(
                     "{}{}",
-                    if sheet.combat.initiative >= 0 { "+" } else { "" },
+                    if sheet.combat.initiative >= 0 {
+                        "+"
+                    } else {
+                        ""
+                    },
                     sheet.combat.initiative
                 ),
                 EditingField::Initiative,
@@ -151,7 +152,12 @@ pub fn spawn_combat_content(
 }
 
 /// Spawn the HP field with current/maximum display
-fn spawn_hp_field(parent: &mut ChildSpawnerCommands, hp: &HitPoints, is_editing: bool, theme: &MaterialTheme) {
+fn spawn_hp_field(
+    parent: &mut ChildSpawnerCommands,
+    hp: &HitPoints,
+    is_editing: bool,
+    theme: &MaterialTheme,
+) {
     parent
         .spawn(Node {
             flex_direction: FlexDirection::Row,
@@ -213,8 +219,14 @@ fn spawn_hp_field(parent: &mut ChildSpawnerCommands, hp: &HitPoints, is_editing:
                                 font_size: 16.0,
                                 ..default()
                             },
-                            TextColor(if is_editing { theme.on_surface_variant } else { current_color }),
-                            StatFieldValue { field: hp_current_field },
+                            TextColor(if is_editing {
+                                theme.on_surface_variant
+                            } else {
+                                current_color
+                            }),
+                            StatFieldValue {
+                                field: hp_current_field,
+                            },
                         ));
                     });
 
@@ -257,7 +269,9 @@ fn spawn_hp_field(parent: &mut ChildSpawnerCommands, hp: &HitPoints, is_editing:
                                 ..default()
                             },
                             TextColor(theme.on_surface),
-                            StatFieldValue { field: hp_max_field },
+                            StatFieldValue {
+                                field: hp_max_field,
+                            },
                         ));
                     });
 

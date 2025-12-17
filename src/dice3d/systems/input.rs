@@ -7,13 +7,76 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use rand::Rng;
 
-use bevy_material_ui::prelude::{
-    ButtonClickEvent, MaterialTextField, TextFieldSubmitEvent,
-};
 use crate::dice3d::throw_control::ThrowControlState;
 use crate::dice3d::types::*;
+use bevy_material_ui::prelude::{ButtonClickEvent, MaterialTextField, TextFieldSubmitEvent};
+
+use super::dice_box_controls::start_container_shake;
 
 use super::setup::{calculate_dice_position, spawn_die};
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct CommandInputParams<'w, 's> {
+    pub commands: Commands<'w, 's>,
+    pub settings_state: Res<'w, crate::dice3d::types::SettingsState>,
+    pub command_history: ResMut<'w, CommandHistory>,
+    pub dice_config: ResMut<'w, DiceConfig>,
+    pub dice_results: ResMut<'w, DiceResults>,
+    pub roll_state: ResMut<'w, RollState>,
+    pub character_data: Res<'w, CharacterData>,
+    pub ui_state: Res<'w, UiState>,
+
+    pub meshes: ResMut<'w, Assets<Mesh>>,
+    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+    pub dice_query: Query<'w, 's, Entity, With<Die>>,
+
+    pub shake_state: Res<'w, ShakeState>,
+    pub shake_config: Res<'w, ContainerShakeConfig>,
+    pub shake_anim: ResMut<'w, ContainerShakeAnimation>,
+    pub container_query: Query<'w, 's, (Entity, &'static Transform), With<DiceBox>>,
+}
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct CommandHistoryRerollParams<'w, 's> {
+    pub commands: Commands<'w, 's>,
+    pub ui_state: Res<'w, UiState>,
+    pub settings_state: Res<'w, crate::dice3d::types::SettingsState>,
+    pub command_history: ResMut<'w, CommandHistory>,
+    pub dice_config: ResMut<'w, DiceConfig>,
+    pub dice_results: ResMut<'w, DiceResults>,
+    pub roll_state: ResMut<'w, RollState>,
+    pub character_data: Res<'w, CharacterData>,
+
+    pub meshes: ResMut<'w, Assets<Mesh>>,
+    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+    pub dice_query: Query<'w, 's, Entity, With<Die>>,
+
+    pub shake_state: Res<'w, ShakeState>,
+    pub shake_config: Res<'w, ContainerShakeConfig>,
+    pub shake_anim: ResMut<'w, ContainerShakeAnimation>,
+    pub container_query: Query<'w, 's, (Entity, &'static Transform), With<DiceBox>>,
+}
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct QuickRollParams<'w, 's> {
+    pub commands: Commands<'w, 's>,
+    pub dice_config: ResMut<'w, DiceConfig>,
+    pub character_data: Res<'w, CharacterData>,
+    pub roll_state: ResMut<'w, RollState>,
+    pub dice_results: ResMut<'w, DiceResults>,
+    pub command_history: ResMut<'w, CommandHistory>,
+    pub throw_state: Res<'w, ThrowControlState>,
+    pub settings_state: Res<'w, SettingsState>,
+
+    pub shake_state: Res<'w, ShakeState>,
+    pub shake_config: Res<'w, ContainerShakeConfig>,
+    pub shake_anim: ResMut<'w, ContainerShakeAnimation>,
+    pub container_query: Query<'w, 's, (Entity, &'static Transform), With<DiceBox>>,
+
+    pub meshes: ResMut<'w, Assets<Mesh>>,
+    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+    pub dice_query: Query<'w, 's, Entity, With<Die>>,
+}
 
 /// Handle keyboard input for rolling and resetting dice
 pub fn handle_input(
@@ -23,10 +86,15 @@ pub fn handle_input(
     settings_state: Res<crate::dice3d::types::SettingsState>,
     mut roll_state: ResMut<RollState>,
     mut dice_results: ResMut<DiceResults>,
-    mut dice_query: Query<(&mut Transform, &mut Velocity), With<Die>>,
+    mut dice_query: Query<(&mut Transform, &mut Velocity), (With<Die>, Without<DiceBox>)>,
     dice_config: Res<DiceConfig>,
     command_field: Query<&MaterialTextField, With<CommandInputField>>,
     throw_state: Res<ThrowControlState>,
+
+    shake_state: Res<ShakeState>,
+    shake_config: Res<ContainerShakeConfig>,
+    mut shake_anim: ResMut<ContainerShakeAnimation>,
+    container_query: Query<(Entity, &Transform), With<DiceBox>>,
 ) {
     if ui_state.active_tab != AppTab::DiceRoller {
         return;
@@ -52,6 +120,8 @@ pub fn handle_input(
         let mut rng = rand::thread_rng();
         let num_dice = dice_config.dice_to_roll.len();
 
+        let use_shake = settings_state.settings.default_roll_uses_shake;
+
         // Get base throw velocity from mouse-controlled throw state
         let base_velocity = throw_state.calculate_throw_velocity();
 
@@ -72,14 +142,29 @@ pub fn handle_input(
                 rng.gen_range(0.0..std::f32::consts::TAU),
             );
 
-            // Use mouse-controlled throw direction with slight randomness
-            velocity.linvel = base_velocity
-                + Vec3::new(
-                    rng.gen_range(-0.5..0.5),
-                    rng.gen_range(-0.3..0.0),
-                    rng.gen_range(-0.5..0.5),
-                );
-            velocity.angvel = throw_state.calculate_angular_velocity(&mut rng);
+            if use_shake {
+                // No initial impulse; the shake animation will provide motion.
+                velocity.linvel = Vec3::ZERO;
+                velocity.angvel = Vec3::ZERO;
+            } else {
+                // Use mouse-controlled throw direction with slight randomness
+                velocity.linvel = base_velocity
+                    + Vec3::new(
+                        rng.gen_range(-0.5..0.5),
+                        rng.gen_range(-0.3..0.0),
+                        rng.gen_range(-0.5..0.5),
+                    );
+                velocity.angvel = throw_state.calculate_angular_velocity(&mut rng);
+            }
+        }
+
+        if use_shake {
+            let _started = start_container_shake(
+                &shake_state,
+                &shake_config,
+                &mut shake_anim,
+                &container_query,
+            );
         }
     }
 
@@ -101,29 +186,17 @@ pub fn handle_input(
 }
 
 /// Handle command input from the user
-#[allow(clippy::too_many_arguments)]
 pub fn handle_command_input(
-    mut commands: Commands,
-    settings_state: Res<crate::dice3d::types::SettingsState>,
-    mut command_history: ResMut<CommandHistory>,
-    mut dice_config: ResMut<DiceConfig>,
-    mut dice_results: ResMut<DiceResults>,
-    mut roll_state: ResMut<RollState>,
-    character_data: Res<CharacterData>,
-    ui_state: Res<UiState>,
+    mut params: CommandInputParams,
     mut submit_events: MessageReader<TextFieldSubmitEvent>,
     mut command_field_query: Query<(Entity, &mut MaterialTextField), With<CommandInputField>>,
-    // For respawning dice
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    dice_query: Query<Entity, With<Die>>,
 ) {
-    if ui_state.active_tab != AppTab::DiceRoller {
+    if params.ui_state.active_tab != AppTab::DiceRoller {
         return;
     }
 
     // Modal dialog open: block interactions with the game world.
-    if settings_state.show_modal {
+    if params.settings_state.show_modal {
         return;
     }
 
@@ -145,33 +218,53 @@ pub fn handle_command_input(
         }
 
         // Parse and apply the command
-        if let Some(new_config) = parse_command(&cmd, &character_data) {
+        if let Some(new_config) = parse_command(&cmd, &params.character_data) {
             // Add to command history (only unique commands)
-            command_history.add_command(cmd.clone());
+            params.command_history.add_command(cmd.clone());
 
             // Remove old dice
-            for entity in dice_query.iter() {
-                commands.entity(entity).despawn();
+            for entity in params.dice_query.iter() {
+                params.commands.entity(entity).despawn();
             }
 
             // Update config
-            *dice_config = new_config;
-            dice_results.results.clear();
+            *params.dice_config = new_config;
+            params.dice_results.results.clear();
+
+            let use_shake = params.settings_state.settings.default_roll_uses_shake;
 
             // Spawn new dice
-            for (i, die_type) in dice_config.dice_to_roll.iter().enumerate() {
-                let position = calculate_dice_position(i, dice_config.dice_to_roll.len());
-                spawn_die(
-                    &mut commands,
-                    &mut meshes,
-                    &mut materials,
+            let mut spawned: Vec<Entity> = Vec::new();
+            for (i, die_type) in params.dice_config.dice_to_roll.iter().enumerate() {
+                let position = calculate_dice_position(i, params.dice_config.dice_to_roll.len());
+                let e = spawn_die(
+                    &mut params.commands,
+                    &mut params.meshes,
+                    &mut params.materials,
                     *die_type,
                     position,
+                );
+                spawned.push(e);
+            }
+
+            if use_shake {
+                for e in spawned {
+                    params.commands.entity(e).insert(Velocity {
+                        linvel: Vec3::ZERO,
+                        angvel: Vec3::ZERO,
+                    });
+                }
+
+                let _started = start_container_shake(
+                    &params.shake_state,
+                    &params.shake_config,
+                    &mut params.shake_anim,
+                    &params.container_query,
                 );
             }
 
             // Start rolling immediately
-            roll_state.rolling = true;
+            params.roll_state.rolling = true;
         }
 
         // Clear + blur the field after submit.
@@ -187,29 +280,17 @@ pub fn handle_command_input(
 }
 
 /// Handle clicks on command history items (reroll selected command)
-#[allow(clippy::too_many_arguments)]
 pub fn handle_command_history_item_clicks(
-    mut commands: Commands,
-    ui_state: Res<UiState>,
-    settings_state: Res<crate::dice3d::types::SettingsState>,
     mut click_events: MessageReader<ButtonClickEvent>,
     item_query: Query<&CommandHistoryItem>,
-    mut command_history: ResMut<CommandHistory>,
-    mut dice_config: ResMut<DiceConfig>,
-    mut dice_results: ResMut<DiceResults>,
-    mut roll_state: ResMut<RollState>,
-    character_data: Res<CharacterData>,
-    // For respawning dice
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    dice_query: Query<Entity, With<Die>>,
+    mut params: CommandHistoryRerollParams,
 ) {
-    if ui_state.active_tab != AppTab::DiceRoller {
+    if params.ui_state.active_tab != AppTab::DiceRoller {
         return;
     }
 
     // Modal dialog open: block interactions with the game world.
-    if settings_state.show_modal {
+    if params.settings_state.show_modal {
         return;
     }
 
@@ -218,36 +299,56 @@ pub fn handle_command_history_item_clicks(
             continue;
         };
 
-        let Some(cmd) = command_history.commands.get(item.index).cloned() else {
+        let Some(cmd) = params.command_history.commands.get(item.index).cloned() else {
             continue;
         };
 
-        command_history.selected_index = Some(item.index);
+        params.command_history.selected_index = Some(item.index);
 
-        if let Some(new_config) = parse_command(&cmd, &character_data) {
+        if let Some(new_config) = parse_command(&cmd, &params.character_data) {
             // Remove old dice
-            for entity in dice_query.iter() {
-                commands.entity(entity).despawn();
+            for entity in params.dice_query.iter() {
+                params.commands.entity(entity).despawn();
             }
 
             // Update config
-            *dice_config = new_config;
-            dice_results.results.clear();
+            *params.dice_config = new_config;
+            params.dice_results.results.clear();
+
+            let use_shake = params.settings_state.settings.default_roll_uses_shake;
 
             // Spawn new dice
-            for (i, die_type) in dice_config.dice_to_roll.iter().enumerate() {
-                let position = calculate_dice_position(i, dice_config.dice_to_roll.len());
-                spawn_die(
-                    &mut commands,
-                    &mut meshes,
-                    &mut materials,
+            let mut spawned: Vec<Entity> = Vec::new();
+            for (i, die_type) in params.dice_config.dice_to_roll.iter().enumerate() {
+                let position = calculate_dice_position(i, params.dice_config.dice_to_roll.len());
+                let e = spawn_die(
+                    &mut params.commands,
+                    &mut params.meshes,
+                    &mut params.materials,
                     *die_type,
                     position,
+                );
+                spawned.push(e);
+            }
+
+            if use_shake {
+                for e in spawned {
+                    params.commands.entity(e).insert(Velocity {
+                        linvel: Vec3::ZERO,
+                        angvel: Vec3::ZERO,
+                    });
+                }
+
+                let _started = start_container_shake(
+                    &params.shake_state,
+                    &params.shake_config,
+                    &mut params.shake_anim,
+                    &params.container_query,
                 );
             }
 
             // Start rolling immediately
-            roll_state.rolling = true;
+            params.roll_state.rolling = true;
         }
     }
 }
@@ -352,23 +453,11 @@ fn parse_dice_str(s: &str) -> Option<(usize, DiceType)> {
 
 /// Handle quick roll button clicks
 pub fn handle_quick_roll_clicks(
-    mut commands: Commands,
     mut click_events: MessageReader<ButtonClickEvent>,
     quick_roll_query: Query<&QuickRollButton>,
-    mut dice_config: ResMut<DiceConfig>,
-    character_data: Res<CharacterData>,
-    mut roll_state: ResMut<RollState>,
-    mut dice_results: ResMut<DiceResults>,
-    mut command_history: ResMut<CommandHistory>,
-    throw_state: Res<ThrowControlState>,
-    settings_state: Res<SettingsState>,
-
-    // For respawning dice
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    dice_query: Query<Entity, With<Die>>,
+    mut params: QuickRollParams,
 ) {
-    if settings_state.show_modal {
+    if params.settings_state.show_modal {
         return;
     }
 
@@ -376,114 +465,144 @@ pub fn handle_quick_roll_clicks(
         let Ok(quick_roll) = quick_roll_query.get(event.entity) else {
             continue;
         };
-            // Get the modifier based on roll type
-            let (modifier, modifier_name) = match &quick_roll.roll_type {
-                QuickRollType::Skill(skill_name) => {
-                    let mod_val = character_data.get_skill_modifier(skill_name).unwrap_or(0);
-                    // Format skill name nicely - capitalize first letter
-                    let display_name = skill_name
-                        .chars()
-                        .enumerate()
-                        .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
-                        .collect::<String>();
-                    (mod_val, display_name)
-                }
-                QuickRollType::AbilityCheck(ability_name) => {
-                    let mod_val = character_data
-                        .get_ability_modifier(ability_name)
-                        .unwrap_or(0);
-                    let display_name = format!(
-                        "{} check",
-                        ability_name
-                            .chars()
-                            .next()
-                            .unwrap_or_default()
-                            .to_ascii_uppercase()
-                            .to_string()
-                            + &ability_name[1..]
-                    );
-                    (mod_val, display_name)
-                }
-                QuickRollType::SavingThrow(ability_name) => {
-                    let mod_val = character_data
-                        .get_saving_throw_modifier(ability_name)
-                        .unwrap_or(0);
-                    let display_name = format!(
-                        "{} save",
-                        ability_name
-                            .chars()
-                            .next()
-                            .unwrap_or_default()
-                            .to_ascii_uppercase()
-                            .to_string()
-                            + &ability_name[1..]
-                    );
-                    (mod_val, display_name)
-                }
-            };
-
-            let die_type = settings_state.settings.quick_roll_default_die.to_dice_type();
-
-            // Remove old dice (Quick Rolls always uses exactly one die)
-            for entity in dice_query.iter() {
-                commands.entity(entity).despawn();
+        // Get the modifier based on roll type
+        let (modifier, modifier_name) = match &quick_roll.roll_type {
+            QuickRollType::Skill(skill_name) => {
+                let mod_val = params
+                    .character_data
+                    .get_skill_modifier(skill_name)
+                    .unwrap_or(0);
+                // Format skill name nicely - capitalize first letter
+                let display_name = skill_name
+                    .chars()
+                    .enumerate()
+                    .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
+                    .collect::<String>();
+                (mod_val, display_name)
             }
+            QuickRollType::AbilityCheck(ability_name) => {
+                let mod_val = params
+                    .character_data
+                    .get_ability_modifier(ability_name)
+                    .unwrap_or(0);
+                let display_name = format!(
+                    "{} check",
+                    ability_name
+                        .chars()
+                        .next()
+                        .unwrap_or_default()
+                        .to_ascii_uppercase()
+                        .to_string()
+                        + &ability_name[1..]
+                );
+                (mod_val, display_name)
+            }
+            QuickRollType::SavingThrow(ability_name) => {
+                let mod_val = params
+                    .character_data
+                    .get_saving_throw_modifier(ability_name)
+                    .unwrap_or(0);
+                let display_name = format!(
+                    "{} save",
+                    ability_name
+                        .chars()
+                        .next()
+                        .unwrap_or_default()
+                        .to_ascii_uppercase()
+                        .to_string()
+                        + &ability_name[1..]
+                );
+                (mod_val, display_name)
+            }
+        };
 
-            // Update dice config
-            dice_config.dice_to_roll.clear();
-            dice_config.dice_to_roll.push(die_type);
-            dice_config.modifier = modifier;
-            dice_config.modifier_name = modifier_name.clone();
+        let die_type = params
+            .settings_state
+            .settings
+            .quick_roll_default_die
+            .to_dice_type();
 
-            // Add to command history
-            let sign = if modifier >= 0 { "+" } else { "" };
-            command_history.add_command(format!(
-                "1d{} --checkon {} ({}{})",
-                die_type.max_value(),
-                modifier_name,
-                sign,
-                modifier
-            ));
+        // Remove old dice (Quick Rolls always uses exactly one die)
+        for entity in params.dice_query.iter() {
+            params.commands.entity(entity).despawn();
+        }
 
-            // Trigger the roll
-            roll_state.rolling = true;
-            dice_results.results.clear();
+        // Update dice config
+        params.dice_config.dice_to_roll.clear();
+        params.dice_config.dice_to_roll.push(die_type);
+        params.dice_config.modifier = modifier;
+        params.dice_config.modifier_name = modifier_name.clone();
 
-            // Spawn the single die and override its transform/velocity using throw control.
-            let die_entity = spawn_die(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                die_type,
-                calculate_dice_position(0, 1),
-            );
+        // Add to command history
+        let sign = if modifier >= 0 { "+" } else { "" };
+        params.command_history.add_command(format!(
+            "1d{} --checkon {} ({}{})",
+            die_type.max_value(),
+            modifier_name,
+            sign,
+            modifier
+        ));
 
-            let mut rng = rand::thread_rng();
-            let base_velocity = throw_state.calculate_throw_velocity();
+        // Trigger the roll
+        params.roll_state.rolling = true;
+        params.dice_results.results.clear();
 
-            let transform = Transform::from_translation(Vec3::new(
-                rng.gen_range(-0.5..0.5),
-                1.0,
-                rng.gen_range(-0.5..0.5),
-            ))
-            .with_rotation(Quat::from_euler(
-                EulerRot::XYZ,
-                rng.gen_range(0.0..std::f32::consts::TAU),
-                rng.gen_range(0.0..std::f32::consts::TAU),
-                rng.gen_range(0.0..std::f32::consts::TAU),
-            ))
-            .with_scale(Vec3::splat(die_type.scale()));
+        // Spawn the single die and override its transform/velocity using throw control.
+        let die_entity = spawn_die(
+            &mut params.commands,
+            &mut params.meshes,
+            &mut params.materials,
+            die_type,
+            calculate_dice_position(0, 1),
+        );
 
-            let velocity = Velocity {
+        let use_shake = params.settings_state.settings.default_roll_uses_shake;
+
+        let mut rng = rand::thread_rng();
+        let base_velocity = params.throw_state.calculate_throw_velocity();
+
+        let transform = Transform::from_translation(Vec3::new(
+            rng.gen_range(-0.5..0.5),
+            1.0,
+            rng.gen_range(-0.5..0.5),
+        ))
+        .with_rotation(Quat::from_euler(
+            EulerRot::XYZ,
+            rng.gen_range(0.0..std::f32::consts::TAU),
+            rng.gen_range(0.0..std::f32::consts::TAU),
+            rng.gen_range(0.0..std::f32::consts::TAU),
+        ))
+        .with_scale(Vec3::splat(die_type.scale()));
+
+        let velocity = if use_shake {
+            Velocity {
+                linvel: Vec3::ZERO,
+                angvel: Vec3::ZERO,
+            }
+        } else {
+            Velocity {
                 linvel: base_velocity
                     + Vec3::new(
                         rng.gen_range(-0.5..0.5),
                         rng.gen_range(-0.3..0.0),
                         rng.gen_range(-0.5..0.5),
                     ),
-                angvel: throw_state.calculate_angular_velocity(&mut rng),
-            };
+                angvel: params.throw_state.calculate_angular_velocity(&mut rng),
+            }
+        };
 
-            commands.entity(die_entity).insert((transform, velocity));
+        params
+            .commands
+            .entity(die_entity)
+            .insert((transform, velocity));
+
+        if use_shake {
+            let _started = start_container_shake(
+                &params.shake_state,
+                &params.shake_config,
+                &mut params.shake_anim,
+                &params.container_query,
+            );
+        }
     }
 }

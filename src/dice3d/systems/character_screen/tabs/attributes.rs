@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::super::*;
+use crate::dice3d::types::*;
 
 /// Spawn the Attributes tab content
 pub fn spawn_attributes_content(
@@ -25,10 +25,7 @@ pub fn spawn_attributes_content(
     // Card container
     parent
         .spawn((
-            CardBuilder::new()
-                .outlined()
-                .padding(16.0)
-                .build(theme),
+            CardBuilder::new().outlined().padding(16.0).build(theme),
             StatGroup {
                 name: "Attributes".to_string(),
                 group_type: group_type.clone(),
@@ -55,12 +52,42 @@ pub fn spawn_attributes_content(
 
             // Core attributes
             let attrs = [
-                ("Strength", sheet.attributes.strength, sheet.modifiers.strength, EditingField::AttributeStrength),
-                ("Dexterity", sheet.attributes.dexterity, sheet.modifiers.dexterity, EditingField::AttributeDexterity),
-                ("Constitution", sheet.attributes.constitution, sheet.modifiers.constitution, EditingField::AttributeConstitution),
-                ("Intelligence", sheet.attributes.intelligence, sheet.modifiers.intelligence, EditingField::AttributeIntelligence),
-                ("Wisdom", sheet.attributes.wisdom, sheet.modifiers.wisdom, EditingField::AttributeWisdom),
-                ("Charisma", sheet.attributes.charisma, sheet.modifiers.charisma, EditingField::AttributeCharisma),
+                (
+                    "Strength",
+                    sheet.attributes.strength,
+                    sheet.modifiers.strength,
+                    EditingField::AttributeStrength,
+                ),
+                (
+                    "Dexterity",
+                    sheet.attributes.dexterity,
+                    sheet.modifiers.dexterity,
+                    EditingField::AttributeDexterity,
+                ),
+                (
+                    "Constitution",
+                    sheet.attributes.constitution,
+                    sheet.modifiers.constitution,
+                    EditingField::AttributeConstitution,
+                ),
+                (
+                    "Intelligence",
+                    sheet.attributes.intelligence,
+                    sheet.modifiers.intelligence,
+                    EditingField::AttributeIntelligence,
+                ),
+                (
+                    "Wisdom",
+                    sheet.attributes.wisdom,
+                    sheet.modifiers.wisdom,
+                    EditingField::AttributeWisdom,
+                ),
+                (
+                    "Charisma",
+                    sheet.attributes.charisma,
+                    sheet.modifiers.charisma,
+                    EditingField::AttributeCharisma,
+                ),
             ];
 
             for (name, score, modifier, field) in attrs {
@@ -146,7 +173,9 @@ fn spawn_attribute_row(
                         .icon_color(theme);
                     name_row
                         .spawn((
-                            IconButtonBuilder::new(icon_name).filled_tonal().build(theme),
+                            IconButtonBuilder::new(icon_name)
+                                .filled_tonal()
+                                .build(theme),
                             RollAttributeButton {
                                 attribute: attr_name.clone(),
                             },
@@ -316,7 +345,9 @@ fn spawn_custom_attribute_row(
                         .icon_color(theme);
                     name_row
                         .spawn((
-                            IconButtonBuilder::new(icon_name).filled_tonal().build(theme),
+                            IconButtonBuilder::new(icon_name)
+                                .filled_tonal()
+                                .build(theme),
                             RollAttributeButton {
                                 attribute: attr_name.clone(),
                             },

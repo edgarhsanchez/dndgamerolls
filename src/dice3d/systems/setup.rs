@@ -3,13 +3,13 @@
 //! This module contains the main setup function that initializes the 3D scene,
 //! including camera, lights, dice box, dice, and UI elements.
 
-use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::color::LinearRgba;
+use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
-use bevy_rapier3d::prelude::*;
-use bevy_material_ui::prelude::*;
 use bevy_material_ui::icons::MaterialIconFont;
+use bevy_material_ui::prelude::*;
+use bevy_rapier3d::prelude::*;
 use rand::Rng;
 
 use crate::dice3d::box_highlight::{
@@ -91,10 +91,7 @@ pub fn setup(
         extension: DiceBoxHighlightExtension {
             params: DiceBoxHighlightParams {
                 highlight_color: LinearRgba::from(
-                    settings_state
-                        .settings
-                        .dice_box_highlight_color
-                        .to_color(),
+                    settings_state.settings.dice_box_highlight_color.to_color(),
                 )
                 .to_vec4(),
                 hovered: 0.0,
@@ -370,7 +367,9 @@ pub fn setup(
 
                         // Toggle container
                         row.spawn((
-                            IconButtonBuilder::new("swap_horiz").standard().build(&theme),
+                            IconButtonBuilder::new("swap_horiz")
+                                .standard()
+                                .build(&theme),
                             TooltipTrigger::new("Toggle container (box/cup)").top(),
                             DiceBoxToggleContainerButton,
                         ))
@@ -708,261 +707,384 @@ pub fn setup(
                     })
                     .with_children(|row| {
                         // Zoom column
-                        row.spawn((
-                            Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(220.0),
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                        ))
-                        .with_children(|col| {
-                            let icon = MaterialIcon::from_name("zoom_in")
-                                .or_else(|| MaterialIcon::from_name("zoom_in_map"))
-                                .unwrap_or_else(MaterialIcon::search);
-                            col.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
+                        row.spawn((Node {
+                            width: Val::Px(30.0),
+                            height: Val::Px(220.0),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },))
+                            .with_children(|col| {
+                                let icon = MaterialIcon::from_name("zoom_in")
+                                    .or_else(|| MaterialIcon::from_name("zoom_in_map"))
+                                    .unwrap_or_else(MaterialIcon::search);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Camera zoom").top(),
+                                ))
+                                .with_children(|tip| {
+                                    tip.spawn((
+                                        Text::new(icon.as_str()),
+                                        TextFont {
+                                            font: icon_font.0.clone(),
+                                            font_size: ICON_SIZE,
+                                            ..default()
+                                        },
+                                        TextColor(theme.on_surface_variant),
+                                    ));
+                                });
 
-                            col.spawn(Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(160.0),
-                                margin: UiRect::vertical(Val::Px(5.0)),
-                                ..default()
-                            })
-                            .with_children(|slot| {
-                                let slider = MaterialSlider::new(0.0, 1.0)
-                                    .with_value(zoom_state.level)
-                                    .vertical()
-                                    .direction(SliderDirection::StartToEnd)
-                                    .track_height(6.0)
-                                    .thumb_radius(10.0);
-                                spawn_slider_control_with(slot, &theme, slider, ZoomSlider);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(160.0),
+                                        margin: UiRect::vertical(Val::Px(5.0)),
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Camera zoom").right(),
+                                ))
+                                .with_children(|slot| {
+                                    let slider = MaterialSlider::new(0.0, 1.0)
+                                        .with_value(zoom_state.level)
+                                        .vertical()
+                                        .direction(SliderDirection::StartToEnd)
+                                        .track_height(6.0)
+                                        .thumb_radius(10.0);
+                                    spawn_slider_control_with(slot, &theme, slider, ZoomSlider);
+                                });
+
+                                let icon = MaterialIcon::from_name("zoom_out")
+                                    .or_else(|| MaterialIcon::from_name("zoom_out_map"))
+                                    .unwrap_or_else(MaterialIcon::search);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Camera zoom").bottom(),
+                                ))
+                                .with_children(|tip| {
+                                    tip.spawn((
+                                        Text::new(icon.as_str()),
+                                        TextFont {
+                                            font: icon_font.0.clone(),
+                                            font_size: ICON_SIZE,
+                                            ..default()
+                                        },
+                                        TextColor(theme.on_surface_variant),
+                                    ));
+                                });
                             });
-
-                            let icon = MaterialIcon::from_name("zoom_out")
-                                .or_else(|| MaterialIcon::from_name("zoom_out_map"))
-                                .unwrap_or_else(MaterialIcon::search);
-                            col.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
-                        });
 
                         // Strength column
-                        row.spawn((
-                            Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(220.0),
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                        ))
-                        .with_children(|col| {
-                            let icon = MaterialIcon::from_name("north_east")
-                                .or_else(|| MaterialIcon::from_name("trending_up"))
-                                .unwrap_or_else(MaterialIcon::arrow_upward);
-                            col.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
+                        row.spawn((Node {
+                            width: Val::Px(30.0),
+                            height: Val::Px(220.0),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },))
+                            .with_children(|col| {
+                                let icon = MaterialIcon::from_name("north_east")
+                                    .or_else(|| MaterialIcon::from_name("trending_up"))
+                                    .unwrap_or_else(MaterialIcon::arrow_upward);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Throw strength").top(),
+                                ))
+                                .with_children(|tip| {
+                                    tip.spawn((
+                                        Text::new(icon.as_str()),
+                                        TextFont {
+                                            font: icon_font.0.clone(),
+                                            font_size: ICON_SIZE,
+                                            ..default()
+                                        },
+                                        TextColor(theme.on_surface_variant),
+                                    ));
+                                });
 
-                            col.spawn(Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(160.0),
-                                margin: UiRect::vertical(Val::Px(5.0)),
-                                ..default()
-                            })
-                            .with_children(|slot| {
-                                let slider = MaterialSlider::new(1.0, 15.0)
-                                    .with_value(throw_state.max_strength)
-                                    .vertical()
-                                    .direction(SliderDirection::EndToStart)
-                                    .track_height(6.0)
-                                    .thumb_radius(10.0);
-                                spawn_slider_control_with(slot, &theme, slider, StrengthSlider);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(160.0),
+                                        margin: UiRect::vertical(Val::Px(5.0)),
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Throw strength").right(),
+                                ))
+                                .with_children(|slot| {
+                                    let slider = MaterialSlider::new(1.0, 15.0)
+                                        .with_value(throw_state.max_strength)
+                                        .vertical()
+                                        .direction(SliderDirection::EndToStart)
+                                        .track_height(6.0)
+                                        .thumb_radius(10.0);
+                                    spawn_slider_control_with(slot, &theme, slider, StrengthSlider);
+                                });
+
+                                let icon = MaterialIcon::from_name("south_west")
+                                    .or_else(|| MaterialIcon::from_name("trending_down"))
+                                    .unwrap_or_else(MaterialIcon::arrow_downward);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Throw strength").bottom(),
+                                ))
+                                .with_children(|tip| {
+                                    tip.spawn((
+                                        Text::new(icon.as_str()),
+                                        TextFont {
+                                            font: icon_font.0.clone(),
+                                            font_size: ICON_SIZE,
+                                            ..default()
+                                        },
+                                        TextColor(theme.on_surface_variant),
+                                    ));
+                                });
                             });
-
-                            let icon = MaterialIcon::from_name("south_west")
-                                .or_else(|| MaterialIcon::from_name("trending_down"))
-                                .unwrap_or_else(MaterialIcon::arrow_downward);
-                            col.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
-                        });
 
                         // Shake column
-                        row.spawn((
-                            Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(220.0),
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                        ))
-                        .with_children(|col| {
-                            let icon = MaterialIcon::new('\u{EAF2}');
-                            col.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
+                        row.spawn((Node {
+                            width: Val::Px(30.0),
+                            height: Val::Px(220.0),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },))
+                            .with_children(|col| {
+                                let icon = MaterialIcon::new('\u{EAF2}');
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Shake strength").top(),
+                                ))
+                                .with_children(|tip| {
+                                    tip.spawn((
+                                        Text::new(icon.as_str()),
+                                        TextFont {
+                                            font: icon_font.0.clone(),
+                                            font_size: ICON_SIZE,
+                                            ..default()
+                                        },
+                                        TextColor(theme.on_surface_variant),
+                                    ));
+                                });
 
-                            col.spawn(Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(160.0),
-                                margin: UiRect::vertical(Val::Px(5.0)),
-                                ..default()
-                            })
-                            .with_children(|slot| {
-                                let slider = MaterialSlider::new(0.0, 1.0)
-                                    .with_value(shake_state.strength)
-                                    .vertical()
-                                    .direction(SliderDirection::EndToStart)
-                                    .track_height(6.0)
-                                    .thumb_radius(10.0);
-                                spawn_slider_control_with(slot, &theme, slider, ShakeSlider);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(160.0),
+                                        margin: UiRect::vertical(Val::Px(5.0)),
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Shake strength").right(),
+                                ))
+                                .with_children(|slot| {
+                                    let slider = MaterialSlider::new(0.0, 1.0)
+                                        .with_value(shake_state.strength)
+                                        .vertical()
+                                        .direction(SliderDirection::EndToStart)
+                                        .track_height(6.0)
+                                        .thumb_radius(10.0);
+                                    spawn_slider_control_with(slot, &theme, slider, ShakeSlider);
+                                });
+
+                                // Keep the bottom label minimal; the icon above describes the feature.
+                                col.spawn((
+                                    Text::new(""),
+                                    TextFont {
+                                        font_size: 1.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::NONE),
+                                ));
                             });
-
-                            // Keep the bottom label minimal; the icon above describes the feature.
-                            col.spawn((
-                                Text::new(""),
-                                TextFont {
-                                    font_size: 1.0,
-                                    ..default()
-                                },
-                                TextColor(Color::NONE),
-                            ));
-                        });
 
                         // Shake distance column
-                        row.spawn((
-                            Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(220.0),
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                        ))
-                        .with_children(|col| {
-                            let icon = MaterialIcon::from_name("swap_horiz")
-                                .or_else(|| MaterialIcon::from_name("straighten"))
-                                .unwrap_or_else(MaterialIcon::search);
-                            col.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
+                        row.spawn((Node {
+                            width: Val::Px(30.0),
+                            height: Val::Px(220.0),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },))
+                            .with_children(|col| {
+                                let icon = MaterialIcon::from_name("swap_horiz")
+                                    .or_else(|| MaterialIcon::from_name("straighten"))
+                                    .unwrap_or_else(MaterialIcon::search);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Shake distance").top(),
+                                ))
+                                .with_children(|tip| {
+                                    tip.spawn((
+                                        Text::new(icon.as_str()),
+                                        TextFont {
+                                            font: icon_font.0.clone(),
+                                            font_size: ICON_SIZE,
+                                            ..default()
+                                        },
+                                        TextColor(theme.on_surface_variant),
+                                    ));
+                                });
 
-                            col.spawn(Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(160.0),
-                                margin: UiRect::vertical(Val::Px(5.0)),
-                                ..default()
-                            })
-                            .with_children(|slot| {
-                                let slider = MaterialSlider::new(0.2, 1.6)
-                                    .with_value(shake_config.distance)
-                                    .vertical()
-                                    .direction(SliderDirection::EndToStart)
-                                    .track_height(6.0)
-                                    .thumb_radius(10.0);
-                                spawn_slider_control_with(slot, &theme, slider, ShakeDistanceSlider);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(160.0),
+                                        margin: UiRect::vertical(Val::Px(5.0)),
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Shake distance").right(),
+                                ))
+                                .with_children(|slot| {
+                                    let slider = MaterialSlider::new(0.2, 1.6)
+                                        .with_value(shake_config.distance)
+                                        .vertical()
+                                        .direction(SliderDirection::EndToStart)
+                                        .track_height(6.0)
+                                        .thumb_radius(10.0);
+                                    spawn_slider_control_with(
+                                        slot,
+                                        &theme,
+                                        slider,
+                                        ShakeDistanceSlider,
+                                    );
+                                });
+
+                                col.spawn((
+                                    Text::new(""),
+                                    TextFont {
+                                        font_size: 1.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::NONE),
+                                ));
                             });
-
-                            col.spawn((
-                                Text::new(""),
-                                TextFont {
-                                    font_size: 1.0,
-                                    ..default()
-                                },
-                                TextColor(Color::NONE),
-                            ));
-                        });
 
                         // Shake speed column
-                        row.spawn((
-                            Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(220.0),
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                ..default()
-                            },
-                        ))
-                        .with_children(|col| {
-                            let icon = MaterialIcon::from_name("speed")
-                                .or_else(|| MaterialIcon::from_name("schedule"))
-                                .unwrap_or_else(MaterialIcon::clock);
-                            col.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
+                        row.spawn((Node {
+                            width: Val::Px(30.0),
+                            height: Val::Px(220.0),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },))
+                            .with_children(|col| {
+                                let icon = MaterialIcon::from_name("speed")
+                                    .or_else(|| MaterialIcon::from_name("schedule"))
+                                    .unwrap_or_else(MaterialIcon::clock);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(24.0),
+                                        justify_content: JustifyContent::Center,
+                                        align_items: AlignItems::Center,
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Shake speed").top(),
+                                ))
+                                .with_children(|tip| {
+                                    tip.spawn((
+                                        Text::new(icon.as_str()),
+                                        TextFont {
+                                            font: icon_font.0.clone(),
+                                            font_size: ICON_SIZE,
+                                            ..default()
+                                        },
+                                        TextColor(theme.on_surface_variant),
+                                    ));
+                                });
 
-                            col.spawn(Node {
-                                width: Val::Px(30.0),
-                                height: Val::Px(160.0),
-                                margin: UiRect::vertical(Val::Px(5.0)),
-                                ..default()
-                            })
-                            .with_children(|slot| {
-                                let slider = MaterialSlider::new(0.0, 1.0)
-                                    .with_value(shake_config.speed)
-                                    .vertical()
-                                    .direction(SliderDirection::EndToStart)
-                                    .track_height(6.0)
-                                    .thumb_radius(10.0);
-                                spawn_slider_control_with(slot, &theme, slider, ShakeSpeedSlider);
+                                col.spawn((
+                                    Node {
+                                        width: Val::Px(30.0),
+                                        height: Val::Px(160.0),
+                                        margin: UiRect::vertical(Val::Px(5.0)),
+                                        ..default()
+                                    },
+                                    Interaction::None,
+                                    FocusPolicy::Pass,
+                                    TooltipTrigger::new("Shake speed").right(),
+                                ))
+                                .with_children(|slot| {
+                                    let slider = MaterialSlider::new(0.0, 1.0)
+                                        .with_value(shake_config.speed)
+                                        .vertical()
+                                        .direction(SliderDirection::EndToStart)
+                                        .track_height(6.0)
+                                        .thumb_radius(10.0);
+                                    spawn_slider_control_with(
+                                        slot,
+                                        &theme,
+                                        slider,
+                                        ShakeSpeedSlider,
+                                    );
+                                });
+
+                                col.spawn((
+                                    Text::new(""),
+                                    TextFont {
+                                        font_size: 1.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::NONE),
+                                ));
                             });
-
-                            col.spawn((
-                                Text::new(""),
-                                TextFont {
-                                    font_size: 1.0,
-                                    ..default()
-                                },
-                                TextColor(Color::NONE),
-                            ));
-                        });
                     });
             });
     }
@@ -1057,95 +1179,95 @@ pub fn spawn_die(
     let die_scale = die_type.scale();
 
     let mut entity_commands = commands.spawn((
-            Mesh3d(meshes.add(mesh)),
-            MeshMaterial3d(die_material),
-            Transform::from_translation(position)
-                .with_rotation(Quat::from_euler(
-                    EulerRot::XYZ,
-                    rng.gen_range(0.0..std::f32::consts::TAU),
-                    rng.gen_range(0.0..std::f32::consts::TAU),
-                    rng.gen_range(0.0..std::f32::consts::TAU),
-                ))
-                .with_scale(Vec3::splat(die_scale)),
-            RigidBody::Dynamic,
-            // Prevent fast dice from tunneling through the walls/ceiling.
-            Ccd::enabled(),
-            collider,
-            Velocity {
-                linvel: throw_vel,
-                angvel: angular_vel,
-            },
-            Restitution::coefficient(0.15),
-            Friction::coefficient(0.7),
-            ColliderMassProperties::Density(die_density),
-            Die {
-                die_type,
-                face_normals,
-            },
-        ));
+        Mesh3d(meshes.add(mesh)),
+        MeshMaterial3d(die_material),
+        Transform::from_translation(position)
+            .with_rotation(Quat::from_euler(
+                EulerRot::XYZ,
+                rng.gen_range(0.0..std::f32::consts::TAU),
+                rng.gen_range(0.0..std::f32::consts::TAU),
+                rng.gen_range(0.0..std::f32::consts::TAU),
+            ))
+            .with_scale(Vec3::splat(die_scale)),
+        RigidBody::Dynamic,
+        // Prevent fast dice from tunneling through the walls/ceiling.
+        Ccd::enabled(),
+        collider,
+        Velocity {
+            linvel: throw_vel,
+            angvel: angular_vel,
+        },
+        Restitution::coefficient(0.15),
+        Friction::coefficient(0.7),
+        ColliderMassProperties::Density(die_density),
+        Die {
+            die_type,
+            face_normals,
+        },
+    ));
 
     let die_entity = entity_commands.id();
 
     entity_commands.with_children(|parent| {
-            // D4 has special numbering: 3 numbers per face
-            if die_type == DiceType::D4 {
-                let scale = get_label_scale(die_type);
-                for (pos, rotation, value) in get_d4_number_positions() {
-                    // Calculate the face normal from position (pointing outward)
-                    let normal = pos.normalize();
+        // D4 has special numbering: 3 numbers per face
+        if die_type == DiceType::D4 {
+            let scale = get_label_scale(die_type);
+            for (pos, rotation, value) in get_d4_number_positions() {
+                // Calculate the face normal from position (pointing outward)
+                let normal = pos.normalize();
 
-                    // Spawn black outline
-                    let outline_mesh = create_number_mesh(value, meshes);
-                    let outline_pos = pos - normal * 0.002;
-                    parent.spawn((
-                        Mesh3d(outline_mesh),
-                        MeshMaterial3d(outline_material.clone()),
-                        Transform::from_translation(outline_pos)
-                            .with_rotation(rotation)
-                            .with_scale(Vec3::splat(scale * 1.2)),
-                    ));
+                // Spawn black outline
+                let outline_mesh = create_number_mesh(value, meshes);
+                let outline_pos = pos - normal * 0.002;
+                parent.spawn((
+                    Mesh3d(outline_mesh),
+                    MeshMaterial3d(outline_material.clone()),
+                    Transform::from_translation(outline_pos)
+                        .with_rotation(rotation)
+                        .with_scale(Vec3::splat(scale * 1.2)),
+                ));
 
-                    // Spawn white number
-                    let label_mesh = create_number_mesh(value, meshes);
-                    parent.spawn((
-                        Mesh3d(label_mesh),
-                        MeshMaterial3d(label_material.clone()),
-                        Transform::from_translation(pos)
-                            .with_rotation(rotation)
-                            .with_scale(Vec3::splat(scale)),
-                    ));
-                }
-            } else {
-                // Standard dice: one number per face
-                for (normal, value) in &face_normals_clone {
-                    let offset = get_label_offset(die_type);
-                    let label_rotation = get_label_rotation(*normal);
-                    let scale = get_label_scale(die_type);
-                    let label_pos = *normal * offset;
-
-                    // Spawn black outline first
-                    let outline_mesh = create_number_mesh(*value, meshes);
-                    let outline_pos = *normal * (offset - 0.005);
-                    parent.spawn((
-                        Mesh3d(outline_mesh),
-                        MeshMaterial3d(outline_material.clone()),
-                        Transform::from_translation(outline_pos)
-                            .with_rotation(label_rotation)
-                            .with_scale(Vec3::splat(scale * 1.25)),
-                    ));
-
-                    // Spawn white number on top
-                    let label_mesh = create_number_mesh(*value, meshes);
-                    parent.spawn((
-                        Mesh3d(label_mesh),
-                        MeshMaterial3d(label_material.clone()),
-                        Transform::from_translation(label_pos)
-                            .with_rotation(label_rotation)
-                            .with_scale(Vec3::splat(scale)),
-                    ));
-                }
+                // Spawn white number
+                let label_mesh = create_number_mesh(value, meshes);
+                parent.spawn((
+                    Mesh3d(label_mesh),
+                    MeshMaterial3d(label_material.clone()),
+                    Transform::from_translation(pos)
+                        .with_rotation(rotation)
+                        .with_scale(Vec3::splat(scale)),
+                ));
             }
-        });
+        } else {
+            // Standard dice: one number per face
+            for (normal, value) in &face_normals_clone {
+                let offset = get_label_offset(die_type);
+                let label_rotation = get_label_rotation(*normal);
+                let scale = get_label_scale(die_type);
+                let label_pos = *normal * offset;
+
+                // Spawn black outline first
+                let outline_mesh = create_number_mesh(*value, meshes);
+                let outline_pos = *normal * (offset - 0.005);
+                parent.spawn((
+                    Mesh3d(outline_mesh),
+                    MeshMaterial3d(outline_material.clone()),
+                    Transform::from_translation(outline_pos)
+                        .with_rotation(label_rotation)
+                        .with_scale(Vec3::splat(scale * 1.25)),
+                ));
+
+                // Spawn white number on top
+                let label_mesh = create_number_mesh(*value, meshes);
+                parent.spawn((
+                    Mesh3d(label_mesh),
+                    MeshMaterial3d(label_material.clone()),
+                    Transform::from_translation(label_pos)
+                        .with_rotation(label_rotation)
+                        .with_scale(Vec3::splat(scale)),
+                ));
+            }
+        }
+    });
 
     die_entity
 }
@@ -1258,14 +1380,14 @@ pub fn spawn_quick_roll_panel(
                                     },
                                 ));
 
-                let abilities = [
-                    ("STR", "strength", sheet.modifiers.strength),
-                    ("DEX", "dexterity", sheet.modifiers.dexterity),
-                    ("CON", "constitution", sheet.modifiers.constitution),
-                    ("INT", "intelligence", sheet.modifiers.intelligence),
-                    ("WIS", "wisdom", sheet.modifiers.wisdom),
-                    ("CHA", "charisma", sheet.modifiers.charisma),
-                ];
+                                let abilities = [
+                                    ("STR", "strength", sheet.modifiers.strength),
+                                    ("DEX", "dexterity", sheet.modifiers.dexterity),
+                                    ("CON", "constitution", sheet.modifiers.constitution),
+                                    ("INT", "intelligence", sheet.modifiers.intelligence),
+                                    ("WIS", "wisdom", sheet.modifiers.wisdom),
+                                    ("CHA", "charisma", sheet.modifiers.charisma),
+                                ];
 
                                 for (abbrev, name, modifier) in abilities {
                                     let sign = if modifier >= 0 { "+" } else { "" };
@@ -1278,19 +1400,19 @@ pub fn spawn_quick_roll_panel(
                                     );
                                 }
 
-                // Saving Throws section
-                        card.spawn((
-                    Text::new("Saving Throws"),
-                    TextFont {
-                        font_size: 13.0,
-                        ..default()
-                    },
-                            TextColor(theme.on_surface_variant),
-                    Node {
-                        margin: UiRect::top(Val::Px(6.0)),
-                        ..default()
-                    },
-                        ));
+                                // Saving Throws section
+                                card.spawn((
+                                    Text::new("Saving Throws"),
+                                    TextFont {
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(theme.on_surface_variant),
+                                    Node {
+                                        margin: UiRect::top(Val::Px(6.0)),
+                                        ..default()
+                                    },
+                                ));
 
                                 let save_order = [
                                     "strength",
@@ -1314,10 +1436,7 @@ pub fn spawn_quick_roll_panel(
                                         let sign = if save.modifier >= 0 { "+" } else { "" };
                                         spawn_quick_roll_button(
                                             card,
-                                            &format!(
-                                                "{} ({}{}) ",
-                                                abbrev, sign, save.modifier
-                                            ),
+                                            &format!("{} ({}{}) ", abbrev, sign, save.modifier),
                                             QuickRollType::SavingThrow(save_name.to_string()),
                                             icon_font.clone(),
                                             theme,
@@ -1325,19 +1444,19 @@ pub fn spawn_quick_roll_panel(
                                     }
                                 }
 
-                // Skills section
-                        card.spawn((
-                    Text::new("Skills"),
-                    TextFont {
-                        font_size: 13.0,
-                        ..default()
-                    },
-                            TextColor(theme.on_surface_variant),
-                    Node {
-                        margin: UiRect::top(Val::Px(6.0)),
-                        ..default()
-                    },
-                        ));
+                                // Skills section
+                                card.spawn((
+                                    Text::new("Skills"),
+                                    TextFont {
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(theme.on_surface_variant),
+                                    Node {
+                                        margin: UiRect::top(Val::Px(6.0)),
+                                        ..default()
+                                    },
+                                ));
 
                                 // Sort skills alphabetically
                                 let mut skills: Vec<_> = sheet.skills.iter().collect();
@@ -1349,10 +1468,7 @@ pub fn spawn_quick_roll_panel(
                                     let display_name = format_skill_name(skill_name);
                                     spawn_quick_roll_button(
                                         card,
-                                        &format!(
-                                            "{} ({}{}) ",
-                                            display_name, sign, skill.modifier
-                                        ),
+                                        &format!("{} ({}{}) ", display_name, sign, skill.modifier),
                                         QuickRollType::Skill(skill_name.clone()),
                                         icon_font.clone(),
                                         theme,
@@ -1464,11 +1580,13 @@ pub fn rebuild_quick_roll_panel(
         icon_font.0.clone(),
         settings_state.settings.quick_roll_panel_position,
     );
-    commands.entity(panel).insert(if ui_state.active_tab == AppTab::DiceRoller {
-        Visibility::Visible
-    } else {
-        Visibility::Hidden
-    });
+    commands
+        .entity(panel)
+        .insert(if ui_state.active_tab == AppTab::DiceRoller {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        });
 }
 
 pub fn rebuild_command_history_panel(

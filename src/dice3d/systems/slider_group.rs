@@ -7,10 +7,10 @@ use bevy::prelude::*;
 
 use crate::dice3d::types::{
     AppTab, AppTabBar, CommandHistoryPanelDragState, CommandHistoryPanelHandle,
-    CommandHistoryPanelRoot, QuickRollPanel, QuickRollPanelDragState, QuickRollPanelHandle,
-    ResultsPanelDragState, ResultsPanelHandle, ResultsPanelRoot, SettingsState, SliderGroupDragState,
-    SliderGroupHandle, SliderGroupRoot, UiState,
-    DiceBoxControlsPanelDragState, DiceBoxControlsPanelHandle, DiceBoxControlsPanelRoot,
+    CommandHistoryPanelRoot, DiceBoxControlsPanelDragState, DiceBoxControlsPanelHandle,
+    DiceBoxControlsPanelRoot, QuickRollPanel, QuickRollPanelDragState, QuickRollPanelHandle,
+    ResultsPanelDragState, ResultsPanelHandle, ResultsPanelRoot, SettingsState,
+    SliderGroupDragState, SliderGroupHandle, SliderGroupRoot, UiState,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -48,9 +48,7 @@ fn save_slider_group_position(settings_state: &mut SettingsState, x: f32, y: f32
     slot.x = x;
     slot.y = y;
 
-    if let Err(e) = settings_state.settings.save() {
-        eprintln!("Failed to save settings: {e}");
-    }
+    settings_state.is_modified = true;
 }
 
 fn save_quick_roll_position(settings_state: &mut SettingsState, x: f32, y: f32) {
@@ -62,9 +60,7 @@ fn save_quick_roll_position(settings_state: &mut SettingsState, x: f32, y: f32) 
     slot.x = x;
     slot.y = y;
 
-    if let Err(e) = settings_state.settings.save() {
-        eprintln!("Failed to save settings: {e}");
-    }
+    settings_state.is_modified = true;
 }
 
 fn save_command_history_position(settings_state: &mut SettingsState, x: f32, y: f32) {
@@ -76,9 +72,7 @@ fn save_command_history_position(settings_state: &mut SettingsState, x: f32, y: 
     slot.x = x;
     slot.y = y;
 
-    if let Err(e) = settings_state.settings.save() {
-        eprintln!("Failed to save settings: {e}");
-    }
+    settings_state.is_modified = true;
 }
 
 fn save_results_panel_position(settings_state: &mut SettingsState, x: f32, y: f32) {
@@ -90,9 +84,7 @@ fn save_results_panel_position(settings_state: &mut SettingsState, x: f32, y: f3
     slot.x = x;
     slot.y = y;
 
-    if let Err(e) = settings_state.settings.save() {
-        eprintln!("Failed to save settings: {e}");
-    }
+    settings_state.is_modified = true;
 }
 
 fn save_dice_box_controls_panel_position(settings_state: &mut SettingsState, x: f32, y: f32) {
@@ -104,27 +96,40 @@ fn save_dice_box_controls_panel_position(settings_state: &mut SettingsState, x: 
     slot.x = x;
     slot.y = y;
 
-    if let Err(e) = settings_state.settings.save() {
-        eprintln!("Failed to save settings: {e}");
-    }
+    settings_state.is_modified = true;
 }
 
 /// Drag the slider group around the screen by grabbing the handle.
 ///
 /// - Only active on the Dice Roller tab
 /// - Disabled while the settings modal is open
-/// - Auto-saves panel positions to `settings.json` while dragging
+/// - Auto-saves panel positions to SQLite while dragging
 pub fn handle_slider_group_drag(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     mouse: Res<ButtonInput<MouseButton>>,
     ui_state: Res<UiState>,
     mut settings_state: ResMut<SettingsState>,
     app_tab_bar: Query<&ComputedNode, With<AppTabBar>>,
-    slider_handle_interaction: Query<(&Interaction, &ChildOf), (With<SliderGroupHandle>, Changed<Interaction>)>,
-    quick_handle_interaction: Query<(&Interaction, &ChildOf), (With<QuickRollPanelHandle>, Changed<Interaction>)>,
-    history_handle_interaction: Query<(&Interaction, &ChildOf), (With<CommandHistoryPanelHandle>, Changed<Interaction>)>,
-    results_handle_interaction: Query<(&Interaction, &ChildOf), (With<ResultsPanelHandle>, Changed<Interaction>)>,
-    dice_box_controls_handle_interaction: Query<(&Interaction, &ChildOf), (With<DiceBoxControlsPanelHandle>, Changed<Interaction>)>,
+    slider_handle_interaction: Query<
+        (&Interaction, &ChildOf),
+        (With<SliderGroupHandle>, Changed<Interaction>),
+    >,
+    quick_handle_interaction: Query<
+        (&Interaction, &ChildOf),
+        (With<QuickRollPanelHandle>, Changed<Interaction>),
+    >,
+    history_handle_interaction: Query<
+        (&Interaction, &ChildOf),
+        (With<CommandHistoryPanelHandle>, Changed<Interaction>),
+    >,
+    results_handle_interaction: Query<
+        (&Interaction, &ChildOf),
+        (With<ResultsPanelHandle>, Changed<Interaction>),
+    >,
+    dice_box_controls_handle_interaction: Query<
+        (&Interaction, &ChildOf),
+        (With<DiceBoxControlsPanelHandle>, Changed<Interaction>),
+    >,
     slider_group_size: Query<&ComputedNode, With<SliderGroupRoot>>,
     quick_roll_size: Query<&ComputedNode, With<QuickRollPanel>>,
     command_history_size: Query<&ComputedNode, With<CommandHistoryPanelRoot>>,
@@ -133,9 +138,15 @@ pub fn handle_slider_group_drag(
     mut panel_queries: ParamSet<(
         Query<(&mut Node, &mut SliderGroupDragState, &ComputedNode), With<SliderGroupRoot>>,
         Query<(&mut Node, &mut QuickRollPanelDragState, &ComputedNode), With<QuickRollPanel>>,
-        Query<(&mut Node, &mut CommandHistoryPanelDragState, &ComputedNode), With<CommandHistoryPanelRoot>>,
+        Query<
+            (&mut Node, &mut CommandHistoryPanelDragState, &ComputedNode),
+            With<CommandHistoryPanelRoot>,
+        >,
         Query<(&mut Node, &mut ResultsPanelDragState, &ComputedNode), With<ResultsPanelRoot>>,
-        Query<(&mut Node, &mut DiceBoxControlsPanelDragState, &ComputedNode), With<DiceBoxControlsPanelRoot>>,
+        Query<
+            (&mut Node, &mut DiceBoxControlsPanelDragState, &ComputedNode),
+            With<DiceBoxControlsPanelRoot>,
+        >,
     )>,
 ) {
     if ui_state.active_tab != AppTab::DiceRoller {
@@ -273,8 +284,7 @@ pub fn handle_slider_group_drag(
             }
 
             let parent_entity = child_of.parent();
-            let Ok((node, mut drag_state, _computed)) =
-                results_panel_query.get_mut(parent_entity)
+            let Ok((node, mut drag_state, _computed)) = results_panel_query.get_mut(parent_entity)
             else {
                 continue;
             };
@@ -289,10 +299,8 @@ pub fn handle_slider_group_drag(
             };
 
             drag_state.dragging = true;
-            drag_state.grab_offset = Vec2::new(
-                cursor_position.x - current_x,
-                cursor_position.y - current_y,
-            );
+            drag_state.grab_offset =
+                Vec2::new(cursor_position.x - current_x, cursor_position.y - current_y);
         }
 
         // Update position while dragging.
@@ -314,7 +322,7 @@ pub fn handle_slider_group_drag(
             let mut new_x = cursor_position.x - drag_state.grab_offset.x;
             let mut new_y = cursor_position.y - drag_state.grab_offset.y;
 
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             let mut other_rects = Vec::with_capacity(3);
             if let Some(c) = slider_group_size.iter().next() {
@@ -360,7 +368,7 @@ pub fn handle_slider_group_drag(
                 window.resolution.height(),
                 tab_bar_height,
             );
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             node.left = Val::Px(new_x);
             node.top = Val::Px(new_y);
@@ -384,8 +392,7 @@ pub fn handle_slider_group_drag(
             }
 
             let parent_entity = child_of.parent();
-            let Ok((node, mut drag_state, _computed)) =
-                controls_panel_query.get_mut(parent_entity)
+            let Ok((node, mut drag_state, _computed)) = controls_panel_query.get_mut(parent_entity)
             else {
                 continue;
             };
@@ -400,10 +407,8 @@ pub fn handle_slider_group_drag(
             };
 
             drag_state.dragging = true;
-            drag_state.grab_offset = Vec2::new(
-                cursor_position.x - current_x,
-                cursor_position.y - current_y,
-            );
+            drag_state.grab_offset =
+                Vec2::new(cursor_position.x - current_x, cursor_position.y - current_y);
         }
 
         // Update position while dragging.
@@ -425,7 +430,7 @@ pub fn handle_slider_group_drag(
             let mut new_x = cursor_position.x - drag_state.grab_offset.x;
             let mut new_y = cursor_position.y - drag_state.grab_offset.y;
 
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             let mut other_rects = Vec::with_capacity(4);
             if let Some(c) = slider_group_size.iter().next() {
@@ -471,7 +476,7 @@ pub fn handle_slider_group_drag(
                 window.resolution.height(),
                 tab_bar_height,
             );
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             node.left = Val::Px(new_x);
             node.top = Val::Px(new_y);
@@ -495,8 +500,7 @@ pub fn handle_slider_group_drag(
             }
 
             let parent_entity = child_of.parent();
-            let Ok((node, mut drag_state, _computed)) =
-                slider_group_query.get_mut(parent_entity)
+            let Ok((node, mut drag_state, _computed)) = slider_group_query.get_mut(parent_entity)
             else {
                 continue;
             };
@@ -511,10 +515,8 @@ pub fn handle_slider_group_drag(
             };
 
             drag_state.dragging = true;
-            drag_state.grab_offset = Vec2::new(
-                cursor_position.x - current_x,
-                cursor_position.y - current_y,
-            );
+            drag_state.grab_offset =
+                Vec2::new(cursor_position.x - current_x, cursor_position.y - current_y);
         }
 
         // Update position while dragging.
@@ -537,7 +539,7 @@ pub fn handle_slider_group_drag(
             let mut new_x = cursor_position.x - drag_state.grab_offset.x;
             let mut new_y = cursor_position.y - drag_state.grab_offset.y;
 
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             let mut other_rects = Vec::with_capacity(4);
             if let Some(c) = quick_roll_size.iter().next() {
@@ -583,7 +585,7 @@ pub fn handle_slider_group_drag(
                 window.resolution.height(),
                 tab_bar_height,
             );
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             node.left = Val::Px(new_x);
             node.top = Val::Px(new_y);
@@ -607,8 +609,7 @@ pub fn handle_slider_group_drag(
             }
 
             let parent_entity = child_of.parent();
-            let Ok((node, mut drag_state, _computed)) =
-                quick_panel_query.get_mut(parent_entity)
+            let Ok((node, mut drag_state, _computed)) = quick_panel_query.get_mut(parent_entity)
             else {
                 continue;
             };
@@ -623,10 +624,8 @@ pub fn handle_slider_group_drag(
             };
 
             drag_state.dragging = true;
-            drag_state.grab_offset = Vec2::new(
-                cursor_position.x - current_x,
-                cursor_position.y - current_y,
-            );
+            drag_state.grab_offset =
+                Vec2::new(cursor_position.x - current_x, cursor_position.y - current_y);
         }
 
         // Update position while dragging.
@@ -648,7 +647,7 @@ pub fn handle_slider_group_drag(
             let mut new_x = cursor_position.x - drag_state.grab_offset.x;
             let mut new_y = cursor_position.y - drag_state.grab_offset.y;
 
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             let mut other_rects = Vec::with_capacity(4);
             if let Some(c) = slider_group_size.iter().next() {
@@ -694,7 +693,7 @@ pub fn handle_slider_group_drag(
                 window.resolution.height(),
                 tab_bar_height,
             );
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             node.left = Val::Px(new_x);
             node.top = Val::Px(new_y);
@@ -718,8 +717,7 @@ pub fn handle_slider_group_drag(
             }
 
             let parent_entity = child_of.parent();
-            let Ok((node, mut drag_state, _computed)) =
-                history_panel_query.get_mut(parent_entity)
+            let Ok((node, mut drag_state, _computed)) = history_panel_query.get_mut(parent_entity)
             else {
                 continue;
             };
@@ -734,10 +732,8 @@ pub fn handle_slider_group_drag(
             };
 
             drag_state.dragging = true;
-            drag_state.grab_offset = Vec2::new(
-                cursor_position.x - current_x,
-                cursor_position.y - current_y,
-            );
+            drag_state.grab_offset =
+                Vec2::new(cursor_position.x - current_x, cursor_position.y - current_y);
         }
 
         // Update position while dragging.
@@ -759,7 +755,7 @@ pub fn handle_slider_group_drag(
             let mut new_x = cursor_position.x - drag_state.grab_offset.x;
             let mut new_y = cursor_position.y - drag_state.grab_offset.y;
 
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             let mut other_rects = Vec::with_capacity(4);
             if let Some(c) = slider_group_size.iter().next() {
@@ -805,7 +801,7 @@ pub fn handle_slider_group_drag(
                 window.resolution.height(),
                 tab_bar_height,
             );
-            (new_x, new_y) = clamp_to_window(new_x, new_y, &computed);
+            (new_x, new_y) = clamp_to_window(new_x, new_y, computed);
 
             node.left = Val::Px(new_x);
             node.top = Val::Px(new_y);

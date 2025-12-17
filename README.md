@@ -17,6 +17,12 @@
 A D&D 5e dice roller with both **CLI** and **3D visualization** in a single binary!  
 Powered by Bevy game engine with real physics simulation.
 
+## Local Data Storage
+
+- **Characters and app settings** are stored locally in a SQLite database: `characters.db`.
+- By default on Windows this lives under `%LOCALAPPDATA%\DnDGameRolls\characters.db`.
+- Older installs may have a `settings.json`; on first run, settings are migrated into SQLite.
+
 ## Screenshots
 
 ### 3D Dice Simulator

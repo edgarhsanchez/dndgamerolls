@@ -1,14 +1,17 @@
 //! Application settings types and persistence
 //!
-//! This module handles loading and saving application settings from/to settings.json
+//! This module handles loading and saving application settings.
 
-use bevy::prelude::*;
-use bevy::log::{debug, info, warn};
 use super::DiceType;
+use bevy::log::{debug, info, warn};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-use super::ui::{ContainerShakeConfig, ShakeCurveBezierHandleKind, ShakeCurveEditMode, ShakeCurvePoint};
+use super::database::CharacterDatabase;
+use super::ui::{
+    ContainerShakeConfig, ShakeCurveBezierHandleKind, ShakeCurveEditMode, ShakeCurvePoint,
+};
 use std::path::PathBuf;
 
 // ============================================================================
@@ -133,7 +136,7 @@ impl ShakeConfigSetting {
     }
 }
 
-/// Dice type setting stored in settings.json
+/// Dice type setting
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DiceTypeSetting {
     #[serde(rename = "d4")]
@@ -159,52 +162,48 @@ impl Default for DiceTypeSetting {
 impl DiceTypeSetting {
     pub fn to_dice_type(self) -> DiceType {
         match self {
-            DiceTypeSetting::D4 => DiceType::D4,
-            DiceTypeSetting::D6 => DiceType::D6,
-            DiceTypeSetting::D8 => DiceType::D8,
-            DiceTypeSetting::D10 => DiceType::D10,
-            DiceTypeSetting::D12 => DiceType::D12,
-            DiceTypeSetting::D20 => DiceType::D20,
+            Self::D4 => DiceType::D4,
+            Self::D6 => DiceType::D6,
+            Self::D8 => DiceType::D8,
+            Self::D10 => DiceType::D10,
+            Self::D12 => DiceType::D12,
+            Self::D20 => DiceType::D20,
         }
     }
 
-    pub fn label(self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
-            DiceTypeSetting::D4 => "D4",
-            DiceTypeSetting::D6 => "D6",
-            DiceTypeSetting::D8 => "D8",
-            DiceTypeSetting::D10 => "D10",
-            DiceTypeSetting::D12 => "D12",
-            DiceTypeSetting::D20 => "D20",
+            Self::D4 => "d4",
+            Self::D6 => "d6",
+            Self::D8 => "d8",
+            Self::D10 => "d10",
+            Self::D12 => "d12",
+            Self::D20 => "d20",
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ActiveModalKind {
-    #[default]
-    None,
-    DiceRollerSettings,
-    CharacterSheetDiceSettings,
-}
-
-/// Serializable color representation
+/// Simple serializable RGBA color.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColorSetting {
+    #[serde(default)]
     pub a: f32,
+    #[serde(default)]
     pub r: f32,
+    #[serde(default)]
     pub g: f32,
+    #[serde(default)]
     pub b: f32,
 }
 
 impl Default for ColorSetting {
     fn default() -> Self {
-        // Default dark background
+        // Slightly off-black by default.
         Self {
             a: 1.0,
-            r: 0.1,
-            g: 0.1,
-            b: 0.15,
+            r: 0.05,
+            g: 0.05,
+            b: 0.05,
         }
     }
 }
@@ -331,16 +330,9 @@ impl ColorSetting {
         let b = (self.b * 255.0) as u8;
         format!("#{:02X}{:02X}{:02X}{:02X}", a, r, g, b)
     }
-
-    pub fn to_labeled(&self) -> String {
-        format!(
-            "A:{:.2} R:{:.2} G:{:.2} B:{:.2}",
-            self.a, self.r, self.g, self.b
-        )
-    }
 }
 
-/// Application settings stored in settings.json
+/// Application settings (persisted to SQLite; legacy migration from settings.json).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default)]
@@ -376,6 +368,11 @@ pub struct AppSettings {
     /// Default die type for Quick Rolls (dice view).
     #[serde(default)]
     pub quick_roll_default_die: DiceTypeSetting,
+
+    /// If enabled, any new roll will default to using the container shake action
+    /// instead of the directional throw.
+    #[serde(default)]
+    pub default_roll_uses_shake: bool,
 
     /// Saved container shake curve/settings.
     #[serde(default)]
@@ -438,6 +435,7 @@ impl Default for AppSettings {
             dice_box_controls_panel_position: default_dice_box_controls_panel_position(),
             character_sheet_default_die: DiceTypeSetting::default(),
             quick_roll_default_die: DiceTypeSetting::default(),
+            default_roll_uses_shake: false,
             shake_config: ShakeConfigSetting::default(),
         }
     }
@@ -445,9 +443,39 @@ impl Default for AppSettings {
 
 impl AppSettings {
     const SETTINGS_FILE: &'static str = "settings.json";
+    const SETTINGS_DB_KEY: &'static str = "app_settings";
 
-    /// Load settings from settings.json, or return defaults if not found
+    /// Load settings from SQLite (preferred), falling back to legacy `settings.json`.
+    ///
+    /// If the SQLite database does not yet have settings stored, this will attempt a
+    /// one-time migration from `settings.json`.
     pub fn load() -> Self {
+        if let Ok(db) = CharacterDatabase::open() {
+            if let Ok(Some(json)) = db.get_setting_json(Self::SETTINGS_DB_KEY) {
+                match serde_json::from_str::<AppSettings>(&json) {
+                    Ok(settings) => {
+                        info!("Loaded settings from SQLite");
+                        return settings;
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse settings from SQLite: {}", e);
+                    }
+                }
+            } else if let Some(legacy) = Self::load_legacy_json() {
+                // Best-effort migration; ignore write errors and still return the value.
+                let _ = legacy.save_to_db(&db);
+                info!("Migrated settings from {} into SQLite", Self::SETTINGS_FILE);
+                return legacy;
+            }
+
+            return Self::default();
+        }
+
+        // DB unavailable: fall back to legacy settings.json.
+        Self::load_legacy_json().unwrap_or_default()
+    }
+
+    fn load_legacy_json() -> Option<Self> {
         let path = PathBuf::from(Self::SETTINGS_FILE);
 
         if path.exists() {
@@ -455,7 +483,7 @@ impl AppSettings {
                 Ok(contents) => match serde_json::from_str(&contents) {
                     Ok(settings) => {
                         info!("Loaded settings from {}", Self::SETTINGS_FILE);
-                        return settings;
+                        return Some(settings);
                     }
                     Err(e) => {
                         warn!("Failed to parse {}: {}", Self::SETTINGS_FILE, e);
@@ -467,22 +495,43 @@ impl AppSettings {
             }
         }
 
-        // Return defaults
-        Self::default()
+        None
     }
 
-    /// Save settings to settings.json
+    /// Save settings to SQLite (preferred). Falls back to legacy `settings.json` if the
+    /// database cannot be opened.
     pub fn save(&self) -> Result<(), String> {
+        if let Ok(db) = CharacterDatabase::open() {
+            return self.save_to_db(&db);
+        }
+
+        // Legacy fallback
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize settings: {}", e))?;
 
         fs::write(Self::SETTINGS_FILE, json)
             .map_err(|e| format!("Failed to write settings: {}", e))?;
 
-        // Saving can happen frequently (e.g., while dragging panels), so keep this at debug.
         debug!("Settings saved to {}", Self::SETTINGS_FILE);
         Ok(())
     }
+
+    pub fn save_to_db(&self, db: &CharacterDatabase) -> Result<(), String> {
+        let json = serde_json::to_string(self)
+            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+
+        db.set_setting_json(Self::SETTINGS_DB_KEY, &json)?;
+
+        Ok(())
+    }
+}
+
+/// Tracks which modal dialog is currently active.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActiveModalKind {
+    None,
+    DiceRollerSettings,
+    CharacterSheetDiceSettings,
 }
 
 /// Resource for runtime settings state
@@ -506,6 +555,9 @@ pub struct SettingsState {
 
     /// Editing value for Quick Rolls die settings
     pub quick_roll_editing_die: DiceTypeSetting,
+
+    /// Editing value for the "default roll uses shake" setting.
+    pub default_roll_uses_shake_editing: bool,
 
     /// Editing value for the dice container shake curve/settings (applied on OK).
     pub editing_shake_config: ContainerShakeConfig,
@@ -539,6 +591,7 @@ impl Default for SettingsState {
         let settings = AppSettings::load();
         let character_sheet_editing_die = settings.character_sheet_default_die;
         let quick_roll_editing_die = settings.quick_roll_default_die;
+        let default_roll_uses_shake_editing = settings.default_roll_uses_shake;
         let editing_color = settings.background_color.clone();
         let editing_highlight_color = settings.dice_box_highlight_color.clone();
         let editing_shake_config = settings.shake_config.to_runtime();
@@ -556,6 +609,7 @@ impl Default for SettingsState {
             highlight_input_text: String::new(),
             character_sheet_editing_die,
             quick_roll_editing_die,
+            default_roll_uses_shake_editing,
             editing_shake_config,
             selected_shake_curve_point_id: None,
             dragging_shake_curve_point_id: None,
@@ -628,6 +682,10 @@ pub struct SettingsOkButton;
 /// Marker for settings Cancel button
 #[derive(Component)]
 pub struct SettingsCancelButton;
+
+/// Marker for the switch that controls "default roll uses shake" in the Dice tab.
+#[derive(Component)]
+pub struct DefaultRollUsesShakeSwitch;
 
 /// Marker for settings Reset Layout button
 #[derive(Component)]

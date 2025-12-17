@@ -6,16 +6,40 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::{ComputedUiTargetCamera, UiGlobalTransform};
 
-use bevy_material_ui::prelude::*;
 use bevy::window::PrimaryWindow;
+use bevy_material_ui::prelude::*;
 use std::cmp::Ordering;
 
 use crate::dice3d::types::*;
+use bevy_material_ui::prelude::SwitchChangeEvent;
 
 use super::settings_tabs;
 
 const SETTINGS_DIALOG_WIDTH: f32 = 780.0;
 const SETTINGS_DIALOG_HEIGHT: f32 = 720.0;
+
+/// Persist settings changes to SQLite.
+///
+/// Many UI interactions update settings continuously (dragging panels, curve edits).
+/// Instead of writing on every change, systems should set `SettingsState.is_modified = true`.
+/// This system flushes once per frame.
+pub fn persist_settings_to_db(
+    mut settings_state: ResMut<SettingsState>,
+    db: Option<Res<CharacterDatabase>>,
+) {
+    if !settings_state.is_modified {
+        return;
+    }
+
+    let Some(db) = db else {
+        return;
+    };
+
+    match settings_state.settings.save_to_db(&db) {
+        Ok(()) => settings_state.is_modified = false,
+        Err(e) => warn!("Failed to persist settings to SQLite: {}", e),
+    }
+}
 
 /// Spawn the settings (gear) icon button in the dice roller view.
 pub fn spawn_settings_button(
@@ -152,7 +176,9 @@ fn spawn_settings_modal(
 
                 // Tabs: Dice / Colors / Shake Curve / Layout
                 let mut tabs_cmd = content.spawn((
-                    MaterialTabs::new().with_variant(TabVariant::Secondary).selected(0),
+                    MaterialTabs::new()
+                        .with_variant(TabVariant::Secondary)
+                        .selected(0),
                     Node {
                         width: Val::Percent(100.0),
                         height: Val::Px(TAB_HEIGHT_SECONDARY),
@@ -164,7 +190,11 @@ fn spawn_settings_modal(
                 ));
                 let tabs_entity = tabs_cmd.id();
                 tabs_cmd.with_children(|tabs| {
-                    fn spawn_tab_label(t: &mut ChildSpawnerCommands, theme: &MaterialTheme, label: &str) {
+                    fn spawn_tab_label(
+                        t: &mut ChildSpawnerCommands,
+                        theme: &MaterialTheme,
+                        label: &str,
+                    ) {
                         t.spawn((
                             Text::new(label),
                             TextFont {
@@ -250,6 +280,7 @@ fn spawn_settings_modal(
                                     theme,
                                     select_options.clone(),
                                     selected_index,
+                                    settings_state.default_roll_uses_shake_editing,
                                 );
                             },
                         );
@@ -314,9 +345,7 @@ fn spawn_settings_modal(
                             })
                             .with_children(|slot| {
                                 slot.spawn((
-                                    MaterialButtonBuilder::new("Cancel")
-                                        .outlined()
-                                        .build(theme),
+                                    MaterialButtonBuilder::new("Cancel").outlined().build(theme),
                                     SettingsCancelButton,
                                 ))
                                 .with_children(|btn| {
@@ -437,10 +466,13 @@ pub fn handle_settings_button_click(
         settings_state.editing_color = settings_state.settings.background_color.clone();
         settings_state.color_input_text = settings_state.editing_color.to_hex();
 
-        settings_state.editing_highlight_color = settings_state.settings.dice_box_highlight_color.clone();
+        settings_state.editing_highlight_color =
+            settings_state.settings.dice_box_highlight_color.clone();
         settings_state.highlight_input_text = settings_state.editing_highlight_color.to_hex();
 
         settings_state.quick_roll_editing_die = settings_state.settings.quick_roll_default_die;
+        settings_state.default_roll_uses_shake_editing =
+            settings_state.settings.default_roll_uses_shake;
 
         // Copy current shake settings into an editable staging area.
         settings_state.editing_shake_config = shake_config.clone();
@@ -449,8 +481,13 @@ pub fn handle_settings_button_click(
         settings_state.last_saved_shake_config_json =
             serde_json::to_string(&settings_state.settings.shake_config).unwrap_or_default();
 
-        settings_state.shake_duration_input_text =
-            format!("{:.3}", settings_state.editing_shake_config.duration_seconds.max(0.0));
+        settings_state.shake_duration_input_text = format!(
+            "{:.3}",
+            settings_state
+                .editing_shake_config
+                .duration_seconds
+                .max(0.0)
+        );
     }
 }
 
@@ -486,7 +523,7 @@ pub fn autosave_and_apply_shake_config(
     // requiring an explicit OK click.
     *shake_config = settings_state.editing_shake_config.clone();
 
-    let _ = settings_state.settings.save();
+    settings_state.is_modified = true;
 }
 
 /// Apply persisted shake config on startup.
@@ -546,27 +583,48 @@ pub fn handle_settings_ok_click(
         if ok_query.get(event.entity).is_err() {
             continue;
         }
-            // Apply the editing colors
-            settings_state.settings.background_color = settings_state.editing_color.clone();
-            settings_state.settings.dice_box_highlight_color =
-                settings_state.editing_highlight_color.clone();
+        // Apply the editing colors
+        settings_state.settings.background_color = settings_state.editing_color.clone();
+        settings_state.settings.dice_box_highlight_color =
+            settings_state.editing_highlight_color.clone();
 
-            settings_state.settings.quick_roll_default_die = settings_state.quick_roll_editing_die;
+        settings_state.settings.quick_roll_default_die = settings_state.quick_roll_editing_die;
 
-            // Update the clear color
-            clear_color.0 = settings_state.settings.background_color.to_color();
+        settings_state.settings.default_roll_uses_shake =
+            settings_state.default_roll_uses_shake_editing;
 
-            // Apply shake settings from the editor
-            *shake_config = settings_state.editing_shake_config.clone();
+        // Update the clear color
+        clear_color.0 = settings_state.settings.background_color.to_color();
 
-            // Save to file
-            if let Err(e) = settings_state.settings.save() {
-                eprintln!("Failed to save settings: {}", e);
-            }
+        // Apply shake settings from the editor
+        *shake_config = settings_state.editing_shake_config.clone();
 
-            // Close modal
-            settings_state.show_modal = false;
-            settings_state.modal_kind = crate::dice3d::types::ActiveModalKind::None;
+        settings_state.is_modified = true;
+
+        // Close modal
+        settings_state.show_modal = false;
+        settings_state.modal_kind = crate::dice3d::types::ActiveModalKind::None;
+    }
+}
+
+/// Handle switch changes in the dice roller settings modal.
+pub fn handle_default_roll_uses_shake_switch_change(
+    mut events: MessageReader<SwitchChangeEvent>,
+    mut settings_state: ResMut<SettingsState>,
+    switch_query: Query<(), With<DefaultRollUsesShakeSwitch>>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        if switch_query.get(event.entity).is_err() {
+            continue;
+        }
+
+        settings_state.default_roll_uses_shake_editing = event.selected;
     }
 }
 
@@ -597,7 +655,7 @@ pub fn handle_quick_roll_die_type_select_change(
     }
 }
 
-fn sort_curve_points(points: &mut Vec<ShakeCurvePoint>) {
+fn sort_curve_points(points: &mut [ShakeCurvePoint]) {
     points.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(Ordering::Equal));
 }
 
@@ -785,11 +843,12 @@ pub fn handle_shake_curve_chip_clicks(
 
     for ev in click_events.read() {
         if let Ok(chip) = edit_mode_chips.get(ev.entity) {
-            settings_state.shake_curve_edit_mode = if settings_state.shake_curve_edit_mode == chip.mode {
-                ShakeCurveEditMode::None
-            } else {
-                chip.mode
-            };
+            settings_state.shake_curve_edit_mode =
+                if settings_state.shake_curve_edit_mode == chip.mode {
+                    ShakeCurveEditMode::None
+                } else {
+                    chip.mode
+                };
 
             // Delete mode cancels any in-progress drag.
             if settings_state.shake_curve_edit_mode == ShakeCurveEditMode::Delete {
@@ -803,9 +862,15 @@ pub fn handle_shake_curve_chip_clicks(
         if let Ok(chip) = axis_chips.get(ev.entity) {
             let axis = chip.axis;
             match chip.axis {
-                ShakeAxis::X => settings_state.shake_curve_add_x = !settings_state.shake_curve_add_x,
-                ShakeAxis::Y => settings_state.shake_curve_add_y = !settings_state.shake_curve_add_y,
-                ShakeAxis::Z => settings_state.shake_curve_add_z = !settings_state.shake_curve_add_z,
+                ShakeAxis::X => {
+                    settings_state.shake_curve_add_x = !settings_state.shake_curve_add_x
+                }
+                ShakeAxis::Y => {
+                    settings_state.shake_curve_add_y = !settings_state.shake_curve_add_y
+                }
+                ShakeAxis::Z => {
+                    settings_state.shake_curve_add_z = !settings_state.shake_curve_add_z
+                }
             }
 
             // Never allow the user to disable all axes; that makes the editor feel broken
@@ -823,7 +888,9 @@ pub fn handle_shake_curve_chip_clicks(
 
             // If the currently-selected point is on a now-disabled axis, deselect it.
             if let Some(selected_id) = settings_state.selected_shake_curve_point_id {
-                if let Some(axis) = find_curve_point_axis(&settings_state.editing_shake_config, selected_id) {
+                if let Some(axis) =
+                    find_curve_point_axis(&settings_state.editing_shake_config, selected_id)
+                {
                     if !axis_enabled(&settings_state, axis) {
                         settings_state.selected_shake_curve_point_id = None;
                         if settings_state.dragging_shake_curve_point_id == Some(selected_id) {
@@ -844,7 +911,10 @@ pub fn sync_shake_curve_chip_ui(
         (&ShakeCurveEditModeChip, &mut MaterialChip),
         Without<ShakeCurveAxisChip>,
     >,
-    mut axis_chips: Query<(&ShakeCurveAxisChip, &mut MaterialChip), Without<ShakeCurveEditModeChip>>,
+    mut axis_chips: Query<
+        (&ShakeCurveAxisChip, &mut MaterialChip),
+        Without<ShakeCurveEditModeChip>,
+    >,
 ) {
     if !settings_state.show_modal {
         return;
@@ -912,16 +982,13 @@ pub fn handle_shake_curve_graph_click_to_add_point(
     let size = size_physical * inv_sf;
     let window = windows.iter().next();
 
-    let ui_camera = target_camera
-        .get()
-        .and_then(|e| cameras.get(e).ok());
+    let ui_camera = target_camera.get().and_then(|e| cameras.get(e).ok());
 
     // Use window physical cursor mapping (robust under DPI scaling).
     let cursor_local = if let Some(window) = window {
         let cursor_in_ui_target = ui_target_cursor_physical_px(window, ui_camera);
-        let local = cursor_in_ui_target
-            .and_then(|c| window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed));
-        local
+        cursor_in_ui_target
+            .and_then(|c| window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed))
     } else {
         None
     };
@@ -943,10 +1010,10 @@ pub fn handle_shake_curve_graph_click_to_add_point(
         return;
     };
 
-        // Read chip toggles before mut-borrowing the config.
-        let add_x = settings_state.shake_curve_add_x;
-        let add_y = settings_state.shake_curve_add_y;
-        let add_z = settings_state.shake_curve_add_z;
+    // Read chip toggles before mut-borrowing the config.
+    let add_x = settings_state.shake_curve_add_x;
+    let add_y = settings_state.shake_curve_add_y;
+    let add_z = settings_state.shake_curve_add_z;
 
     match mode {
         ShakeCurveEditMode::Add => {
@@ -984,59 +1051,57 @@ pub fn handle_shake_curve_graph_click_to_add_point(
             }
         }
         ShakeCurveEditMode::Delete => {
-                // Background click deletes nearest point handle.
-                let removed_id: Option<u64> = {
-                    let cfg = &mut settings_state.editing_shake_config;
-                    let mut best: Option<(u64, f32)> = None;
-                    let consider = |best: &mut Option<(u64, f32)>, id: u64, dist: f32| {
-                        match best {
-                            None => *best = Some((id, dist)),
-                            Some((_, best_dist)) if dist < *best_dist => *best = Some((id, dist)),
-                            _ => {}
-                        }
-                    };
+            // Background click deletes nearest point handle.
+            let removed_id: Option<u64> = {
+                let cfg = &mut settings_state.editing_shake_config;
+                let mut best: Option<(u64, f32)> = None;
+                let consider = |best: &mut Option<(u64, f32)>, id: u64, dist: f32| match best {
+                    None => *best = Some((id, dist)),
+                    Some((_, best_dist)) if dist < *best_dist => *best = Some((id, dist)),
+                    _ => {}
+                };
 
-                    // Threshold in px from point center.
-                    let threshold = 22.0_f32;
-                    for axis in [ShakeAxis::X, ShakeAxis::Y, ShakeAxis::Z] {
-                        let axis_on = match axis {
-                            ShakeAxis::X => add_x,
-                            ShakeAxis::Y => add_y,
-                            ShakeAxis::Z => add_z,
-                        };
-                        if !axis_on {
+                // Threshold in px from point center.
+                let threshold = 22.0_f32;
+                for axis in [ShakeAxis::X, ShakeAxis::Y, ShakeAxis::Z] {
+                    let axis_on = match axis {
+                        ShakeAxis::X => add_x,
+                        ShakeAxis::Y => add_y,
+                        ShakeAxis::Z => add_z,
+                    };
+                    if !axis_on {
+                        continue;
+                    }
+                    for p in curve_points(cfg, axis) {
+                        let Some(pos) = shake_curve_t_v_to_local_px(size, p.t, p.value) else {
                             continue;
-                        }
-                        for p in curve_points(cfg, axis) {
-                            let Some(pos) = shake_curve_t_v_to_local_px(size, p.t, p.value) else {
-                                continue;
-                            };
-                            let d = cursor_local.distance(pos);
-                            if d <= threshold {
-                                consider(&mut best, p.id, d);
-                            }
+                        };
+                        let d = cursor_local.distance(pos);
+                        if d <= threshold {
+                            consider(&mut best, p.id, d);
                         }
                     }
+                }
 
-                    if let Some((id, _)) = best {
-                        if remove_curve_point_by_id(cfg, id) {
-                            Some(id)
-                        } else {
-                            None
-                        }
+                if let Some((id, _)) = best {
+                    if remove_curve_point_by_id(cfg, id) {
+                        Some(id)
                     } else {
                         None
                     }
-                };
-
-                if let Some(id) = removed_id {
-                    if settings_state.selected_shake_curve_point_id == Some(id) {
-                        settings_state.selected_shake_curve_point_id = None;
-                    }
-                    if settings_state.dragging_shake_curve_point_id == Some(id) {
-                        settings_state.dragging_shake_curve_point_id = None;
-                    }
+                } else {
+                    None
                 }
+            };
+
+            if let Some(id) = removed_id {
+                if settings_state.selected_shake_curve_point_id == Some(id) {
+                    settings_state.selected_shake_curve_point_id = None;
+                }
+                if settings_state.dragging_shake_curve_point_id == Some(id) {
+                    settings_state.dragging_shake_curve_point_id = None;
+                }
+            }
         }
         ShakeCurveEditMode::None => {
             // Select/drag if clicking near a point; otherwise deselect.
@@ -1129,9 +1194,7 @@ pub fn drag_shake_curve_bezier_handle(
         return;
     };
 
-    let ui_camera = target_camera
-        .get()
-        .and_then(|e| cameras.get(e).ok());
+    let ui_camera = target_camera.get().and_then(|e| cameras.get(e).ok());
 
     let size_physical = computed.size();
     let inv_sf = computed.inverse_scale_factor();
@@ -1139,7 +1202,9 @@ pub fn drag_shake_curve_bezier_handle(
     let cursor_in_ui_target = ui_target_cursor_physical_px(window, ui_camera);
     let local = cursor_in_ui_target
         .and_then(|c| window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed));
-    let Some(local) = local else { return; };
+    let Some(local) = local else {
+        return;
+    };
     let Some((t, v)) = graph_local_px_to_t_v(size, local) else {
         return;
     };
@@ -1254,9 +1319,7 @@ pub fn drag_shake_curve_point(
         return;
     };
 
-    let ui_camera = target_camera
-        .get()
-        .and_then(|e| cameras.get(e).ok());
+    let ui_camera = target_camera.get().and_then(|e| cameras.get(e).ok());
 
     if mouse.just_released(MouseButton::Left) {
         settings_state.dragging_shake_curve_point_id = None;
@@ -1277,7 +1340,9 @@ pub fn drag_shake_curve_point(
     let cursor_in_ui_target = ui_target_cursor_physical_px(window, ui_camera);
     let local = cursor_in_ui_target
         .and_then(|c| window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed));
-    let Some(local) = local else { return; };
+    let Some(local) = local else {
+        return;
+    };
     let Some((t, v)) = graph_local_px_to_t_v(size, local) else {
         return;
     };
@@ -1295,10 +1360,16 @@ pub fn drag_shake_curve_point(
             let dt = points[i].t - old_t;
             let dv = points[i].value - old_v;
             if let Some(h) = points[i].in_handle {
-                points[i].in_handle = Some(Vec2::new((h.x + dt).clamp(0.0, 1.0), (h.y + dv).clamp(-1.0, 1.0)));
+                points[i].in_handle = Some(Vec2::new(
+                    (h.x + dt).clamp(0.0, 1.0),
+                    (h.y + dv).clamp(-1.0, 1.0),
+                ));
             }
             if let Some(h) = points[i].out_handle {
-                points[i].out_handle = Some(Vec2::new((h.x + dt).clamp(0.0, 1.0), (h.y + dv).clamp(-1.0, 1.0)));
+                points[i].out_handle = Some(Vec2::new(
+                    (h.x + dt).clamp(0.0, 1.0),
+                    (h.y + dv).clamp(-1.0, 1.0),
+                ));
             }
             sort_curve_points(points);
         }
@@ -1307,7 +1378,10 @@ pub fn drag_shake_curve_point(
 
 fn cubic_bezier(p0: f32, p1: f32, p2: f32, p3: f32, u: f32) -> f32 {
     let omt = 1.0 - u;
-    (omt * omt * omt) * p0 + (3.0 * omt * omt * u) * p1 + (3.0 * omt * u * u) * p2 + (u * u * u) * p3
+    (omt * omt * omt) * p0
+        + (3.0 * omt * omt * u) * p1
+        + (3.0 * omt * u * u) * p2
+        + (u * u * u) * p3
 }
 
 fn cubic_bezier_derivative(p0: f32, p1: f32, p2: f32, p3: f32, u: f32) -> f32 {
@@ -1330,7 +1404,8 @@ fn sample_curve(points: &[ShakeCurvePoint], t: f32) -> f32 {
 
     // Non-looping start->finish curve.
     let t = t.clamp(0.0, 1.0);
-    let mut points_sorted: std::borrow::Cow<'_, [ShakeCurvePoint]> = std::borrow::Cow::Borrowed(points);
+    let mut points_sorted: std::borrow::Cow<'_, [ShakeCurvePoint]> =
+        std::borrow::Cow::Borrowed(points);
     // If points are not sorted (should be), sort a copy.
     if !points.windows(2).all(|w| w[0].t <= w[1].t) {
         let mut tmp = points.to_vec();
@@ -1393,10 +1468,19 @@ pub fn sync_shake_curve_graph_ui(
     graph: Query<(Entity, &ComputedNode), With<ShakeCurveGraphPlotRoot>>,
     mut dots: Query<
         (&ShakeCurveGraphDot, &mut Node),
-        (Without<ShakeCurvePointHandle>, Without<ShakeCurveBezierHandle>),
+        (
+            Without<ShakeCurvePointHandle>,
+            Without<ShakeCurveBezierHandle>,
+        ),
     >,
     mut handles: Query<
-        (Entity, &ShakeCurvePointHandle, &mut Node, &mut BackgroundColor, &mut BorderColor),
+        (
+            Entity,
+            &ShakeCurvePointHandle,
+            &mut Node,
+            &mut BackgroundColor,
+            &mut BorderColor,
+        ),
         (Without<ShakeCurveGraphDot>, Without<ShakeCurveBezierHandle>),
     >,
     mut bezier_handles: Query<
@@ -1578,7 +1662,11 @@ pub fn sync_shake_curve_graph_ui(
                 if let Some(i) = pts.iter().position(|p| p.id == sel_id) {
                     let p = pts[i];
                     let prev = if i > 0 { Some(pts[i - 1]) } else { None };
-                    let next = if i + 1 < pts.len() { Some(pts[i + 1]) } else { None };
+                    let next = if i + 1 < pts.len() {
+                        Some(pts[i + 1])
+                    } else {
+                        None
+                    };
 
                     let axis_color = match axis {
                         ShakeAxis::X => theme.primary,
@@ -1601,12 +1689,14 @@ pub fn sync_shake_curve_graph_ui(
                         }
 
                         let handle_pos = match h.kind {
-                            ShakeCurveBezierHandleKind::In => {
-                                p.in_handle.or(default_in).unwrap_or(Vec2::new(p.t, p.value))
-                            }
-                            ShakeCurveBezierHandleKind::Out => {
-                                p.out_handle.or(default_out).unwrap_or(Vec2::new(p.t, p.value))
-                            }
+                            ShakeCurveBezierHandleKind::In => p
+                                .in_handle
+                                .or(default_in)
+                                .unwrap_or(Vec2::new(p.t, p.value)),
+                            ShakeCurveBezierHandleKind::Out => p
+                                .out_handle
+                                .or(default_out)
+                                .unwrap_or(Vec2::new(p.t, p.value)),
                         };
 
                         let Some(pos) =
@@ -1714,9 +1804,7 @@ pub fn handle_settings_reset_layout_click(
             node.top = Val::Px(settings_state.settings.quick_roll_panel_position.y);
         }
 
-        if let Err(e) = settings_state.settings.save() {
-            eprintln!("Failed to save settings: {e}");
-        }
+        settings_state.is_modified = true;
     }
 }
 
@@ -1817,7 +1905,8 @@ pub fn update_color_ui(
             field.error = true;
             field.error_text = Some("Invalid color format".to_string());
         }
-        field.supporting_text = Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+        field.supporting_text =
+            Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
     }
 
     // Sync highlight text field value (avoid stomping while the user is typing)
@@ -1835,9 +1924,8 @@ pub fn update_color_ui(
             field.error = true;
             field.error_text = Some("Invalid color format".to_string());
         }
-        field.supporting_text = Some(
-            "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string(),
-        );
+        field.supporting_text =
+            Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
     }
 }
 
@@ -1864,9 +1952,8 @@ pub fn handle_color_text_input(
                 settings_state.editing_color = parsed;
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text = Some(
-                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string(),
-                );
+                field.supporting_text =
+                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
             } else {
                 field.error = true;
                 field.error_text = Some("Invalid color format".to_string());
@@ -1882,9 +1969,8 @@ pub fn handle_color_text_input(
                 settings_state.editing_highlight_color = parsed;
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text = Some(
-                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string(),
-                );
+                field.supporting_text =
+                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
             } else {
                 field.error = true;
                 field.error_text = Some("Invalid color format".to_string());
@@ -1904,9 +1990,8 @@ pub fn handle_color_text_input(
                 field.has_content = !field.value.is_empty();
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text = Some(
-                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string(),
-                );
+                field.supporting_text =
+                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
             } else {
                 field.error = true;
                 field.error_text = Some("Invalid color format".to_string());
@@ -1925,9 +2010,8 @@ pub fn handle_color_text_input(
                 field.has_content = !field.value.is_empty();
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text = Some(
-                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string(),
-                );
+                field.supporting_text =
+                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
             } else {
                 field.error = true;
                 field.error_text = Some("Invalid color format".to_string());

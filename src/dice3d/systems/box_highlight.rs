@@ -1,7 +1,7 @@
 //! Systems for dice box hover highlighting.
 
-use bevy::prelude::*;
 use bevy::pbr::MeshMaterial3d;
+use bevy::prelude::*;
 
 use crate::dice3d::box_highlight::{DiceBoxFloor, DiceBoxHighlightMaterial};
 use crate::dice3d::throw_control::ThrowControlState;

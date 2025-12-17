@@ -4,20 +4,14 @@
 //! with a modified indicator (*) for unsaved changes.
 
 use bevy::prelude::*;
-use bevy_material_ui::prelude::{
-    ButtonClickEvent,
-    IconButtonClickEvent,
-    IconButtonBuilder,
-    IconButtonVariant,
-    MaterialButtonBuilder,
-    MaterialIconButton,
-    MaterialTheme,
-};
 use bevy_material_ui::icons::MaterialIcon;
 use bevy_material_ui::list::{
-    ListItemClickEvent,
-    ListBuilder, ListItemBody, ListItemBuilder, ListItemHeadline, ListItemSupportingText,
-    ListSelectionMode,
+    ListBuilder, ListItemBody, ListItemBuilder, ListItemClickEvent, ListItemHeadline,
+    ListItemSupportingText, ListSelectionMode,
+};
+use bevy_material_ui::prelude::{
+    ButtonClickEvent, IconButtonBuilder, IconButtonClickEvent, IconButtonVariant,
+    MaterialButtonBuilder, MaterialIconButton, MaterialTheme,
 };
 use bevy_material_ui::tokens::Spacing;
 
@@ -136,7 +130,9 @@ fn spawn_list_header(
                     .with_variant(IconButtonVariant::FilledTonal)
                     .icon_color(theme);
                 let mut icon_button = header.spawn((
-                    IconButtonBuilder::new(icon_name).filled_tonal().build(theme),
+                    IconButtonBuilder::new(icon_name)
+                        .filled_tonal()
+                        .build(theme),
                     RollAllStatsButton,
                 ));
 
@@ -224,7 +220,7 @@ fn spawn_character_list_items(
             .current_character_id
             .map(|id| id == char_entry.id)
             .unwrap_or(false);
-        
+
         // Show asterisk for modified current character
         let display_name = if is_current && character_data.is_modified {
             format!("{}*", char_entry.name)
@@ -249,37 +245,39 @@ fn spawn_character_list_items(
                 CharacterListItem { index: i },
             ))
             .with_children(|item| {
-                item
-                    .spawn((
-                        ListItemBody,
-                        Node {
-                            flex_direction: FlexDirection::Column,
-                            flex_grow: 1.0,
+                item.spawn((
+                    ListItemBody,
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        flex_grow: 1.0,
+                        ..default()
+                    },
+                ))
+                .with_children(|body| {
+                    body.spawn((
+                        ListItemHeadline,
+                        Text::new(&display_name),
+                        TextFont {
+                            font_size: 16.0,
                             ..default()
                         },
-                    ))
-                    .with_children(|body| {
-                        body.spawn((
-                            ListItemHeadline,
-                            Text::new(&display_name),
-                            TextFont {
-                                font_size: 16.0,
-                                ..default()
-                            },
-                            TextColor(theme.on_surface),
-                            CharacterListItemText { index: i, base_name },
-                        ));
+                        TextColor(theme.on_surface),
+                        CharacterListItemText {
+                            index: i,
+                            base_name,
+                        },
+                    ));
 
-                        body.spawn((
-                            ListItemSupportingText,
-                            Text::new(&supporting),
-                            TextFont {
-                                font_size: 14.0,
-                                ..default()
-                            },
-                            TextColor(theme.on_surface_variant),
-                        ));
-                    });
+                    body.spawn((
+                        ListItemSupportingText,
+                        Text::new(&supporting),
+                        TextFont {
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(theme.on_surface_variant),
+                    ));
+                });
             });
     }
 }
@@ -387,8 +385,10 @@ pub fn handle_roll_all_stats_click(
         // Update modifiers based on new attribute values
         sheet.modifiers.strength = Attributes::calculate_modifier(sheet.attributes.strength);
         sheet.modifiers.dexterity = Attributes::calculate_modifier(sheet.attributes.dexterity);
-        sheet.modifiers.constitution = Attributes::calculate_modifier(sheet.attributes.constitution);
-        sheet.modifiers.intelligence = Attributes::calculate_modifier(sheet.attributes.intelligence);
+        sheet.modifiers.constitution =
+            Attributes::calculate_modifier(sheet.attributes.constitution);
+        sheet.modifiers.intelligence =
+            Attributes::calculate_modifier(sheet.attributes.intelligence);
         sheet.modifiers.wisdom = Attributes::calculate_modifier(sheet.attributes.wisdom);
         sheet.modifiers.charisma = Attributes::calculate_modifier(sheet.attributes.charisma);
 

@@ -4,11 +4,11 @@
 //! such as stat fields, group headers, delete buttons, etc.
 
 use bevy::prelude::*;
-use bevy_material_ui::prelude::*;
 use bevy_material_ui::icons::MaterialIcon;
+use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::*;
+use crate::dice3d::types::*;
 
 // ============================================================================
 // Group Header Component
@@ -244,7 +244,9 @@ pub fn spawn_custom_field_row(
             if is_editing {
                 let label_text = field_name.to_string();
                 row.spawn((
-                    MaterialButtonBuilder::new(label_text.clone()).text().build(theme),
+                    MaterialButtonBuilder::new(label_text.clone())
+                        .text()
+                        .build(theme),
                     EditableLabelButton {
                         field: label_field.clone(),
                         current_name: field_name.to_string(),
@@ -319,7 +321,14 @@ pub fn spawn_custom_field_row(
 
                 // Delete button
                 if is_editing {
-                    spawn_delete_button(right, group_type, field_name, icon_assets, icon_font.clone(), theme);
+                    spawn_delete_button(
+                        right,
+                        group_type,
+                        field_name,
+                        icon_assets,
+                        icon_font.clone(),
+                        theme,
+                    );
                 }
             });
         });
@@ -433,7 +442,9 @@ pub fn spawn_group_add_button(
                     BackgroundColor(MD3_SURFACE_CONTAINER_HIGH),
                     BorderColor::from(MD3_OUTLINE),
                     BorderRadius::all(Val::Px(6.0)),
-                    NewEntryInput { group_type: group_type.clone() },
+                    NewEntryInput {
+                        group_type: group_type.clone(),
+                    },
                 ))
                 .with_children(|input| {
                     input.spawn((
@@ -462,7 +473,9 @@ pub fn spawn_group_add_button(
                         .icon_color(theme);
                     row.spawn((
                         IconButtonBuilder::new(icon_name).filled().build(theme),
-                        NewEntryConfirmButton { group_type: group_type.clone() },
+                        NewEntryConfirmButton {
+                            group_type: group_type.clone(),
+                        },
                     ))
                     .insert(Node {
                         width: Val::Px(32.0),
@@ -502,7 +515,9 @@ pub fn spawn_group_add_button(
                         .with_variant(IconButtonVariant::FilledTonal)
                         .icon_color(theme);
                     row.spawn((
-                        IconButtonBuilder::new(icon_name).filled_tonal().build(theme),
+                        IconButtonBuilder::new(icon_name)
+                            .filled_tonal()
+                            .build(theme),
                         NewEntryCancelButton { group_type },
                     ))
                     .insert(Node {

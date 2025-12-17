@@ -1,6 +1,6 @@
-use bevy::prelude::*;
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 /// Creates a D4 using the modern design where each face has 3 numbers.

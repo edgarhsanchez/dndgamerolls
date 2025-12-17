@@ -93,8 +93,16 @@ pub fn update_throw_from_mouse(
     // This makes any part of the box (including walls) count as "hovering the box".
     // Expand slightly so the visible wall thickness is included.
     let click_margin = 0.2;
-    let box_min = Vec3::new(BOX_MIN_X - click_margin, BOX_FLOOR_Y, BOX_MIN_Z - click_margin);
-    let box_max = Vec3::new(BOX_MAX_X + click_margin, BOX_TOP_Y, BOX_MAX_Z + click_margin);
+    let box_min = Vec3::new(
+        BOX_MIN_X - click_margin,
+        BOX_FLOOR_Y,
+        BOX_MIN_Z - click_margin,
+    );
+    let box_max = Vec3::new(
+        BOX_MAX_X + click_margin,
+        BOX_TOP_Y,
+        BOX_MAX_Z + click_margin,
+    );
     let is_over_box_volume = ray_intersects_aabb(ray.origin, ray_dir, box_min, box_max);
 
     // Next: find intersection with the box floor plane (Y = BOX_FLOOR_Y)

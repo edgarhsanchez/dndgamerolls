@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::super::*;
+use crate::dice3d::types::*;
 
 /// Spawn the Saving Throws tab content
 pub fn spawn_saving_throws_content(
@@ -25,10 +25,7 @@ pub fn spawn_saving_throws_content(
     // Card container
     parent
         .spawn((
-            CardBuilder::new()
-                .outlined()
-                .padding(16.0)
-                .build(theme),
+            CardBuilder::new().outlined().padding(16.0).build(theme),
             StatGroup {
                 name: "Saving Throws".to_string(),
                 group_type: group_type.clone(),
@@ -135,7 +132,9 @@ fn spawn_saving_throw_row(
                 padding: UiRect::vertical(Val::Px(4.0)),
                 ..default()
             },
-            SavingThrowRow { ability: ability_owned.clone() },
+            SavingThrowRow {
+                ability: ability_owned.clone(),
+            },
         ))
         .with_children(|row| {
             // Left: proficiency indicator and name
@@ -156,8 +155,16 @@ fn spawn_saving_throw_row(
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(if has_proficiency { MD3_SUCCESS } else { Color::NONE }),
-                    BorderColor::from(if has_proficiency { MD3_SUCCESS } else { MD3_OUTLINE }),
+                    BackgroundColor(if has_proficiency {
+                        MD3_SUCCESS
+                    } else {
+                        Color::NONE
+                    }),
+                    BorderColor::from(if has_proficiency {
+                        MD3_SUCCESS
+                    } else {
+                        MD3_OUTLINE
+                    }),
                     BorderRadius::all(Val::Px(4.0)),
                     ProficiencyCheckbox {
                         target: ProficiencyTarget::SavingThrow(ability_owned.clone()),
@@ -171,7 +178,9 @@ fn spawn_saving_throw_row(
                     // Editable label
                     let label_text = display_name.clone();
                     left.spawn((
-                        MaterialButtonBuilder::new(label_text.clone()).text().build(theme),
+                        MaterialButtonBuilder::new(label_text.clone())
+                            .text()
+                            .build(theme),
                         EditableLabelButton {
                             field: label_field.clone(),
                             current_name: ability_owned.clone(),
@@ -189,7 +198,11 @@ fn spawn_saving_throw_row(
                                 font_size: 14.0,
                                 ..default()
                             },
-                            TextColor(if has_proficiency { MD3_SUCCESS } else { theme.on_surface_variant }),
+                            TextColor(if has_proficiency {
+                                MD3_SUCCESS
+                            } else {
+                                theme.on_surface_variant
+                            }),
                             EditableLabelText { field: label_field },
                         ));
                     });
@@ -200,7 +213,11 @@ fn spawn_saving_throw_row(
                             font_size: 14.0,
                             ..default()
                         },
-                        TextColor(if has_proficiency { MD3_SUCCESS } else { MD3_ON_SURFACE_VARIANT }),
+                        TextColor(if has_proficiency {
+                            MD3_SUCCESS
+                        } else {
+                            MD3_ON_SURFACE_VARIANT
+                        }),
                     ));
                 }
             });

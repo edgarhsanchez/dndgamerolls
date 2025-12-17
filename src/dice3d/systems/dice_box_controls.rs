@@ -8,6 +8,61 @@ use rand::Rng;
 use crate::dice3d::throw_control::{BOX_MAX_X, BOX_WALL_HEIGHT};
 use crate::dice3d::types::*;
 
+/// Start/refresh a container shake animation using the current shake settings.
+///
+/// Returns `true` if shaking was started.
+pub fn start_container_shake(
+    shake_state: &ShakeState,
+    shake_config: &ContainerShakeConfig,
+    shake_anim: &mut ContainerShakeAnimation,
+    container_query: &Query<(Entity, &Transform), With<DiceBox>>,
+) -> bool {
+    let strength = shake_state.strength.clamp(0.0, 1.0);
+    if strength <= 0.001 {
+        return false;
+    }
+
+    // Start/refresh a quick left/right shake of the *container*.
+    // Use continuous motion so Rapier sees sustained kinematic velocity
+    // and the dice get pushed by moving walls/floor.
+    shake_anim.active = true;
+    shake_anim.elapsed = 0.0;
+    shake_anim.phase = 0.0;
+    shake_anim.amplitude = shake_config.distance.max(0.0) * strength;
+
+    // With the curve editor, offset is:
+    //   p(t) = (A) * curve(progress), where progress is [0..1] over duration.
+    // Max speed is approximately:
+    //   vmax ≈ A * max|d curve / d(progress)| / duration
+    const MAX_CONTAINER_SHAKE_SPEED: f32 = 12.0;
+
+    let amplitude = shake_anim.amplitude.max(0.0);
+
+    // Duration is explicitly configured in the shake curve settings.
+    let duration_from_ui = shake_config.duration_seconds.max(0.01);
+
+    // Cap max linear speed of the container based on the steepest curve segment.
+    let curve_slope = max_abs_curve_slope(&shake_config.curve_points_x)
+        .max(max_abs_curve_slope(&shake_config.curve_points_y))
+        .max(max_abs_curve_slope(&shake_config.curve_points_z));
+    let min_duration_from_speed_cap = if amplitude > 0.0001 {
+        (amplitude * curve_slope / MAX_CONTAINER_SHAKE_SPEED).max(0.0)
+    } else {
+        0.0
+    };
+
+    shake_anim.duration = duration_from_ui.max(min_duration_from_speed_cap);
+    shake_anim.base_positions.clear();
+
+    for (entity, transform) in container_query.iter() {
+        shake_anim
+            .base_positions
+            .insert(entity, transform.translation);
+    }
+
+    true
+}
+
 fn max_abs_curve_slope(points: &[ShakeCurvePoint]) -> f32 {
     if points.len() < 2 {
         return 0.0001;
@@ -32,7 +87,10 @@ fn max_abs_curve_slope(points: &[ShakeCurvePoint]) -> f32 {
 
 fn cubic_bezier(p0: f32, p1: f32, p2: f32, p3: f32, u: f32) -> f32 {
     let omt = 1.0 - u;
-    (omt * omt * omt) * p0 + (3.0 * omt * omt * u) * p1 + (3.0 * omt * u * u) * p2 + (u * u * u) * p3
+    (omt * omt * omt) * p0
+        + (3.0 * omt * omt * u) * p1
+        + (3.0 * omt * u * u) * p2
+        + (u * u * u) * p3
 }
 
 fn cubic_bezier_derivative(p0: f32, p1: f32, p2: f32, p3: f32, u: f32) -> f32 {
@@ -109,9 +167,7 @@ fn save_controls_panel_position(settings_state: &mut SettingsState, x: f32, y: f
     slot.x = x;
     slot.y = y;
 
-    if let Err(e) = settings_state.settings.save() {
-        eprintln!("Failed to save settings: {e}");
-    }
+    settings_state.is_modified = true;
 }
 
 /// Drag the dice container controls panel around by grabbing its handle.
@@ -121,8 +177,14 @@ pub fn handle_dice_box_controls_panel_drag(
     ui_state: Res<UiState>,
     mut settings_state: ResMut<SettingsState>,
     app_tab_bar: Query<&ComputedNode, With<AppTabBar>>,
-    handle_interaction: Query<(&Interaction, &ChildOf), (With<DiceBoxControlsPanelHandle>, Changed<Interaction>)>,
-    mut panel_query: Query<(&mut Node, &mut DiceBoxControlsPanelDragState, &ComputedNode), With<DiceBoxControlsPanelRoot>>,
+    handle_interaction: Query<
+        (&Interaction, &ChildOf),
+        (With<DiceBoxControlsPanelHandle>, Changed<Interaction>),
+    >,
+    mut panel_query: Query<
+        (&mut Node, &mut DiceBoxControlsPanelDragState, &ComputedNode),
+        With<DiceBoxControlsPanelRoot>,
+    >,
 ) {
     if ui_state.active_tab != AppTab::DiceRoller {
         return;
@@ -330,58 +392,17 @@ pub fn handle_dice_box_shake_box_click(
         return;
     }
 
-    let strength = shake_state.strength.clamp(0.0, 1.0);
-
     for event in click_events.read() {
         if buttons.get(event.entity).is_err() {
             continue;
         }
 
-        if strength <= 0.001 {
-            continue;
-        }
-
-        // Start/refresh a quick left/right shake of the *container*.
-        // Use continuous motion so Rapier sees sustained kinematic velocity
-        // and the dice get pushed by moving walls/floor.
-        shake_anim.active = true;
-        shake_anim.elapsed = 0.0;
-        shake_anim.phase = 0.0;
-        shake_anim.amplitude = shake_config.distance.max(0.0) * strength;
-
-        // Ramp up frequency so dice have time to "grip" and accelerate with the floor,
-        // then build enough relative velocity to smack into walls.
-        // Cap the *container*'s max linear shake speed so dice don't get launched out.
-        //
-        // With the curve editor, offset is:
-        //   p(t) = (A) * curve(progress), where progress is [0..1] over duration.
-        // Max speed is approximately:
-        //   vmax ≈ A * max|d curve / d(progress)| / duration
-        const MAX_CONTAINER_SHAKE_SPEED: f32 = 12.0;
-
-        let amplitude = shake_anim.amplitude.max(0.0);
-
-        // Duration is explicitly configured in the shake curve settings.
-        let duration_from_ui = shake_config.duration_seconds.max(0.01);
-
-        // Cap max linear speed of the container based on the steepest curve segment.
-        let curve_slope = max_abs_curve_slope(&shake_config.curve_points_x)
-            .max(max_abs_curve_slope(&shake_config.curve_points_y))
-            .max(max_abs_curve_slope(&shake_config.curve_points_z));
-        let min_duration_from_speed_cap = if amplitude > 0.0001 {
-            (amplitude * curve_slope / MAX_CONTAINER_SHAKE_SPEED).max(0.0)
-        } else {
-            0.0
-        };
-
-        shake_anim.duration = duration_from_ui.max(min_duration_from_speed_cap);
-        shake_anim.base_positions.clear();
-
-        for (entity, transform) in container_query.iter() {
-            shake_anim
-                .base_positions
-                .insert(entity, transform.translation);
-        }
+        let _started = start_container_shake(
+            &shake_state,
+            &shake_config,
+            &mut shake_anim,
+            &container_query,
+        );
     }
 }
 

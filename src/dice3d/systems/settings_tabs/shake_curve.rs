@@ -1,12 +1,12 @@
-use bevy::prelude::*;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
+use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy_material_ui::prelude::*;
 
 use crate::dice3d::types::{
     ContainerShakeConfig, SettingsState, ShakeAxis, ShakeCurveAxisChip, ShakeCurveEditMode,
-    ShakeCurveEditModeChip, ShakeCurveGraphDot, ShakeCurveGraphRoot, ShakeCurvePointHandle,
-    ShakeCurveGraphPlotRoot, ShakeDurationTextInput,
+    ShakeCurveEditModeChip, ShakeCurveGraphDot, ShakeCurveGraphPlotRoot, ShakeCurveGraphRoot,
+    ShakeCurvePointHandle, ShakeDurationTextInput,
 };
 
 fn spawn_filter_chip_in<M: Component>(
@@ -242,56 +242,56 @@ pub fn build_shake_curve_tab(
                         BackgroundColor(grid_color),
                     ));
 
-            // Sample dots for the curve line
-            const DOTS: usize = 80;
-            for axis in [ShakeAxis::X, ShakeAxis::Y, ShakeAxis::Z] {
-                let color = match axis {
-                    ShakeAxis::X => theme.primary,
-                    ShakeAxis::Y => theme.secondary,
-                    ShakeAxis::Z => theme.tertiary,
-                };
+                    // Sample dots for the curve line
+                    const DOTS: usize = 80;
+                    for axis in [ShakeAxis::X, ShakeAxis::Y, ShakeAxis::Z] {
+                        let color = match axis {
+                            ShakeAxis::X => theme.primary,
+                            ShakeAxis::Y => theme.secondary,
+                            ShakeAxis::Z => theme.tertiary,
+                        };
 
-                for i in 0..DOTS {
-                    plot.spawn((
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: Val::Px(0.0),
-                            top: Val::Px(0.0),
-                            width: Val::Px(3.0),
-                            height: Val::Px(3.0),
-                            ..default()
-                        },
-                        BackgroundColor(color),
-                        BorderRadius::all(Val::Px(2.0)),
-                        ShakeCurveGraphDot { axis, index: i },
-                    ));
-                }
-            }
+                        for i in 0..DOTS {
+                            plot.spawn((
+                                Node {
+                                    position_type: PositionType::Absolute,
+                                    left: Val::Px(0.0),
+                                    top: Val::Px(0.0),
+                                    width: Val::Px(3.0),
+                                    height: Val::Px(3.0),
+                                    ..default()
+                                },
+                                BackgroundColor(color),
+                                BorderRadius::all(Val::Px(2.0)),
+                                ShakeCurveGraphDot { axis, index: i },
+                            ));
+                        }
+                    }
 
-            // Draggable handles for existing points
-            for p in shake_config
-                .curve_points_x
-                .iter()
-                .chain(shake_config.curve_points_y.iter())
-                .chain(shake_config.curve_points_z.iter())
-            {
-                plot.spawn((
-                    Button,
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(0.0),
-                        top: Val::Px(0.0),
-                        width: Val::Px(14.0),
-                        height: Val::Px(14.0),
-                        ..default()
-                    },
-                    BackgroundColor(theme.surface_container_high),
-                    BorderRadius::all(Val::Px(7.0)),
-                    BorderColor::from(theme.outline_variant),
-                    Interaction::None,
-                    ShakeCurvePointHandle { id: p.id },
-                ));
-            }
+                    // Draggable handles for existing points
+                    for p in shake_config
+                        .curve_points_x
+                        .iter()
+                        .chain(shake_config.curve_points_y.iter())
+                        .chain(shake_config.curve_points_z.iter())
+                    {
+                        plot.spawn((
+                            Button,
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: Val::Px(0.0),
+                                top: Val::Px(0.0),
+                                width: Val::Px(14.0),
+                                height: Val::Px(14.0),
+                                ..default()
+                            },
+                            BackgroundColor(theme.surface_container_high),
+                            BorderRadius::all(Val::Px(7.0)),
+                            BorderColor::from(theme.outline_variant),
+                            Interaction::None,
+                            ShakeCurvePointHandle { id: p.id },
+                        ));
+                    }
                 });
         });
 }

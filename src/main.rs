@@ -15,54 +15,118 @@ use std::fs;
 use std::path::PathBuf;
 
 use dndgamerolls::dice3d::{
-    ensure_buttons_have_interaction,
-    apply_initial_settings, apply_initial_shake_config, check_dice_settled, handle_character_list_clicks,
-    handle_color_slider_changes, handle_color_text_input, handle_command_input, handle_delete_click,
-    handle_expertise_toggle, handle_group_add_click, handle_group_edit_toggle, handle_input,
-    handle_label_click, handle_new_character_click, handle_new_entry_cancel,
-    handle_new_entry_confirm, handle_new_entry_input, handle_quick_roll_clicks,
-    handle_command_history_item_clicks,
-    handle_roll_all_stats_click, handle_roll_attribute_click, handle_save_click,
-    handle_scroll_input, handle_settings_button_click,
-    handle_settings_cancel_click, handle_settings_ok_click, handle_stat_field_click,
-    handle_quick_roll_die_type_select_change,
-    handle_settings_reset_layout_click,
-    handle_shake_duration_text_input,
-    handle_shake_curve_chip_clicks,
-    handle_shake_curve_point_press,
-    handle_shake_curve_bezier_handle_press,
-    handle_shake_curve_graph_click_to_add_point,
+    animate_container_shake,
+    apply_initial_settings,
+    apply_initial_shake_config,
+    autosave_and_apply_shake_config,
+    check_dice_settled,
     drag_shake_curve_bezier_handle,
     drag_shake_curve_point,
-    sync_shake_curve_graph_ui,
-    sync_shake_curve_chip_ui,
-    autosave_and_apply_shake_config,
-    handle_strength_slider_changes, handle_tab_clicks,
-    handle_text_input, handle_zoom_slider_changes, handle_slider_group_drag, init_character_manager, init_contributors, load_icons,
-    manage_settings_modal, process_avatar_loads, rebuild_character_list_on_change,
-    rebuild_character_panel_on_change, rebuild_quick_roll_panel, refresh_character_display,
-    rebuild_command_history_panel,
-    request_avatars, rotate_camera, setup, setup_character_screen, setup_contributors_screen,
-    setup_dnd_info_screen, setup_tab_bar, update_avatar_images,
-    update_character_list_modified_indicator, update_color_ui, update_editing_display,
-    update_dice_box_highlight,
-    update_new_entry_input_display, update_results_display, update_save_button_appearance,
-    update_tab_styles, update_tab_visibility, update_throw_arrow, update_throw_from_mouse,
+    ensure_buttons_have_interaction,
+    handle_character_list_clicks,
+    handle_character_sheet_die_type_select_change,
+    handle_character_sheet_settings_button_click,
+    handle_character_sheet_settings_cancel_click,
+    handle_character_sheet_settings_save_click,
+    handle_color_slider_changes,
+    handle_color_text_input,
+    handle_command_history_item_clicks,
+    handle_command_input,
+    handle_default_roll_uses_shake_switch_change,
+    handle_delete_click,
     handle_dice_box_rotate_click,
     handle_dice_box_shake_box_click,
     handle_dice_box_toggle_container_click,
-    animate_container_shake,
+    handle_expertise_toggle,
+    handle_group_add_click,
+    handle_group_edit_toggle,
+    handle_input,
+    handle_label_click,
+    handle_new_character_click,
+    handle_new_entry_cancel,
+    handle_new_entry_confirm,
+    handle_new_entry_input,
+    handle_quick_roll_clicks,
+    handle_quick_roll_die_type_select_change,
+    handle_roll_all_stats_click,
+    handle_roll_attribute_click,
+    handle_roll_skill_click,
+    handle_save_click,
+    handle_scroll_input,
+    handle_settings_button_click,
+    handle_settings_cancel_click,
+    handle_settings_ok_click,
+    handle_settings_reset_layout_click,
+    handle_shake_curve_bezier_handle_press,
+    handle_shake_curve_chip_clicks,
+    handle_shake_curve_graph_click_to_add_point,
+    handle_shake_curve_point_press,
+    handle_shake_duration_text_input,
     handle_shake_slider_changes,
+    handle_slider_group_drag,
+    handle_stat_field_click,
+    handle_strength_slider_changes,
+    handle_tab_clicks,
+    handle_text_input,
+    handle_zoom_slider_changes,
+    init_character_manager,
+    init_contributors,
+    load_icons,
+    manage_character_sheet_settings_modal,
+    manage_settings_modal,
+    persist_settings_to_db,
+    process_avatar_loads,
+    rebuild_character_list_on_change,
+    rebuild_character_panel_on_change,
+    rebuild_command_history_panel,
+    rebuild_quick_roll_panel,
+    record_character_screen_roll_on_settle,
+    refresh_character_display,
+    request_avatars,
+    rotate_camera,
+    setup,
+    setup_character_screen,
+    setup_contributors_screen,
+    setup_dnd_info_screen,
+    setup_tab_bar,
+    sync_character_screen_roll_result_texts,
     sync_dice_container_mode_text,
     sync_dice_container_toggle_icon,
-    handle_roll_skill_click, record_character_screen_roll_on_settle, sync_character_screen_roll_result_texts,
-    handle_character_sheet_settings_button_click, manage_character_sheet_settings_modal,
-    handle_character_sheet_die_type_select_change, handle_character_sheet_settings_save_click,
-    handle_character_sheet_settings_cancel_click,
+    sync_shake_curve_chip_ui,
+    sync_shake_curve_graph_ui,
+    update_avatar_images,
+    update_character_list_modified_indicator,
+    update_color_ui,
+    update_dice_box_highlight,
+    update_editing_display,
+    update_new_entry_input_display,
+    update_results_display,
+    update_save_button_appearance,
+    update_tab_styles,
+    update_tab_visibility,
+    update_throw_arrow,
+    update_throw_from_mouse,
     // Character sheet tab systems
-    AddingEntryState, AvatarLoader, CharacterData, CommandHistory, CommandInput, DiceConfig,
-    DiceBoxHighlightMaterial, DiceContainerStyle, DiceResults, DiceType, GroupEditState, RollState, SettingsState, ShakeState, ContainerShakeAnimation, ContainerShakeConfig, ThrowControlState, UiState,
-    ZoomState, CharacterScreenRollBridge,
+    AddingEntryState,
+    AvatarLoader,
+    CharacterData,
+    CharacterScreenRollBridge,
+    CommandHistory,
+    CommandInput,
+    ContainerShakeAnimation,
+    ContainerShakeConfig,
+    DiceBoxHighlightMaterial,
+    DiceConfig,
+    DiceContainerStyle,
+    DiceResults,
+    DiceType,
+    GroupEditState,
+    RollState,
+    SettingsState,
+    ShakeState,
+    ThrowControlState,
+    UiState,
+    ZoomState,
 };
 
 /// DnD Game Rolls - CLI and 3D Visualization
@@ -328,7 +392,7 @@ fn run_3d_mode(cli: Cli) {
         let exe_dir = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-        
+
         let mut icon_paths = vec![
             // Development paths
             std::path::PathBuf::from("assets/icon.ico"),
@@ -336,7 +400,7 @@ fn run_3d_mode(cli: Cli) {
             // Installed path (icon in root of install folder)
             std::path::PathBuf::from("icon.ico"),
         ];
-        
+
         // Add paths relative to executable location
         if let Some(ref exe_dir) = exe_dir {
             icon_paths.push(exe_dir.join("assets/icon.ico"));
@@ -351,11 +415,7 @@ fn run_3d_mode(cli: Cli) {
                     if let Ok(img) = image::load_from_memory(&icon_data) {
                         let rgba = img.to_rgba8();
                         let (width, height) = rgba.dimensions();
-                        let icon = winit::window::Icon::from_rgba(
-                            rgba.into_raw(),
-                            width,
-                            height,
-                        );
+                        let icon = winit::window::Icon::from_rgba(rgba.into_raw(), width, height);
                         if let Ok(icon) = icon {
                             primary.set_window_icon(Some(icon));
                             return;
@@ -534,6 +594,7 @@ fn run_3d_mode(cli: Cli) {
                 handle_settings_cancel_click,
                 handle_settings_reset_layout_click,
                 handle_quick_roll_die_type_select_change,
+                handle_default_roll_uses_shake_switch_change,
                 handle_color_slider_changes,
                 handle_color_text_input,
                 handle_shake_duration_text_input,
@@ -550,7 +611,6 @@ fn run_3d_mode(cli: Cli) {
                 sync_shake_curve_chip_ui,
                 update_color_ui,
                 autosave_and_apply_shake_config.after(sync_shake_curve_graph_ui),
-
                 // Character sheet dice settings modal
                 handle_character_sheet_settings_button_click,
                 manage_character_sheet_settings_modal,
@@ -559,6 +619,7 @@ fn run_3d_mode(cli: Cli) {
                 handle_character_sheet_settings_cancel_click,
             ),
         )
+        .add_systems(PostUpdate, persist_settings_to_db)
         .run();
 }
 
@@ -1317,7 +1378,7 @@ mod tests {
     fn test_roll_d20_in_range() {
         for _ in 0..100 {
             let roll = roll_d20();
-            assert!(roll >= 1 && roll <= 20, "Roll {} out of range", roll);
+            assert!((1..=20).contains(&roll), "Roll {} out of range", roll);
         }
     }
 

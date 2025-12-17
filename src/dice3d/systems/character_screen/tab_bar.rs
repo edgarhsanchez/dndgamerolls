@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::*;
+use crate::dice3d::types::*;
 
 // ============================================================================
 // Tab Bar Setup
@@ -64,13 +64,45 @@ pub fn setup_tab_bar(
         ))
         .with_children(|parent| {
             // Dice Roller Tab
-            spawn_app_tab(parent, &icon_assets, &theme, "Dice Roller", IconType::Dice, 0, true);
+            spawn_app_tab(
+                parent,
+                &icon_assets,
+                &theme,
+                "Dice Roller",
+                IconType::Dice,
+                0,
+                true,
+            );
             // Character Sheet Tab
-            spawn_app_tab(parent, &icon_assets, &theme, "Character", IconType::Character, 1, false);
+            spawn_app_tab(
+                parent,
+                &icon_assets,
+                &theme,
+                "Character",
+                IconType::Character,
+                1,
+                false,
+            );
             // DnD Info Tab
-            spawn_app_tab(parent, &icon_assets, &theme, "DnD Info", IconType::Info, 2, false);
+            spawn_app_tab(
+                parent,
+                &icon_assets,
+                &theme,
+                "DnD Info",
+                IconType::Info,
+                2,
+                false,
+            );
             // Contributors Tab
-            spawn_app_tab(parent, &icon_assets, &theme, "Contributors", IconType::Character, 3, false);
+            spawn_app_tab(
+                parent,
+                &icon_assets,
+                &theme,
+                "Contributors",
+                IconType::Character,
+                3,
+                false,
+            );
         });
 }
 

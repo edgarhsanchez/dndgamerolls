@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::super::*;
+use crate::dice3d::types::*;
 
 /// Spawn the Basic Info tab content
 pub fn spawn_basic_info_content(
@@ -25,10 +25,7 @@ pub fn spawn_basic_info_content(
     // Card container
     parent
         .spawn((
-            CardBuilder::new()
-                .outlined()
-                .padding(16.0)
-                .build(theme),
+            CardBuilder::new().outlined().padding(16.0).build(theme),
             StatGroup {
                 name: "Basic Info".to_string(),
                 group_type: group_type.clone(),

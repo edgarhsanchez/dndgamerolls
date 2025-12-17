@@ -9,9 +9,11 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy_material_ui::icons::MaterialIconFont;
 use bevy_material_ui::prelude::*;
+use bevy_rapier3d::prelude::Velocity;
 
-use crate::dice3d::types::*;
 use super::*;
+use crate::dice3d::systems::dice_box_controls::start_container_shake;
+use crate::dice3d::types::*;
 
 // ============================================================================
 // UI Fixups
@@ -132,54 +134,54 @@ pub fn handle_stat_field_click(
         let Ok(stat_field) = stat_fields.get(event.entity) else {
             continue;
         };
-            // Don't allow editing values while the group is in edit mode
-            let is_group_editing = match &stat_field.field {
-                EditingField::CharacterName
-                | EditingField::CharacterClass
-                | EditingField::CharacterRace
-                | EditingField::CharacterLevel
-                | EditingField::CustomBasicInfo(_)
-                | EditingField::CustomBasicInfoLabel(_) => {
-                    edit_state.editing_groups.contains(&GroupType::BasicInfo)
-                }
-                EditingField::AttributeStrength
-                | EditingField::AttributeDexterity
-                | EditingField::AttributeConstitution
-                | EditingField::AttributeIntelligence
-                | EditingField::AttributeWisdom
-                | EditingField::AttributeCharisma
-                | EditingField::CustomAttribute(_)
-                | EditingField::CustomAttributeLabel(_) => {
-                    edit_state.editing_groups.contains(&GroupType::Attributes)
-                }
-                EditingField::ArmorClass
-                | EditingField::Initiative
-                | EditingField::Speed
-                | EditingField::HitPointsCurrent
-                | EditingField::HitPointsMaximum
-                | EditingField::ProficiencyBonus
-                | EditingField::CustomCombat(_)
-                | EditingField::CustomCombatLabel(_) => {
-                    edit_state.editing_groups.contains(&GroupType::Combat)
-                }
-                EditingField::SavingThrow(_) | EditingField::SavingThrowLabel(_) => {
-                    edit_state.editing_groups.contains(&GroupType::SavingThrows)
-                }
-                EditingField::Skill(_) | EditingField::SkillLabel(_) => {
-                    edit_state.editing_groups.contains(&GroupType::Skills)
-                }
-            };
-
-            if is_group_editing {
-                continue; // Skip value editing when in group edit mode
+        // Don't allow editing values while the group is in edit mode
+        let is_group_editing = match &stat_field.field {
+            EditingField::CharacterName
+            | EditingField::CharacterClass
+            | EditingField::CharacterRace
+            | EditingField::CharacterLevel
+            | EditingField::CustomBasicInfo(_)
+            | EditingField::CustomBasicInfoLabel(_) => {
+                edit_state.editing_groups.contains(&GroupType::BasicInfo)
             }
+            EditingField::AttributeStrength
+            | EditingField::AttributeDexterity
+            | EditingField::AttributeConstitution
+            | EditingField::AttributeIntelligence
+            | EditingField::AttributeWisdom
+            | EditingField::AttributeCharisma
+            | EditingField::CustomAttribute(_)
+            | EditingField::CustomAttributeLabel(_) => {
+                edit_state.editing_groups.contains(&GroupType::Attributes)
+            }
+            EditingField::ArmorClass
+            | EditingField::Initiative
+            | EditingField::Speed
+            | EditingField::HitPointsCurrent
+            | EditingField::HitPointsMaximum
+            | EditingField::ProficiencyBonus
+            | EditingField::CustomCombat(_)
+            | EditingField::CustomCombatLabel(_) => {
+                edit_state.editing_groups.contains(&GroupType::Combat)
+            }
+            EditingField::SavingThrow(_) | EditingField::SavingThrowLabel(_) => {
+                edit_state.editing_groups.contains(&GroupType::SavingThrows)
+            }
+            EditingField::Skill(_) | EditingField::SkillLabel(_) => {
+                edit_state.editing_groups.contains(&GroupType::Skills)
+            }
+        };
 
-            // Get current value
-            let current_value = get_field_value(&character_data, &stat_field.field);
-            
-            text_input.active_field = Some(stat_field.field.clone());
-            text_input.current_text = current_value.clone();
-            text_input.cursor_position = current_value.len();
+        if is_group_editing {
+            continue; // Skip value editing when in group edit mode
+        }
+
+        // Get current value
+        let current_value = get_field_value(&character_data, &stat_field.field);
+
+        text_input.active_field = Some(stat_field.field.clone());
+        text_input.current_text = current_value.clone();
+        text_input.cursor_position = current_value.len();
     }
 }
 
@@ -195,7 +197,9 @@ pub fn handle_label_click(
     }
 
     for event in click_events.read() {
-        let Ok(label_button) = buttons.get(event.entity) else { continue };
+        let Ok(label_button) = buttons.get(event.entity) else {
+            continue;
+        };
         text_input.active_field = Some(label_button.field.clone());
         text_input.current_text = label_button.current_name.clone();
         text_input.cursor_position = label_button.current_name.len();
@@ -238,7 +242,12 @@ pub fn handle_text_input(
     // Handle enter to confirm editing
     if keyboard.just_pressed(KeyCode::Enter) {
         let current_text = text_input.current_text.clone();
-        let _ = apply_field_value(&mut character_data, &mut text_input, &active_field, &current_text);
+        let _ = apply_field_value(
+            &mut character_data,
+            &mut text_input,
+            &active_field,
+            &current_text,
+        );
         text_input.active_field = None;
         text_input.current_text.clear();
         return;
@@ -251,7 +260,8 @@ pub fn handle_text_input(
     }
 
     // Check if shift is pressed for uppercase letters
-    let shift_pressed = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+    let shift_pressed =
+        keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
     // Handle character input
     for event in char_events.read() {
@@ -270,7 +280,9 @@ pub fn handle_text_input(
                     | EditingField::ArmorClass
                     | EditingField::Speed
                     | EditingField::HitPointsCurrent
-                    | EditingField::HitPointsMaximum => key_code.is_ascii_digit() || key_code == '-',
+                    | EditingField::HitPointsMaximum => {
+                        key_code.is_ascii_digit() || key_code == '-'
+                    }
                     EditingField::Initiative
                     | EditingField::ProficiencyBonus
                     | EditingField::Skill(_)
@@ -335,12 +347,22 @@ impl KeyCodeToChar for KeyCode {
             KeyCode::Space => Some(' '),
             KeyCode::Minus | KeyCode::NumpadSubtract => Some('-'),
             KeyCode::Equal | KeyCode::NumpadAdd => {
-                if shift_pressed { Some('+') } else { Some('=') }
+                if shift_pressed {
+                    Some('+')
+                } else {
+                    Some('=')
+                }
             }
             _ => None,
         };
 
-        base_char.map(|c| if shift_pressed && c.is_ascii_lowercase() { c.to_ascii_uppercase() } else { c })
+        base_char.map(|c| {
+            if shift_pressed && c.is_ascii_lowercase() {
+                c.to_ascii_uppercase()
+            } else {
+                c
+            }
+        })
     }
 }
 
@@ -352,7 +374,10 @@ impl KeyCodeToChar for KeyCode {
 pub fn update_editing_display(
     text_input: Res<TextInputState>,
     mut field_values: Query<(&StatFieldValue, &mut Text, &mut TextColor)>,
-    mut label_texts: Query<(&EditableLabelText, &mut Text, &mut TextColor), Without<StatFieldValue>>,
+    mut label_texts: Query<
+        (&EditableLabelText, &mut Text, &mut TextColor),
+        Without<StatFieldValue>,
+    >,
 ) {
     if !text_input.is_changed() {
         return;
@@ -402,7 +427,9 @@ pub fn handle_group_edit_toggle(
     }
 
     for event in click_events.read() {
-        let Ok(button) = button_query.get(event.entity) else { continue };
+        let Ok(button) = button_query.get(event.entity) else {
+            continue;
+        };
         if edit_state.editing_groups.contains(&button.group_type) {
             edit_state.editing_groups.remove(&button.group_type);
         } else {
@@ -423,7 +450,9 @@ pub fn handle_group_add_click(
     }
 
     for event in click_events.read() {
-        let Ok(button) = buttons.get(event.entity) else { continue };
+        let Ok(button) = buttons.get(event.entity) else {
+            continue;
+        };
         adding_state.adding_to = Some(button.group_type.clone());
         adding_state.new_entry_name.clear();
         adding_state.new_entry_value.clear();
@@ -443,7 +472,9 @@ pub fn handle_new_entry_confirm(
     }
 
     for event in click_events.read() {
-        let Ok(button) = buttons.get(event.entity) else { continue };
+        let Ok(button) = buttons.get(event.entity) else {
+            continue;
+        };
 
         if !adding_state.new_entry_name.is_empty() {
             // Add the new entry to the character sheet
@@ -470,7 +501,10 @@ pub fn handle_new_entry_confirm(
                     GroupType::SavingThrows => {
                         sheet.saving_throws.insert(
                             adding_state.new_entry_name.clone(),
-                            SavingThrow { modifier: 0, proficient: false },
+                            SavingThrow {
+                                modifier: 0,
+                                proficient: false,
+                            },
                         );
                     }
                     GroupType::Skills => {
@@ -538,7 +572,8 @@ pub fn handle_new_entry_input(
     }
 
     // Handle character input
-    let shift_pressed = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+    let shift_pressed =
+        keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     for event in char_events.read() {
         if event.state.is_pressed() {
             if let Some(c) = event.key_code.to_char(shift_pressed) {
@@ -592,7 +627,9 @@ pub fn handle_delete_click(
     }
 
     for event in click_events.read() {
-        let Ok(button) = buttons.get(event.entity) else { continue };
+        let Ok(button) = buttons.get(event.entity) else {
+            continue;
+        };
         if let Some(sheet) = &mut character_data.sheet {
             match &button.group_type {
                 GroupType::BasicInfo => {
@@ -708,36 +745,48 @@ pub fn update_save_button_appearance(
 // Roll Attribute Handler
 // ============================================================================
 
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct CharacterSheetRollParams<'w, 's> {
+    pub character_data: Res<'w, CharacterData>,
+    pub character_manager: Res<'w, CharacterManager>,
+    pub bridge: ResMut<'w, CharacterScreenRollBridge>,
+    pub commands: Commands<'w, 's>,
+    pub meshes: ResMut<'w, Assets<Mesh>>,
+    pub materials: ResMut<'w, Assets<StandardMaterial>>,
+    pub dice_config: ResMut<'w, DiceConfig>,
+    pub dice_results: ResMut<'w, DiceResults>,
+    pub roll_state: ResMut<'w, RollState>,
+    pub ui_state: ResMut<'w, UiState>,
+    pub snackbar: MessageWriter<'w, ShowSnackbar>,
+    pub dice_query: Query<'w, 's, Entity, With<Die>>,
+    pub settings_state: Res<'w, SettingsState>,
+
+    pub shake_state: Res<'w, ShakeState>,
+    pub shake_config: Res<'w, ContainerShakeConfig>,
+    pub shake_anim: ResMut<'w, ContainerShakeAnimation>,
+    pub container_query: Query<'w, 's, (Entity, &'static Transform), With<DiceBox>>,
+}
+
 /// Handle clicking on attribute roll buttons
 pub fn handle_roll_attribute_click(
     mut click_events: MessageReader<IconButtonClickEvent>,
     buttons: Query<&RollAttributeButton>,
-    character_data: Res<CharacterData>,
-    character_manager: Res<CharacterManager>,
-    mut bridge: ResMut<CharacterScreenRollBridge>,
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut dice_config: ResMut<DiceConfig>,
-    mut dice_results: ResMut<DiceResults>,
-    mut roll_state: ResMut<RollState>,
-    mut ui_state: ResMut<UiState>,
-    mut snackbar: MessageWriter<ShowSnackbar>,
-    dice_query: Query<Entity, With<Die>>,
-    settings_state: Res<SettingsState>,
+    mut params: CharacterSheetRollParams,
 ) {
-    if settings_state.show_modal {
+    if params.settings_state.show_modal {
         return;
     }
 
     // Only allow these dice buttons on the character sheet screen.
-    if ui_state.active_tab != AppTab::CharacterSheet {
+    if params.ui_state.active_tab != AppTab::CharacterSheet {
         return;
     }
 
     for event in click_events.read() {
-        let Ok(button) = buttons.get(event.entity) else { continue };
-        if let Some(sheet) = &character_data.sheet {
+        let Ok(button) = buttons.get(event.entity) else {
+            continue;
+        };
+        if let Some(sheet) = &params.character_data.sheet {
             // Get the modifier for this attribute
             let modifier = match button.attribute.to_lowercase().as_str() {
                 "strength" => sheet.modifiers.strength,
@@ -748,36 +797,47 @@ pub fn handle_roll_attribute_click(
                 "charisma" => sheet.modifiers.charisma,
                 _ => {
                     // Check custom attributes
-                    sheet.custom_attributes
+                    sheet
+                        .custom_attributes
                         .get(&button.attribute)
                         .map(|&score| Attributes::calculate_modifier(score))
                         .unwrap_or(0)
                 }
             };
 
-            let die_type = settings_state
+            let die_type = params
+                .settings_state
                 .settings
                 .character_sheet_default_die
                 .to_dice_type();
 
+            let use_shake = params.settings_state.settings.default_roll_uses_shake;
+
             start_character_sheet_roll(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                &mut dice_config,
-                &mut dice_results,
-                &mut roll_state,
-                &mut ui_state,
-                &mut bridge,
-                &character_manager,
-                &dice_query,
+                &mut params.commands,
+                &mut params.meshes,
+                &mut params.materials,
+                &mut params.dice_config,
+                &mut params.dice_results,
+                &mut params.roll_state,
+                &mut params.ui_state,
+                &mut params.bridge,
+                &params.character_manager,
+                &params.dice_query,
+                &params.shake_state,
+                &params.shake_config,
+                &mut params.shake_anim,
+                &params.container_query,
+                use_shake,
                 die_type,
                 modifier,
                 format!("{} Check", button.attribute),
                 CharacterScreenRollTarget::Attribute(button.attribute.clone()),
             );
 
-            snackbar.write(ShowSnackbar::message("Dice roll started").duration(2.0));
+            params
+                .snackbar
+                .write(ShowSnackbar::message("Dice roll started").duration(2.0));
         }
     }
 }
@@ -786,31 +846,23 @@ pub fn handle_roll_attribute_click(
 pub fn handle_roll_skill_click(
     mut click_events: MessageReader<IconButtonClickEvent>,
     buttons: Query<&RollSkillButton>,
-    character_data: Res<CharacterData>,
-    character_manager: Res<CharacterManager>,
-    mut bridge: ResMut<CharacterScreenRollBridge>,
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut dice_config: ResMut<DiceConfig>,
-    mut dice_results: ResMut<DiceResults>,
-    mut roll_state: ResMut<RollState>,
-    mut ui_state: ResMut<UiState>,
-    mut snackbar: MessageWriter<ShowSnackbar>,
-    dice_query: Query<Entity, With<Die>>,
-    settings_state: Res<SettingsState>,
+    mut params: CharacterSheetRollParams,
 ) {
-    if settings_state.show_modal {
+    if params.settings_state.show_modal {
         return;
     }
 
-    if ui_state.active_tab != AppTab::CharacterSheet {
+    if params.ui_state.active_tab != AppTab::CharacterSheet {
         return;
     }
 
     for event in click_events.read() {
-        let Ok(button) = buttons.get(event.entity) else { continue };
-        let Some(sheet) = &character_data.sheet else { continue };
+        let Ok(button) = buttons.get(event.entity) else {
+            continue;
+        };
+        let Some(sheet) = &params.character_data.sheet else {
+            continue;
+        };
 
         let modifier = sheet
             .skills
@@ -818,29 +870,39 @@ pub fn handle_roll_skill_click(
             .map(|s| s.modifier)
             .unwrap_or(0);
 
-        let die_type = settings_state
+        let die_type = params
+            .settings_state
             .settings
             .character_sheet_default_die
             .to_dice_type();
 
+        let use_shake = params.settings_state.settings.default_roll_uses_shake;
+
         start_character_sheet_roll(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &mut dice_config,
-            &mut dice_results,
-            &mut roll_state,
-            &mut ui_state,
-            &mut bridge,
-            &character_manager,
-            &dice_query,
+            &mut params.commands,
+            &mut params.meshes,
+            &mut params.materials,
+            &mut params.dice_config,
+            &mut params.dice_results,
+            &mut params.roll_state,
+            &mut params.ui_state,
+            &mut params.bridge,
+            &params.character_manager,
+            &params.dice_query,
+            &params.shake_state,
+            &params.shake_config,
+            &mut params.shake_anim,
+            &params.container_query,
+            use_shake,
             die_type,
             modifier,
             format!("{} Skill", button.skill),
             CharacterScreenRollTarget::Skill(button.skill.clone()),
         );
 
-        snackbar.write(ShowSnackbar::message("Dice roll started").duration(2.0));
+        params
+            .snackbar
+            .write(ShowSnackbar::message("Dice roll started").duration(2.0));
     }
 }
 
@@ -855,6 +917,11 @@ fn start_character_sheet_roll(
     bridge: &mut ResMut<CharacterScreenRollBridge>,
     character_manager: &CharacterManager,
     dice_query: &Query<Entity, With<Die>>,
+    shake_state: &ShakeState,
+    shake_config: &ContainerShakeConfig,
+    shake_anim: &mut ResMut<ContainerShakeAnimation>,
+    container_query: &Query<(Entity, &Transform), With<DiceBox>>,
+    use_shake: bool,
     die_type: DiceType,
     modifier: i32,
     modifier_name: String,
@@ -874,7 +941,18 @@ fn start_character_sheet_roll(
 
     // Spawn new dice
     let position = super::super::calculate_dice_position(0, 1);
-    let _die_entity = super::super::spawn_die(commands, meshes, materials, die_type, position);
+    let die_entity = super::super::spawn_die(commands, meshes, materials, die_type, position);
+
+    if use_shake {
+        // No initial impulse; the shake animation will provide motion.
+        commands.entity(die_entity).insert(Velocity {
+            linvel: Vec3::ZERO,
+            angvel: Vec3::ZERO,
+        });
+
+        let _started =
+            start_container_shake(shake_state, shake_config, shake_anim, container_query);
+    }
 
     // Mark as rolling
     roll_state.rolling = true;
@@ -917,11 +995,7 @@ pub fn record_character_screen_roll_on_settle(
         return;
     }
 
-    let dice_total: i32 = dice_results
-        .results
-        .iter()
-        .map(|(_, v)| *v as i32)
-        .sum();
+    let dice_total: i32 = dice_results.results.iter().map(|(_, v)| *v as i32).sum();
 
     match target {
         CharacterScreenRollTarget::Attribute(attr) => {
@@ -942,8 +1016,7 @@ pub fn record_character_screen_roll_on_settle(
                     }
                     "intelligence" => {
                         sheet.attributes.intelligence = dice_total;
-                        sheet.modifiers.intelligence =
-                            Attributes::calculate_modifier(dice_total);
+                        sheet.modifiers.intelligence = Attributes::calculate_modifier(dice_total);
                     }
                     "wisdom" => {
                         sheet.attributes.wisdom = dice_total;
@@ -1042,7 +1115,8 @@ pub fn handle_character_sheet_settings_button_click(
 
         settings_state.show_modal = true;
         settings_state.modal_kind = ActiveModalKind::CharacterSheetDiceSettings;
-        settings_state.character_sheet_editing_die = settings_state.settings.character_sheet_default_die;
+        settings_state.character_sheet_editing_die =
+            settings_state.settings.character_sheet_default_die;
     }
 }
 
@@ -1185,9 +1259,7 @@ fn spawn_character_sheet_settings_modal(
                             })
                             .with_children(|slot| {
                                 slot.spawn((
-                                    MaterialButtonBuilder::new("Cancel")
-                                        .outlined()
-                                        .build(theme),
+                                    MaterialButtonBuilder::new("Cancel").outlined().build(theme),
                                     CharacterSheetSettingsCancelButton,
                                 ))
                                 .with_children(|btn| {
@@ -1276,8 +1348,9 @@ pub fn handle_character_sheet_settings_save_click(
             continue;
         }
 
-        settings_state.settings.character_sheet_default_die = settings_state.character_sheet_editing_die;
-        let _ = settings_state.settings.save();
+        settings_state.settings.character_sheet_default_die =
+            settings_state.character_sheet_editing_die;
+        settings_state.is_modified = true;
         settings_state.show_modal = false;
         settings_state.modal_kind = ActiveModalKind::None;
     }
@@ -1352,7 +1425,11 @@ pub fn rebuild_character_list_on_change(
         return;
     };
 
-    fn despawn_recursive(commands: &mut Commands, entity: Entity, children_query: &Query<&Children>) {
+    fn despawn_recursive(
+        commands: &mut Commands,
+        entity: Entity,
+        children_query: &Query<&Children>,
+    ) {
         if let Ok(children) = children_query.get(entity) {
             for child in children.iter() {
                 despawn_recursive(commands, child, children_query);
@@ -1411,7 +1488,11 @@ pub fn rebuild_character_panel_on_change(
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
     let icon_font = icon_font.0.clone();
 
-    fn despawn_recursive(commands: &mut Commands, entity: Entity, children_query: &Query<&Children>) {
+    fn despawn_recursive(
+        commands: &mut Commands,
+        entity: Entity,
+        children_query: &Query<&Children>,
+    ) {
         if let Ok(children) = children_query.get(entity) {
             for child in children.iter() {
                 despawn_recursive(commands, child, children_query);
@@ -1446,11 +1527,9 @@ pub fn refresh_character_display(
     character_data: Res<CharacterData>,
     // UI refresh logic
 ) {
-    if !character_manager.is_changed() && !character_data.is_changed() {
-        return;
+    if character_manager.is_changed() || character_data.is_changed() {
+        // Refresh logic would update all displayed values
     }
-
-    // Refresh logic would update all displayed values
 }
 
 // ============================================================================
@@ -1477,16 +1556,46 @@ fn get_field_value(character_data: &CharacterData, field: &EditingField) -> Stri
         EditingField::ArmorClass => sheet.combat.armor_class.to_string(),
         EditingField::Initiative => format_modifier(sheet.combat.initiative),
         EditingField::Speed => sheet.combat.speed.to_string(),
-        EditingField::HitPointsCurrent => sheet.combat.hit_points.as_ref().map(|hp| hp.current.to_string()).unwrap_or_default(),
-        EditingField::HitPointsMaximum => sheet.combat.hit_points.as_ref().map(|hp| hp.maximum.to_string()).unwrap_or_default(),
+        EditingField::HitPointsCurrent => sheet
+            .combat
+            .hit_points
+            .as_ref()
+            .map(|hp| hp.current.to_string())
+            .unwrap_or_default(),
+        EditingField::HitPointsMaximum => sheet
+            .combat
+            .hit_points
+            .as_ref()
+            .map(|hp| hp.maximum.to_string())
+            .unwrap_or_default(),
         EditingField::ProficiencyBonus => format!("+{}", sheet.proficiency_bonus),
-        EditingField::Skill(name) => sheet.skills.get(name).map(|s| format_modifier(s.modifier)).unwrap_or_default(),
-        EditingField::SavingThrow(name) => sheet.saving_throws.get(name).map(|s| format_modifier(s.modifier)).unwrap_or_default(),
-        EditingField::CustomBasicInfo(name) => sheet.custom_basic_info.get(name).cloned().unwrap_or_default(),
-        EditingField::CustomAttribute(name) => sheet.custom_attributes.get(name).map(|v| v.to_string()).unwrap_or_default(),
-        EditingField::CustomCombat(name) => sheet.custom_combat.get(name).cloned().unwrap_or_default(),
-        EditingField::SkillLabel(name) | EditingField::SavingThrowLabel(name) 
-        | EditingField::CustomBasicInfoLabel(name) | EditingField::CustomAttributeLabel(name) 
+        EditingField::Skill(name) => sheet
+            .skills
+            .get(name)
+            .map(|s| format_modifier(s.modifier))
+            .unwrap_or_default(),
+        EditingField::SavingThrow(name) => sheet
+            .saving_throws
+            .get(name)
+            .map(|s| format_modifier(s.modifier))
+            .unwrap_or_default(),
+        EditingField::CustomBasicInfo(name) => sheet
+            .custom_basic_info
+            .get(name)
+            .cloned()
+            .unwrap_or_default(),
+        EditingField::CustomAttribute(name) => sheet
+            .custom_attributes
+            .get(name)
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+        EditingField::CustomCombat(name) => {
+            sheet.custom_combat.get(name).cloned().unwrap_or_default()
+        }
+        EditingField::SkillLabel(name)
+        | EditingField::SavingThrowLabel(name)
+        | EditingField::CustomBasicInfoLabel(name)
+        | EditingField::CustomAttributeLabel(name)
         | EditingField::CustomCombatLabel(name) => name.clone(),
     }
 }
@@ -1515,98 +1624,100 @@ fn apply_field_value(
                     sheet.character.level = level;
                 }
             }
-        EditingField::AttributeStrength => {
-            if let Ok(v) = value.parse() {
-                sheet.attributes.strength = v;
-                sheet.modifiers.strength = Attributes::calculate_modifier(v);
-            }
-        }
-        EditingField::AttributeDexterity => {
-            if let Ok(v) = value.parse() {
-                sheet.attributes.dexterity = v;
-                sheet.modifiers.dexterity = Attributes::calculate_modifier(v);
-            }
-        }
-        EditingField::AttributeConstitution => {
-            if let Ok(v) = value.parse() {
-                sheet.attributes.constitution = v;
-                sheet.modifiers.constitution = Attributes::calculate_modifier(v);
-            }
-        }
-        EditingField::AttributeIntelligence => {
-            if let Ok(v) = value.parse() {
-                sheet.attributes.intelligence = v;
-                sheet.modifiers.intelligence = Attributes::calculate_modifier(v);
-            }
-        }
-        EditingField::AttributeWisdom => {
-            if let Ok(v) = value.parse() {
-                sheet.attributes.wisdom = v;
-                sheet.modifiers.wisdom = Attributes::calculate_modifier(v);
-            }
-        }
-        EditingField::AttributeCharisma => {
-            if let Ok(v) = value.parse() {
-                sheet.attributes.charisma = v;
-                sheet.modifiers.charisma = Attributes::calculate_modifier(v);
-            }
-        }
-        EditingField::ArmorClass => {
-            if let Ok(v) = value.parse() {
-                sheet.combat.armor_class = v;
-            }
-        }
-        EditingField::Initiative => {
-            if let Ok(v) = parse_modifier(value) {
-                sheet.combat.initiative = v;
-            }
-        }
-        EditingField::Speed => {
-            if let Ok(v) = value.trim_end_matches(" ft").parse() {
-                sheet.combat.speed = v;
-            }
-        }
-        EditingField::HitPointsCurrent => {
-            if let Some(hp) = &mut sheet.combat.hit_points {
+            EditingField::AttributeStrength => {
                 if let Ok(v) = value.parse() {
-                    hp.current = v;
+                    sheet.attributes.strength = v;
+                    sheet.modifiers.strength = Attributes::calculate_modifier(v);
                 }
             }
-        }
-        EditingField::HitPointsMaximum => {
-            if let Some(hp) = &mut sheet.combat.hit_points {
+            EditingField::AttributeDexterity => {
                 if let Ok(v) = value.parse() {
-                    hp.maximum = v;
+                    sheet.attributes.dexterity = v;
+                    sheet.modifiers.dexterity = Attributes::calculate_modifier(v);
                 }
             }
-        }
-        EditingField::ProficiencyBonus => {
-            if let Ok(v) = parse_modifier(value) {
-                sheet.proficiency_bonus = v;
+            EditingField::AttributeConstitution => {
+                if let Ok(v) = value.parse() {
+                    sheet.attributes.constitution = v;
+                    sheet.modifiers.constitution = Attributes::calculate_modifier(v);
+                }
             }
-        }
-        EditingField::Skill(name) => {
-            if let Some(skill) = sheet.skills.get_mut(name) {
+            EditingField::AttributeIntelligence => {
+                if let Ok(v) = value.parse() {
+                    sheet.attributes.intelligence = v;
+                    sheet.modifiers.intelligence = Attributes::calculate_modifier(v);
+                }
+            }
+            EditingField::AttributeWisdom => {
+                if let Ok(v) = value.parse() {
+                    sheet.attributes.wisdom = v;
+                    sheet.modifiers.wisdom = Attributes::calculate_modifier(v);
+                }
+            }
+            EditingField::AttributeCharisma => {
+                if let Ok(v) = value.parse() {
+                    sheet.attributes.charisma = v;
+                    sheet.modifiers.charisma = Attributes::calculate_modifier(v);
+                }
+            }
+            EditingField::ArmorClass => {
+                if let Ok(v) = value.parse() {
+                    sheet.combat.armor_class = v;
+                }
+            }
+            EditingField::Initiative => {
                 if let Ok(v) = parse_modifier(value) {
-                    skill.modifier = v;
+                    sheet.combat.initiative = v;
                 }
             }
-        }
-        EditingField::SavingThrow(name) => {
-            if let Some(save) = sheet.saving_throws.get_mut(name) {
+            EditingField::Speed => {
+                if let Ok(v) = value.trim_end_matches(" ft").parse() {
+                    sheet.combat.speed = v;
+                }
+            }
+            EditingField::HitPointsCurrent => {
+                if let Some(hp) = &mut sheet.combat.hit_points {
+                    if let Ok(v) = value.parse() {
+                        hp.current = v;
+                    }
+                }
+            }
+            EditingField::HitPointsMaximum => {
+                if let Some(hp) = &mut sheet.combat.hit_points {
+                    if let Ok(v) = value.parse() {
+                        hp.maximum = v;
+                    }
+                }
+            }
+            EditingField::ProficiencyBonus => {
                 if let Ok(v) = parse_modifier(value) {
-                    save.modifier = v;
+                    sheet.proficiency_bonus = v;
                 }
             }
-        }
-        EditingField::CustomBasicInfo(name) => {
-            sheet.custom_basic_info.insert(name.clone(), value.to_string());
-        }
-        EditingField::CustomAttribute(name) => {
-            if let Ok(v) = value.parse() {
-                sheet.custom_attributes.insert(name.clone(), v);
+            EditingField::Skill(name) => {
+                if let Some(skill) = sheet.skills.get_mut(name) {
+                    if let Ok(v) = parse_modifier(value) {
+                        skill.modifier = v;
+                    }
+                }
             }
-        }
+            EditingField::SavingThrow(name) => {
+                if let Some(save) = sheet.saving_throws.get_mut(name) {
+                    if let Ok(v) = parse_modifier(value) {
+                        save.modifier = v;
+                    }
+                }
+            }
+            EditingField::CustomBasicInfo(name) => {
+                sheet
+                    .custom_basic_info
+                    .insert(name.clone(), value.to_string());
+            }
+            EditingField::CustomAttribute(name) => {
+                if let Ok(v) = value.parse() {
+                    sheet.custom_attributes.insert(name.clone(), v);
+                }
+            }
             EditingField::CustomCombat(name) => {
                 sheet.custom_combat.insert(name.clone(), value.to_string());
             }
@@ -1906,7 +2017,10 @@ pub fn init_character_manager(mut commands: Commands) {
     let db = match CharacterDatabase::open() {
         Ok(db) => db,
         Err(e) => {
-            eprintln!("Failed to open character database: {}. Using in-memory database.", e);
+            eprintln!(
+                "Failed to open character database: {}. Using in-memory database.",
+                e
+            );
             CharacterDatabase::open_in_memory().expect("Failed to create in-memory database")
         }
     };

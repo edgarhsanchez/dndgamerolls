@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::super::*;
+use crate::dice3d::types::*;
 
 /// Spawn the Skills tab content
 pub fn spawn_skills_content(
@@ -25,10 +25,7 @@ pub fn spawn_skills_content(
     // Card container
     parent
         .spawn((
-            CardBuilder::new()
-                .outlined()
-                .padding(16.0)
-                .build(theme),
+            CardBuilder::new().outlined().padding(16.0).build(theme),
             StatGroup {
                 name: "Skills".to_string(),
                 group_type: group_type.clone(),
@@ -109,7 +106,9 @@ fn spawn_skill_row(
                 padding: UiRect::vertical(Val::Px(3.0)),
                 ..default()
             },
-            SkillRow { skill_name: skill_name_owned.clone() },
+            SkillRow {
+                skill_name: skill_name_owned.clone(),
+            },
         ))
         .with_children(|row| {
             // Left: proficiency indicator and name
@@ -126,51 +125,52 @@ fn spawn_skill_row(
                     let icon_color = MaterialIconButton::new(icon_name)
                         .with_variant(IconButtonVariant::FilledTonal)
                         .icon_color(theme);
-                    left
-                        .spawn((
-                            IconButtonBuilder::new(icon_name).filled_tonal().build(theme),
-                            RollSkillButton {
-                                skill: skill_name_owned.clone(),
-                            },
-                        ))
-                        .insert(Node {
-                            width: Val::Px(28.0),
-                            height: Val::Px(28.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        })
-                        .with_children(|btn| {
-                            if let Some(icon) = MaterialIcon::from_name(icon_name) {
-                                btn.spawn((
-                                    Text::new(icon.as_str()),
-                                    TextFont {
-                                        font: icon_font.clone(),
-                                        font_size: 16.0,
-                                        ..default()
-                                    },
-                                    TextColor(icon_color),
-                                ));
-                            } else if let Some(handle) = dice_icon {
-                                btn.spawn((
-                                    ImageNode::new(handle),
-                                    Node {
-                                        width: Val::Px(16.0),
-                                        height: Val::Px(16.0),
-                                        ..default()
-                                    },
-                                ));
-                            } else {
-                                btn.spawn((
-                                    Text::new("🎲"),
-                                    TextFont {
-                                        font_size: 14.0,
-                                        ..default()
-                                    },
-                                    TextColor(theme.on_surface),
-                                ));
-                            }
-                        });
+                    left.spawn((
+                        IconButtonBuilder::new(icon_name)
+                            .filled_tonal()
+                            .build(theme),
+                        RollSkillButton {
+                            skill: skill_name_owned.clone(),
+                        },
+                    ))
+                    .insert(Node {
+                        width: Val::Px(28.0),
+                        height: Val::Px(28.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    })
+                    .with_children(|btn| {
+                        if let Some(icon) = MaterialIcon::from_name(icon_name) {
+                            btn.spawn((
+                                Text::new(icon.as_str()),
+                                TextFont {
+                                    font: icon_font.clone(),
+                                    font_size: 16.0,
+                                    ..default()
+                                },
+                                TextColor(icon_color),
+                            ));
+                        } else if let Some(handle) = dice_icon {
+                            btn.spawn((
+                                ImageNode::new(handle),
+                                Node {
+                                    width: Val::Px(16.0),
+                                    height: Val::Px(16.0),
+                                    ..default()
+                                },
+                            ));
+                        } else {
+                            btn.spawn((
+                                Text::new("🎲"),
+                                TextFont {
+                                    font_size: 14.0,
+                                    ..default()
+                                },
+                                TextColor(theme.on_surface),
+                            ));
+                        }
+                    });
                 }
 
                 // Proficiency indicator
@@ -183,8 +183,16 @@ fn spawn_skill_row(
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(if has_proficiency { MD3_SUCCESS } else { Color::NONE }),
-                    BorderColor::from(if has_proficiency { MD3_SUCCESS } else { MD3_OUTLINE }),
+                    BackgroundColor(if has_proficiency {
+                        MD3_SUCCESS
+                    } else {
+                        Color::NONE
+                    }),
+                    BorderColor::from(if has_proficiency {
+                        MD3_SUCCESS
+                    } else {
+                        MD3_OUTLINE
+                    }),
                     BorderRadius::all(Val::Px(4.0)),
                     ProficiencyCheckbox {
                         target: ProficiencyTarget::Skill(skill_name_owned.clone()),
@@ -198,7 +206,9 @@ fn spawn_skill_row(
                     // Editable label
                     let label_text = display_name.clone();
                     left.spawn((
-                        MaterialButtonBuilder::new(label_text.clone()).text().build(theme),
+                        MaterialButtonBuilder::new(label_text.clone())
+                            .text()
+                            .build(theme),
                         EditableLabelButton {
                             field: label_field.clone(),
                             current_name: skill_name_owned.clone(),
@@ -216,7 +226,11 @@ fn spawn_skill_row(
                                 font_size: 13.0,
                                 ..default()
                             },
-                            TextColor(if has_proficiency { MD3_SUCCESS } else { theme.on_surface_variant }),
+                            TextColor(if has_proficiency {
+                                MD3_SUCCESS
+                            } else {
+                                theme.on_surface_variant
+                            }),
                             EditableLabelText { field: label_field },
                         ));
                     });
@@ -227,7 +241,11 @@ fn spawn_skill_row(
                             font_size: 13.0,
                             ..default()
                         },
-                        TextColor(if has_proficiency { MD3_SUCCESS } else { MD3_ON_SURFACE_VARIANT }),
+                        TextColor(if has_proficiency {
+                            MD3_SUCCESS
+                        } else {
+                            MD3_ON_SURFACE_VARIANT
+                        }),
                     ));
                 }
             });

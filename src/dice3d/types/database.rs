@@ -199,9 +199,50 @@ impl CharacterDatabase {
             );
             
             CREATE INDEX IF NOT EXISTS idx_characters_name ON characters(name);
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                json TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             ",
         )
         .map_err(|e| format!("Failed to initialize database schema: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Get a JSON blob from the app settings table.
+    pub fn get_setting_json(&self, key: &str) -> Result<Option<String>, String> {
+        let conn = self.connection.lock().map_err(|e| e.to_string())?;
+
+        let mut stmt = conn
+            .prepare("SELECT json FROM app_settings WHERE key = ?1")
+            .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+        let result: Result<String, _> = stmt.query_row(params![key], |row| row.get(0));
+        match result {
+            Ok(json) => Ok(Some(json)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Failed to load setting '{}': {}", key, e)),
+        }
+    }
+
+    /// Upsert a JSON blob into the app settings table.
+    pub fn set_setting_json(&self, key: &str, json: &str) -> Result<(), String> {
+        let conn = self.connection.lock().map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "
+            INSERT INTO app_settings (key, json, updated_at)
+            VALUES (?1, ?2, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                json = excluded.json,
+                updated_at = CURRENT_TIMESTAMP
+            ",
+            params![key, json],
+        )
+        .map_err(|e| format!("Failed to save setting '{}': {}", key, e))?;
 
         Ok(())
     }

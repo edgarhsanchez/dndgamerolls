@@ -186,10 +186,11 @@ Press **1-9** to quickly reroll from command history shown on the right.
 - 🎮 Mouse-controlled throw direction with 3D arrow indicator
 - 📊 Quick roll panel for skills, saves, and ability checks
 - ⚙️ Settings panel with customizable background color
+- 🔧 Dice box shake settings (duration + editable curve)
 - 📋 Character sheet editor with full D&D 5e support
 - ℹ️ DnD Info tab with rules reference
 - 👥 Contributors tab with GitHub profile avatars (loaded at runtime)
-- � Auto-recovery for dice that fall out of bounds
+- 🔄 Auto-recovery for dice that fall out of bounds
 
 ---
 

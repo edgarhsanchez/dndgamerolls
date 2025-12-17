@@ -67,8 +67,8 @@ pub fn create_number_mesh(value: u32, meshes: &mut ResMut<Assets<Mesh>>) -> Hand
 
 /// Create a 3D mesh for a number value
 pub fn create_digit_mesh(value: u32) -> Mesh {
-    use bevy::render::mesh::{Indices, PrimitiveTopology};
-    use bevy::render::render_asset::RenderAssetUsages;
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::{Indices, PrimitiveTopology};
 
     // Create 3D box geometry for numbers
     let (positions, indices) = generate_number_geometry(value);

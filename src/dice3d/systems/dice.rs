@@ -29,7 +29,7 @@ pub fn check_dice_settled(
     }
 
     // Update roll timer
-    roll_state.roll_timer += time.delta_seconds();
+    roll_state.roll_timer += time.delta_secs();
 
     // Check for out-of-bounds dice and reset them
     let mut any_reset = false;
@@ -95,7 +95,7 @@ pub fn check_dice_settled(
         .all(|(_, vel, _)| vel.linvel.length() < 0.1 && vel.angvel.length() < 0.1);
 
     if all_settled {
-        roll_state.settle_timer += time.delta_seconds();
+        roll_state.settle_timer += time.delta_secs();
 
         if roll_state.settle_timer > 0.5 {
             roll_state.rolling = false;
@@ -155,11 +155,11 @@ pub fn update_results_display(
         };
 
         if roll_state.rolling {
-            text.sections[0].value = format!("{}Rolling...", char_info);
+            **text = format!("{}Rolling...", char_info);
         } else if dice_results.results.is_empty() {
             let modifier_info = format_modifier_info(&dice_config);
-            text.sections[0].value = format!(
-                "{}{}\nPress SPACE to roll dice\nPress R to reset",
+            **text = format!(
+                "{}{}\nLeft-click inside the box to roll dice\nPress R to reset",
                 char_info, modifier_info
             );
         } else {
@@ -220,8 +220,8 @@ pub fn update_results_display(
                 result_text.push_str(&format!("\nTOTAL: {}", total));
             }
 
-            result_text.push_str("\n\nPress SPACE to roll again\nPress R to reset");
-            text.sections[0].value = result_text;
+            result_text.push_str("\n\nLeft-click inside the box to roll again\nPress R to reset");
+            **text = result_text;
         }
     }
 }

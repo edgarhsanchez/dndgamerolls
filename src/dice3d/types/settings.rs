@@ -3,9 +3,190 @@
 //! This module handles loading and saving application settings from/to settings.json
 
 use bevy::prelude::*;
+use bevy::log::{debug, info, warn};
+use super::DiceType;
 use serde::{Deserialize, Serialize};
 use std::fs;
+
+use super::ui::{ContainerShakeConfig, ShakeCurveBezierHandleKind, ShakeCurveEditMode, ShakeCurvePoint};
 use std::path::PathBuf;
+
+// ============================================================================
+// Persistent Shake Curve Settings
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShakeCurvePointSetting {
+    pub id: u64,
+    pub t: f32,
+    pub value: f32,
+
+    #[serde(default)]
+    pub in_handle: Option<[f32; 2]>,
+    #[serde(default)]
+    pub out_handle: Option<[f32; 2]>,
+}
+
+impl ShakeCurvePointSetting {
+    pub fn from_runtime(p: &ShakeCurvePoint) -> Self {
+        Self {
+            id: p.id,
+            t: p.t,
+            value: p.value,
+            in_handle: p.in_handle.map(|v| [v.x, v.y]),
+            out_handle: p.out_handle.map(|v| [v.x, v.y]),
+        }
+    }
+
+    pub fn to_runtime(&self) -> ShakeCurvePoint {
+        ShakeCurvePoint {
+            id: self.id,
+            t: self.t,
+            value: self.value,
+            in_handle: self.in_handle.map(|a| Vec2::new(a[0], a[1])),
+            out_handle: self.out_handle.map(|a| Vec2::new(a[0], a[1])),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShakeConfigSetting {
+    #[serde(default = "default_shake_distance")]
+    pub distance: f32,
+
+    #[serde(default = "default_shake_speed")]
+    pub speed: f32,
+
+    #[serde(default = "default_shake_speed_fine")]
+    pub speed_fine: f32,
+
+    #[serde(default = "default_shake_duration_seconds")]
+    pub duration_seconds: f32,
+
+    #[serde(default)]
+    pub curve_points_x: Vec<ShakeCurvePointSetting>,
+    #[serde(default)]
+    pub curve_points_y: Vec<ShakeCurvePointSetting>,
+    #[serde(default)]
+    pub curve_points_z: Vec<ShakeCurvePointSetting>,
+
+    #[serde(default)]
+    pub next_curve_point_id: u64,
+}
+
+fn default_shake_distance() -> f32 {
+    ContainerShakeConfig::default().distance
+}
+fn default_shake_speed() -> f32 {
+    ContainerShakeConfig::default().speed
+}
+fn default_shake_speed_fine() -> f32 {
+    ContainerShakeConfig::default().speed_fine
+}
+fn default_shake_duration_seconds() -> f32 {
+    ContainerShakeConfig::default().duration_seconds
+}
+
+impl Default for ShakeConfigSetting {
+    fn default() -> Self {
+        Self::from_runtime(&ContainerShakeConfig::default())
+    }
+}
+
+impl ShakeConfigSetting {
+    pub fn from_runtime(cfg: &ContainerShakeConfig) -> Self {
+        Self {
+            distance: cfg.distance,
+            speed: cfg.speed,
+            speed_fine: cfg.speed_fine,
+            duration_seconds: cfg.duration_seconds,
+            curve_points_x: cfg
+                .curve_points_x
+                .iter()
+                .map(ShakeCurvePointSetting::from_runtime)
+                .collect(),
+            curve_points_y: cfg
+                .curve_points_y
+                .iter()
+                .map(ShakeCurvePointSetting::from_runtime)
+                .collect(),
+            curve_points_z: cfg
+                .curve_points_z
+                .iter()
+                .map(ShakeCurvePointSetting::from_runtime)
+                .collect(),
+            next_curve_point_id: cfg.next_curve_point_id,
+        }
+    }
+
+    pub fn to_runtime(&self) -> ContainerShakeConfig {
+        ContainerShakeConfig {
+            distance: self.distance,
+            speed: self.speed,
+            speed_fine: self.speed_fine,
+            duration_seconds: self.duration_seconds,
+            curve_points_x: self.curve_points_x.iter().map(|p| p.to_runtime()).collect(),
+            curve_points_y: self.curve_points_y.iter().map(|p| p.to_runtime()).collect(),
+            curve_points_z: self.curve_points_z.iter().map(|p| p.to_runtime()).collect(),
+            next_curve_point_id: self.next_curve_point_id,
+        }
+    }
+}
+
+/// Dice type setting stored in settings.json
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DiceTypeSetting {
+    #[serde(rename = "d4")]
+    D4,
+    #[serde(rename = "d6")]
+    D6,
+    #[serde(rename = "d8")]
+    D8,
+    #[serde(rename = "d10")]
+    D10,
+    #[serde(rename = "d12")]
+    D12,
+    #[serde(rename = "d20")]
+    D20,
+}
+
+impl Default for DiceTypeSetting {
+    fn default() -> Self {
+        Self::D20
+    }
+}
+
+impl DiceTypeSetting {
+    pub fn to_dice_type(self) -> DiceType {
+        match self {
+            DiceTypeSetting::D4 => DiceType::D4,
+            DiceTypeSetting::D6 => DiceType::D6,
+            DiceTypeSetting::D8 => DiceType::D8,
+            DiceTypeSetting::D10 => DiceType::D10,
+            DiceTypeSetting::D12 => DiceType::D12,
+            DiceTypeSetting::D20 => DiceType::D20,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            DiceTypeSetting::D4 => "D4",
+            DiceTypeSetting::D6 => "D6",
+            DiceTypeSetting::D8 => "D8",
+            DiceTypeSetting::D10 => "D10",
+            DiceTypeSetting::D12 => "D12",
+            DiceTypeSetting::D20 => "D20",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ActiveModalKind {
+    #[default]
+    None,
+    DiceRollerSettings,
+    CharacterSheetDiceSettings,
+}
 
 /// Serializable color representation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,10 +341,106 @@ impl ColorSetting {
 }
 
 /// Application settings stored in settings.json
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default)]
     pub background_color: ColorSetting,
+
+    #[serde(default = "default_dice_box_highlight_color")]
+    pub dice_box_highlight_color: ColorSetting,
+
+    /// Location of the draggable slider group panel (logical pixels, from top-left).
+    #[serde(default)]
+    pub slider_group_position: UiPositionSetting,
+
+    /// Location of the draggable Quick Rolls panel (logical pixels, from top-left).
+    #[serde(default = "default_quick_roll_panel_position")]
+    pub quick_roll_panel_position: UiPositionSetting,
+
+    /// Location of the draggable Command History panel (logical pixels, from top-left).
+    #[serde(default = "default_command_history_panel_position")]
+    pub command_history_panel_position: UiPositionSetting,
+
+    /// Location of the draggable Results panel (logical pixels, from top-left).
+    #[serde(default = "default_results_panel_position")]
+    pub results_panel_position: UiPositionSetting,
+
+    /// Location of the draggable Dice Box Controls panel (logical pixels, from top-left).
+    #[serde(default = "default_dice_box_controls_panel_position")]
+    pub dice_box_controls_panel_position: UiPositionSetting,
+
+    /// Default die type for character-sheet dice icon rolls.
+    #[serde(default)]
+    pub character_sheet_default_die: DiceTypeSetting,
+
+    /// Default die type for Quick Rolls (dice view).
+    #[serde(default)]
+    pub quick_roll_default_die: DiceTypeSetting,
+
+    /// Saved container shake curve/settings.
+    #[serde(default)]
+    pub shake_config: ShakeConfigSetting,
+}
+
+/// Serializable UI position (logical pixels, top-left origin).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct UiPositionSetting {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Default for UiPositionSetting {
+    fn default() -> Self {
+        // Left-middle-ish by default; avoids the command input card at the bottom.
+        Self { x: 20.0, y: 220.0 }
+    }
+}
+
+fn default_dice_box_highlight_color() -> ColorSetting {
+    // A bright cyan-ish highlight by default so it is visible on the crystal floor.
+    ColorSetting {
+        a: 1.0,
+        r: 0.15,
+        g: 0.85,
+        b: 1.0,
+    }
+}
+
+fn default_quick_roll_panel_position() -> UiPositionSetting {
+    // Right side by default.
+    UiPositionSetting { x: 1070.0, y: 50.0 }
+}
+
+fn default_command_history_panel_position() -> UiPositionSetting {
+    // To the left of Quick Rolls by default.
+    UiPositionSetting { x: 860.0, y: 50.0 }
+}
+
+fn default_results_panel_position() -> UiPositionSetting {
+    // Top-left below the tab bar by default.
+    UiPositionSetting { x: 10.0, y: 50.0 }
+}
+
+fn default_dice_box_controls_panel_position() -> UiPositionSetting {
+    // Near the slider group by default.
+    UiPositionSetting { x: 20.0, y: 510.0 }
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            background_color: ColorSetting::default(),
+            dice_box_highlight_color: default_dice_box_highlight_color(),
+            slider_group_position: UiPositionSetting::default(),
+            quick_roll_panel_position: default_quick_roll_panel_position(),
+            command_history_panel_position: default_command_history_panel_position(),
+            results_panel_position: default_results_panel_position(),
+            dice_box_controls_panel_position: default_dice_box_controls_panel_position(),
+            character_sheet_default_die: DiceTypeSetting::default(),
+            quick_roll_default_die: DiceTypeSetting::default(),
+            shake_config: ShakeConfigSetting::default(),
+        }
+    }
 }
 
 impl AppSettings {
@@ -177,15 +454,15 @@ impl AppSettings {
             match fs::read_to_string(&path) {
                 Ok(contents) => match serde_json::from_str(&contents) {
                     Ok(settings) => {
-                        println!("Loaded settings from {}", Self::SETTINGS_FILE);
+                        info!("Loaded settings from {}", Self::SETTINGS_FILE);
                         return settings;
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to parse {}: {}", Self::SETTINGS_FILE, e);
+                        warn!("Failed to parse {}: {}", Self::SETTINGS_FILE, e);
                     }
                 },
                 Err(e) => {
-                    eprintln!("Warning: Failed to read {}: {}", Self::SETTINGS_FILE, e);
+                    warn!("Failed to read {}: {}", Self::SETTINGS_FILE, e);
                 }
             }
         }
@@ -202,7 +479,8 @@ impl AppSettings {
         fs::write(Self::SETTINGS_FILE, json)
             .map_err(|e| format!("Failed to write settings: {}", e))?;
 
-        println!("Settings saved to {}", Self::SETTINGS_FILE);
+        // Saving can happen frequently (e.g., while dragging panels), so keep this at debug.
+        debug!("Settings saved to {}", Self::SETTINGS_FILE);
         Ok(())
     }
 }
@@ -213,25 +491,81 @@ pub struct SettingsState {
     pub settings: AppSettings,
     pub is_modified: bool,
     pub show_modal: bool,
+    pub modal_kind: ActiveModalKind,
     /// Temporary color being edited in the modal
     pub editing_color: ColorSetting,
+    /// Temporary highlight color being edited in the modal
+    pub editing_highlight_color: ColorSetting,
     /// Text input for color
     pub color_input_text: String,
-    /// Which color component slider is being dragged
-    pub dragging_slider: Option<ColorComponent>,
+    /// Text input for highlight color
+    pub highlight_input_text: String,
+
+    /// Editing value for character-sheet dice settings
+    pub character_sheet_editing_die: DiceTypeSetting,
+
+    /// Editing value for Quick Rolls die settings
+    pub quick_roll_editing_die: DiceTypeSetting,
+
+    /// Editing value for the dice container shake curve/settings (applied on OK).
+    pub editing_shake_config: ContainerShakeConfig,
+
+    /// Selected curve point id in the curve editor (if any).
+    pub selected_shake_curve_point_id: Option<u64>,
+
+    /// Currently dragged curve point id in the curve editor (if any).
+    pub dragging_shake_curve_point_id: Option<u64>,
+
+    /// Currently dragged Bezier handle (point id + handle kind), if any.
+    pub dragging_shake_curve_bezier: Option<(u64, ShakeCurveBezierHandleKind)>,
+
+    /// Shake curve editor mode (None/Add/Delete).
+    pub shake_curve_edit_mode: ShakeCurveEditMode,
+
+    /// Axis selection for Add mode.
+    pub shake_curve_add_x: bool,
+    pub shake_curve_add_y: bool,
+    pub shake_curve_add_z: bool,
+
+    /// Text buffer for shake duration input (seconds).
+    pub shake_duration_input_text: String,
+
+    /// Snapshot of the last saved shake config json (used to avoid saving every frame).
+    pub last_saved_shake_config_json: String,
 }
 
 impl Default for SettingsState {
     fn default() -> Self {
         let settings = AppSettings::load();
+        let character_sheet_editing_die = settings.character_sheet_default_die;
+        let quick_roll_editing_die = settings.quick_roll_default_die;
         let editing_color = settings.background_color.clone();
+        let editing_highlight_color = settings.dice_box_highlight_color.clone();
+        let editing_shake_config = settings.shake_config.to_runtime();
+        let last_saved_shake_config_json =
+            serde_json::to_string(&settings.shake_config).unwrap_or_default();
+
         Self {
             settings,
             is_modified: false,
             show_modal: false,
+            modal_kind: ActiveModalKind::None,
             editing_color,
+            editing_highlight_color,
             color_input_text: String::new(),
-            dragging_slider: None,
+            highlight_input_text: String::new(),
+            character_sheet_editing_die,
+            quick_roll_editing_die,
+            editing_shake_config,
+            selected_shake_curve_point_id: None,
+            dragging_shake_curve_point_id: None,
+            dragging_shake_curve_bezier: None,
+            shake_curve_edit_mode: ShakeCurveEditMode::None,
+            shake_curve_add_x: true,
+            shake_curve_add_y: false,
+            shake_curve_add_z: false,
+            shake_duration_input_text: "1.0".to_string(),
+            last_saved_shake_config_json,
         }
     }
 }
@@ -265,27 +599,27 @@ pub struct SettingsModal;
 #[derive(Component)]
 pub struct ColorPreview;
 
+/// Marker for dice box highlight color preview box
+#[derive(Component)]
+pub struct HighlightColorPreview;
+
 /// Marker for color slider
 #[derive(Component)]
 pub struct ColorSlider {
     pub component: ColorComponent,
 }
 
-/// Marker for color slider handle
-#[derive(Component)]
-pub struct ColorSliderHandle {
-    pub component: ColorComponent,
-}
-
-/// Marker for color slider track
-#[derive(Component)]
-pub struct ColorSliderTrack {
-    pub component: ColorComponent,
-}
-
 /// Marker for color text input
 #[derive(Component)]
 pub struct ColorTextInput;
+
+/// Marker for dice box highlight color text input
+#[derive(Component)]
+pub struct HighlightColorTextInput;
+
+/// Marker for the shake duration (seconds) text input in the shake curve tab.
+#[derive(Component)]
+pub struct ShakeDurationTextInput;
 
 /// Marker for settings OK button
 #[derive(Component)]
@@ -294,6 +628,38 @@ pub struct SettingsOkButton;
 /// Marker for settings Cancel button
 #[derive(Component)]
 pub struct SettingsCancelButton;
+
+/// Marker for settings Reset Layout button
+#[derive(Component)]
+pub struct SettingsResetLayoutButton;
+
+// ============================================================================
+// Character Sheet Dice Settings UI Components
+// ============================================================================
+
+/// Marker for the Character Sheet settings button (gear)
+#[derive(Component)]
+pub struct CharacterSheetSettingsButton;
+
+/// Marker for the character sheet dice settings modal overlay
+#[derive(Component)]
+pub struct CharacterSheetSettingsModalOverlay;
+
+/// Marker for the character sheet dice settings modal window
+#[derive(Component)]
+pub struct CharacterSheetSettingsModal;
+
+/// Marker for the die type select control in the character sheet modal
+#[derive(Component)]
+pub struct CharacterSheetDieTypeSelect;
+
+/// Marker for the character sheet settings Save button
+#[derive(Component)]
+pub struct CharacterSheetSettingsSaveButton;
+
+/// Marker for the character sheet settings Cancel button
+#[derive(Component)]
+pub struct CharacterSheetSettingsCancelButton;
 
 /// Marker for color value labels
 #[derive(Component)]

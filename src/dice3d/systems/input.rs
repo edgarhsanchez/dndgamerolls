@@ -7,6 +7,9 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use rand::Rng;
 
+use bevy_material_ui::prelude::{
+    ButtonClickEvent, MaterialTextField, TextFieldSubmitEvent,
+};
 use crate::dice3d::throw_control::ThrowControlState;
 use crate::dice3d::types::*;
 
@@ -15,19 +18,34 @@ use super::setup::{calculate_dice_position, spawn_die};
 /// Handle keyboard input for rolling and resetting dice
 pub fn handle_input(
     keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    ui_state: Res<UiState>,
+    settings_state: Res<crate::dice3d::types::SettingsState>,
     mut roll_state: ResMut<RollState>,
     mut dice_results: ResMut<DiceResults>,
     mut dice_query: Query<(&mut Transform, &mut Velocity), With<Die>>,
     dice_config: Res<DiceConfig>,
-    command_input: Res<CommandInput>,
+    command_field: Query<&MaterialTextField, With<CommandInputField>>,
     throw_state: Res<ThrowControlState>,
 ) {
-    // Don't process game inputs when command input is active
-    if command_input.active {
+    if ui_state.active_tab != AppTab::DiceRoller {
         return;
     }
 
-    if keyboard.just_pressed(KeyCode::Space) && !roll_state.rolling {
+    // Modal dialog open: block interactions with the game world.
+    if settings_state.show_modal {
+        return;
+    }
+
+    // Don't process game inputs when the command field is focused
+    let command_focused = command_field
+        .iter()
+        .any(|field| field.focused && !field.disabled);
+    if command_focused {
+        return;
+    }
+
+    if mouse.just_pressed(MouseButton::Left) && throw_state.mouse_over_box && !roll_state.rolling {
         roll_state.rolling = true;
         dice_results.results.clear();
 
@@ -40,10 +58,11 @@ pub fn handle_input(
         for (i, (mut transform, mut velocity)) in dice_query.iter_mut().enumerate() {
             let position = calculate_dice_position(i, num_dice);
             // Add slight randomness to starting position
+            // (Keep it inside the box: the ceiling is at ~1.5.)
             transform.translation = position
                 + Vec3::new(
                     rng.gen_range(-0.3..0.3),
-                    rng.gen_range(0.0..1.0),
+                    rng.gen_range(0.0..0.3),
                     rng.gen_range(-0.3..0.3),
                 );
             transform.rotation = Quat::from_euler(
@@ -85,134 +104,61 @@ pub fn handle_input(
 #[allow(clippy::too_many_arguments)]
 pub fn handle_command_input(
     mut commands: Commands,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut char_events: EventReader<bevy::input::keyboard::KeyboardInput>,
-    mut command_input: ResMut<CommandInput>,
+    settings_state: Res<crate::dice3d::types::SettingsState>,
     mut command_history: ResMut<CommandHistory>,
-    mut input_text_query: Query<&mut Text, With<CommandInputText>>,
-    mut history_text_query: Query<&mut Text, (With<CommandHistoryList>, Without<CommandInputText>)>,
     mut dice_config: ResMut<DiceConfig>,
     mut dice_results: ResMut<DiceResults>,
     mut roll_state: ResMut<RollState>,
     character_data: Res<CharacterData>,
+    ui_state: Res<UiState>,
+    mut submit_events: MessageReader<TextFieldSubmitEvent>,
+    mut command_field_query: Query<(Entity, &mut MaterialTextField), With<CommandInputField>>,
     // For respawning dice
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     dice_query: Query<Entity, With<Die>>,
 ) {
-    // Handle number keys 1-9 to reroll from history (when not in input mode)
-    if !command_input.active {
-        let history_keys = [
-            (KeyCode::Digit1, 0),
-            (KeyCode::Digit2, 1),
-            (KeyCode::Digit3, 2),
-            (KeyCode::Digit4, 3),
-            (KeyCode::Digit5, 4),
-            (KeyCode::Digit6, 5),
-            (KeyCode::Digit7, 6),
-            (KeyCode::Digit8, 7),
-            (KeyCode::Digit9, 8),
-        ];
-
-        for (key, index) in history_keys {
-            if keyboard.just_pressed(key) {
-                if let Some(cmd) = command_history.commands.get(index).cloned() {
-                    // Execute the command from history
-                    if let Some(new_config) = parse_command(&cmd, &character_data) {
-                        // Remove old dice
-                        for entity in dice_query.iter() {
-                            commands.entity(entity).despawn_recursive();
-                        }
-
-                        // Update config
-                        *dice_config = new_config;
-                        dice_results.results.clear();
-
-                        // Spawn new dice
-                        for (i, die_type) in dice_config.dice_to_roll.iter().enumerate() {
-                            let position =
-                                calculate_dice_position(i, dice_config.dice_to_roll.len());
-                            spawn_die(
-                                &mut commands,
-                                &mut meshes,
-                                &mut materials,
-                                *die_type,
-                                position,
-                            );
-                        }
-
-                        // Start rolling immediately
-                        roll_state.rolling = true;
-                    }
-                    return;
-                }
-            }
-        }
-    }
-
-    // Toggle command input with / or Enter when not active
-    if !command_input.active
-        && (keyboard.just_pressed(KeyCode::Slash) || keyboard.just_pressed(KeyCode::Enter))
-    {
-        command_input.active = true;
-        command_input.text.clear();
-        for mut text in input_text_query.iter_mut() {
-            text.sections[0].value = "> ".to_string();
-            text.sections[0].style.color = Color::srgb(1.0, 1.0, 0.5);
-        }
+    if ui_state.active_tab != AppTab::DiceRoller {
         return;
     }
 
-    if !command_input.active {
+    // Modal dialog open: block interactions with the game world.
+    if settings_state.show_modal {
         return;
     }
 
-    // Handle escape to cancel
-    if keyboard.just_pressed(KeyCode::Escape) {
-        command_input.active = false;
-        command_input.text.clear();
-        for mut text in input_text_query.iter_mut() {
-            text.sections[0].value =
-                "> Type command: --dice 2d6 --checkon stealth  |  Press 1-9 to reroll from history"
-                    .to_string();
-            text.sections[0].style.color = Color::srgba(0.7, 0.7, 0.7, 0.8);
+    let command_field_entity = command_field_query
+        .iter()
+        .next()
+        .map(|(e, _field)| e)
+        .unwrap_or(Entity::PLACEHOLDER);
+
+    // Handle submit from the Material text field (Enter)
+    for ev in submit_events.read() {
+        if ev.entity != command_field_entity {
+            continue;
         }
-        return;
-    }
 
-    // Handle backspace
-    if keyboard.just_pressed(KeyCode::Backspace) {
-        command_input.text.pop();
-        for mut text in input_text_query.iter_mut() {
-            text.sections[0].value = format!("> {}_", command_input.text);
+        let cmd = ev.value.trim().to_string();
+        if cmd.is_empty() {
+            continue;
         }
-        return;
-    }
-
-    // Handle enter to submit
-    if keyboard.just_pressed(KeyCode::Enter) {
-        let cmd = command_input.text.clone();
-        command_input.active = false;
-        command_input.text.clear();
 
         // Parse and apply the command
         if let Some(new_config) = parse_command(&cmd, &character_data) {
             // Add to command history (only unique commands)
             command_history.add_command(cmd.clone());
 
-            // Update history display
-            update_history_display(&command_history, &mut history_text_query);
-
             // Remove old dice
             for entity in dice_query.iter() {
-                commands.entity(entity).despawn_recursive();
+                commands.entity(entity).despawn();
             }
 
             // Update config
             *dice_config = new_config;
             dice_results.results.clear();
 
-            // Spawn new dice (spawn_die applies random initial velocities)
+            // Spawn new dice
             for (i, die_type) in dice_config.dice_to_roll.iter().enumerate() {
                 let position = calculate_dice_position(i, dice_config.dice_to_roll.len());
                 spawn_die(
@@ -224,72 +170,85 @@ pub fn handle_command_input(
                 );
             }
 
-            // Start rolling immediately - dice already have velocities from spawn_die
+            // Start rolling immediately
             roll_state.rolling = true;
         }
 
-        for mut text in input_text_query.iter_mut() {
-            text.sections[0].value =
-                "> Type command: --dice 2d6 --checkon stealth  |  Press 1-9 to reroll from history"
-                    .to_string();
-            text.sections[0].style.color = Color::srgba(0.7, 0.7, 0.7, 0.8);
+        // Clear + blur the field after submit.
+        // Also disable auto-focus so game hotkeys (e.g. R to reset) won't immediately
+        // re-activate the command input on the next keypress.
+        if let Ok((_, mut field)) = command_field_query.get_mut(command_field_entity) {
+            field.value.clear();
+            field.has_content = false;
+            field.focused = false;
+            field.auto_focus = false;
         }
+    }
+}
+
+/// Handle clicks on command history items (reroll selected command)
+#[allow(clippy::too_many_arguments)]
+pub fn handle_command_history_item_clicks(
+    mut commands: Commands,
+    ui_state: Res<UiState>,
+    settings_state: Res<crate::dice3d::types::SettingsState>,
+    mut click_events: MessageReader<ButtonClickEvent>,
+    item_query: Query<&CommandHistoryItem>,
+    mut command_history: ResMut<CommandHistory>,
+    mut dice_config: ResMut<DiceConfig>,
+    mut dice_results: ResMut<DiceResults>,
+    mut roll_state: ResMut<RollState>,
+    character_data: Res<CharacterData>,
+    // For respawning dice
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    dice_query: Query<Entity, With<Die>>,
+) {
+    if ui_state.active_tab != AppTab::DiceRoller {
         return;
     }
 
-    // Handle character input
-    for event in char_events.read() {
-        if event.state == bevy::input::ButtonState::Pressed {
-            // Map key codes to characters
-            let c = match event.key_code {
-                KeyCode::Space => ' ',
-                KeyCode::Minus => '-',
-                KeyCode::Equal => '=',
-                KeyCode::Digit0 => '0',
-                KeyCode::Digit1 => '1',
-                KeyCode::Digit2 => '2',
-                KeyCode::Digit3 => '3',
-                KeyCode::Digit4 => '4',
-                KeyCode::Digit5 => '5',
-                KeyCode::Digit6 => '6',
-                KeyCode::Digit7 => '7',
-                KeyCode::Digit8 => '8',
-                KeyCode::Digit9 => '9',
-                KeyCode::KeyA => 'a',
-                KeyCode::KeyB => 'b',
-                KeyCode::KeyC => 'c',
-                KeyCode::KeyD => 'd',
-                KeyCode::KeyE => 'e',
-                KeyCode::KeyF => 'f',
-                KeyCode::KeyG => 'g',
-                KeyCode::KeyH => 'h',
-                KeyCode::KeyI => 'i',
-                KeyCode::KeyJ => 'j',
-                KeyCode::KeyK => 'k',
-                KeyCode::KeyL => 'l',
-                KeyCode::KeyM => 'm',
-                KeyCode::KeyN => 'n',
-                KeyCode::KeyO => 'o',
-                KeyCode::KeyP => 'p',
-                KeyCode::KeyQ => 'q',
-                KeyCode::KeyR => 'r',
-                KeyCode::KeyS => 's',
-                KeyCode::KeyT => 't',
-                KeyCode::KeyU => 'u',
-                KeyCode::KeyV => 'v',
-                KeyCode::KeyW => 'w',
-                KeyCode::KeyX => 'x',
-                KeyCode::KeyY => 'y',
-                KeyCode::KeyZ => 'z',
-                _ => continue,
-            };
-            command_input.text.push(c);
-        }
+    // Modal dialog open: block interactions with the game world.
+    if settings_state.show_modal {
+        return;
     }
 
-    // Update display
-    for mut text in input_text_query.iter_mut() {
-        text.sections[0].value = format!("> {}_", command_input.text);
+    for ev in click_events.read() {
+        let Ok(item) = item_query.get(ev.entity) else {
+            continue;
+        };
+
+        let Some(cmd) = command_history.commands.get(item.index).cloned() else {
+            continue;
+        };
+
+        command_history.selected_index = Some(item.index);
+
+        if let Some(new_config) = parse_command(&cmd, &character_data) {
+            // Remove old dice
+            for entity in dice_query.iter() {
+                commands.entity(entity).despawn();
+            }
+
+            // Update config
+            *dice_config = new_config;
+            dice_results.results.clear();
+
+            // Spawn new dice
+            for (i, die_type) in dice_config.dice_to_roll.iter().enumerate() {
+                let position = calculate_dice_position(i, dice_config.dice_to_roll.len());
+                spawn_die(
+                    &mut commands,
+                    &mut meshes,
+                    &mut materials,
+                    *die_type,
+                    position,
+                );
+            }
+
+            // Start rolling immediately
+            roll_state.rolling = true;
+        }
     }
 }
 
@@ -342,13 +301,13 @@ fn parse_command(cmd: &str, character_data: &CharacterData) -> Option<DiceConfig
         i += 1;
     }
 
-    // Apply checkon modifier
+    // Apply checkon modifier (skill / ability / saving throw) similar to the CLI.
     if let Some(check) = checkon {
         let check_lower = check.to_lowercase();
 
         if let Some(skill_mod) = character_data.get_skill_modifier(&check_lower) {
             modifier += skill_mod;
-            modifier_name = check.clone();
+            modifier_name = check;
         } else if let Some(ability_mod) = character_data.get_ability_modifier(&check_lower) {
             modifier += ability_mod;
             modifier_name = format!("{} check", check);
@@ -356,11 +315,12 @@ fn parse_command(cmd: &str, character_data: &CharacterData) -> Option<DiceConfig
             modifier += save_mod;
             modifier_name = format!("{} save", check);
         } else {
+            // Unknown label: keep the name for display, but don't change the modifier.
             modifier_name = check;
         }
     }
 
-    // Default to 1d20 if no dice specified
+    // Default to 1d20 if no dice specified.
     if dice_to_roll.is_empty() {
         dice_to_roll.push(DiceType::D20);
     }
@@ -390,42 +350,32 @@ fn parse_dice_str(s: &str) -> Option<(usize, DiceType)> {
     Some((count, die_type))
 }
 
-/// Update the command history display
-fn update_history_display(
-    history: &CommandHistory,
-    history_text_query: &mut Query<
-        &mut Text,
-        (With<CommandHistoryList>, Without<CommandInputText>),
-    >,
-) {
-    let mut history_text = String::from("Command History:\n");
-
-    if history.commands.is_empty() {
-        history_text.push_str("(no commands yet)");
-    } else {
-        for (i, cmd) in history.commands.iter().enumerate().take(9) {
-            history_text.push_str(&format!("[{}] {}\n", i + 1, cmd));
-        }
-    }
-
-    for mut text in history_text_query.iter_mut() {
-        text.sections[0].value = history_text.clone();
-    }
-}
-
 /// Handle quick roll button clicks
 pub fn handle_quick_roll_clicks(
-    interaction_query: Query<(&Interaction, &QuickRollButton), Changed<Interaction>>,
+    mut commands: Commands,
+    mut click_events: MessageReader<ButtonClickEvent>,
+    quick_roll_query: Query<&QuickRollButton>,
     mut dice_config: ResMut<DiceConfig>,
     character_data: Res<CharacterData>,
     mut roll_state: ResMut<RollState>,
     mut dice_results: ResMut<DiceResults>,
-    mut dice_query: Query<(&mut Transform, &mut Velocity), With<Die>>,
     mut command_history: ResMut<CommandHistory>,
     throw_state: Res<ThrowControlState>,
+    settings_state: Res<SettingsState>,
+
+    // For respawning dice
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    dice_query: Query<Entity, With<Die>>,
 ) {
-    for (interaction, quick_roll) in interaction_query.iter() {
-        if *interaction == Interaction::Pressed {
+    if settings_state.show_modal {
+        return;
+    }
+
+    for event in click_events.read() {
+        let Ok(quick_roll) = quick_roll_query.get(event.entity) else {
+            continue;
+        };
             // Get the modifier based on roll type
             let (modifier, modifier_name) = match &quick_roll.roll_type {
                 QuickRollType::Skill(skill_name) => {
@@ -472,44 +422,68 @@ pub fn handle_quick_roll_clicks(
                 }
             };
 
+            let die_type = settings_state.settings.quick_roll_default_die.to_dice_type();
+
+            // Remove old dice (Quick Rolls always uses exactly one die)
+            for entity in dice_query.iter() {
+                commands.entity(entity).despawn();
+            }
+
             // Update dice config
-            dice_config.dice_to_roll = vec![DiceType::D20];
+            dice_config.dice_to_roll.clear();
+            dice_config.dice_to_roll.push(die_type);
             dice_config.modifier = modifier;
             dice_config.modifier_name = modifier_name.clone();
 
             // Add to command history
             let sign = if modifier >= 0 { "+" } else { "" };
             command_history.add_command(format!(
-                "1d20 --checkon {} ({}{})",
-                modifier_name, sign, modifier
+                "1d{} --checkon {} ({}{})",
+                die_type.max_value(),
+                modifier_name,
+                sign,
+                modifier
             ));
 
             // Trigger the roll
             roll_state.rolling = true;
             dice_results.results.clear();
 
-            // Reset dice positions and add velocity using throw control
+            // Spawn the single die and override its transform/velocity using throw control.
+            let die_entity = spawn_die(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                die_type,
+                calculate_dice_position(0, 1),
+            );
+
             let mut rng = rand::thread_rng();
             let base_velocity = throw_state.calculate_throw_velocity();
 
-            for (mut transform, mut velocity) in dice_query.iter_mut() {
-                transform.translation =
-                    Vec3::new(rng.gen_range(-0.5..0.5), 1.0, rng.gen_range(-0.5..0.5));
-                transform.rotation = Quat::from_euler(
-                    EulerRot::XYZ,
-                    rng.gen_range(0.0..std::f32::consts::TAU),
-                    rng.gen_range(0.0..std::f32::consts::TAU),
-                    rng.gen_range(0.0..std::f32::consts::TAU),
-                );
-                // Use mouse-controlled throw direction
-                velocity.linvel = base_velocity
+            let transform = Transform::from_translation(Vec3::new(
+                rng.gen_range(-0.5..0.5),
+                1.0,
+                rng.gen_range(-0.5..0.5),
+            ))
+            .with_rotation(Quat::from_euler(
+                EulerRot::XYZ,
+                rng.gen_range(0.0..std::f32::consts::TAU),
+                rng.gen_range(0.0..std::f32::consts::TAU),
+                rng.gen_range(0.0..std::f32::consts::TAU),
+            ))
+            .with_scale(Vec3::splat(die_type.scale()));
+
+            let velocity = Velocity {
+                linvel: base_velocity
                     + Vec3::new(
                         rng.gen_range(-0.5..0.5),
                         rng.gen_range(-0.3..0.0),
                         rng.gen_range(-0.5..0.5),
-                    );
-                velocity.angvel = throw_state.calculate_angular_velocity(&mut rng);
-            }
-        }
+                    ),
+                angvel: throw_state.calculate_angular_velocity(&mut rng),
+            };
+
+            commands.entity(die_entity).insert((transform, velocity));
     }
 }

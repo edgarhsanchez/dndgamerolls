@@ -6,11 +6,15 @@ use bevy::prelude::*;
 
 /// The dice box boundaries in world space
 /// The box is centered at origin with walls at these positions
-pub const BOX_MIN_X: f32 = -1.5;
-pub const BOX_MAX_X: f32 = 1.5;
-pub const BOX_MIN_Z: f32 = -1.5;
-pub const BOX_MAX_Z: f32 = 1.5;
-pub const BOX_FLOOR_Y: f32 = -0.5;
+// NOTE: These should match the geometry spawned in `dice3d::systems::setup`.
+// Floor is a 4x4 cuboid centered at (0, -0.15, 0) with height 0.3, so the top surface is y=0.0.
+pub const BOX_MIN_X: f32 = -2.0;
+pub const BOX_MAX_X: f32 = 2.0;
+pub const BOX_MIN_Z: f32 = -2.0;
+pub const BOX_MAX_Z: f32 = 2.0;
+pub const BOX_FLOOR_Y: f32 = 0.0;
+pub const BOX_WALL_HEIGHT: f32 = 1.5;
+pub const BOX_TOP_Y: f32 = BOX_FLOOR_Y + BOX_WALL_HEIGHT;
 pub const BOX_CENTER: Vec3 = Vec3::new(0.0, 0.0, 0.0);
 
 /// Resource for tracking mouse-controlled throw state
@@ -100,20 +104,14 @@ impl ThrowControlState {
     /// Calculate strength based on distance from box center
     pub fn calculate_strength_from_distance(target: Vec3) -> f32 {
         let distance = Vec2::new(target.x, target.z).length();
-        let max_distance = 1.5; // Half the box width
+        let max_distance = 2.0; // Half the box width
         (distance / max_distance).clamp(0.0, 1.0)
     }
 }
 
-/// UI Component markers for the strength slider
+/// Marker for the Material slider controlling throw strength
 #[derive(Component)]
-pub struct StrengthSliderContainer;
-
-#[derive(Component)]
-pub struct StrengthSliderTrack;
-
-#[derive(Component)]
-pub struct StrengthSliderHandle;
+pub struct StrengthSlider;
 
 /// Marker component for the 3D throw direction arrow
 #[derive(Component)]
@@ -128,7 +126,7 @@ mod tests {
         assert!(ThrowControlState::is_point_in_box(Vec3::new(0.0, 0.0, 0.0)));
         assert!(ThrowControlState::is_point_in_box(Vec3::new(1.0, 0.0, 1.0)));
         assert!(!ThrowControlState::is_point_in_box(Vec3::new(
-            2.0, 0.0, 0.0
+            2.1, 0.0, 0.0
         )));
     }
 

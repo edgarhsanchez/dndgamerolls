@@ -1,9 +1,11 @@
-// Hide console window by default on Windows (GUI app)
-// CLI mode will re-attach to parent console if available
-#![cfg_attr(windows, windows_subsystem = "windows")]
+// Hide console window on Windows for release builds (GUI app).
+// In debug builds, keep the console so panics/backtraces are visible.
+// CLI mode will re-attach to parent console if available.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use bevy::prelude::*;
 use bevy::winit::WinitWindows;
+use bevy_material_ui::prelude::*;
 use bevy_rapier3d::prelude::*;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -13,26 +15,54 @@ use std::fs;
 use std::path::PathBuf;
 
 use dndgamerolls::dice3d::{
-    apply_initial_settings, check_dice_settled, handle_character_list_clicks,
-    handle_color_slider_drag, handle_color_text_input, handle_command_input, handle_delete_click,
+    ensure_buttons_have_interaction,
+    apply_initial_settings, apply_initial_shake_config, check_dice_settled, handle_character_list_clicks,
+    handle_color_slider_changes, handle_color_text_input, handle_command_input, handle_delete_click,
     handle_expertise_toggle, handle_group_add_click, handle_group_edit_toggle, handle_input,
     handle_label_click, handle_new_character_click, handle_new_entry_cancel,
     handle_new_entry_confirm, handle_new_entry_input, handle_quick_roll_clicks,
+    handle_command_history_item_clicks,
     handle_roll_all_stats_click, handle_roll_attribute_click, handle_save_click,
-    handle_scroll_input, handle_settings_button_click, handle_settings_button_hover,
-    handle_settings_cancel_click, handle_settings_ok_click, handle_slider_drag_continuous,
-    handle_slider_release, handle_stat_field_click, handle_strength_slider, handle_tab_clicks,
-    handle_text_input, handle_zoom_slider, init_character_manager, init_contributors, load_icons,
+    handle_scroll_input, handle_settings_button_click,
+    handle_settings_cancel_click, handle_settings_ok_click, handle_stat_field_click,
+    handle_quick_roll_die_type_select_change,
+    handle_settings_reset_layout_click,
+    handle_shake_duration_text_input,
+    handle_shake_curve_chip_clicks,
+    handle_shake_curve_point_press,
+    handle_shake_curve_bezier_handle_press,
+    handle_shake_curve_graph_click_to_add_point,
+    drag_shake_curve_bezier_handle,
+    drag_shake_curve_point,
+    sync_shake_curve_graph_ui,
+    sync_shake_curve_chip_ui,
+    autosave_and_apply_shake_config,
+    handle_strength_slider_changes, handle_tab_clicks,
+    handle_text_input, handle_zoom_slider_changes, handle_slider_group_drag, init_character_manager, init_contributors, load_icons,
     manage_settings_modal, process_avatar_loads, rebuild_character_list_on_change,
     rebuild_character_panel_on_change, rebuild_quick_roll_panel, refresh_character_display,
+    rebuild_command_history_panel,
     request_avatars, rotate_camera, setup, setup_character_screen, setup_contributors_screen,
     setup_dnd_info_screen, setup_tab_bar, update_avatar_images,
     update_character_list_modified_indicator, update_color_ui, update_editing_display,
+    update_dice_box_highlight,
     update_new_entry_input_display, update_results_display, update_save_button_appearance,
     update_tab_styles, update_tab_visibility, update_throw_arrow, update_throw_from_mouse,
+    handle_dice_box_rotate_click,
+    handle_dice_box_shake_box_click,
+    handle_dice_box_toggle_container_click,
+    animate_container_shake,
+    handle_shake_slider_changes,
+    sync_dice_container_mode_text,
+    sync_dice_container_toggle_icon,
+    handle_roll_skill_click, record_character_screen_roll_on_settle, sync_character_screen_roll_result_texts,
+    handle_character_sheet_settings_button_click, manage_character_sheet_settings_modal,
+    handle_character_sheet_die_type_select_change, handle_character_sheet_settings_save_click,
+    handle_character_sheet_settings_cancel_click,
+    // Character sheet tab systems
     AddingEntryState, AvatarLoader, CharacterData, CommandHistory, CommandInput, DiceConfig,
-    DiceResults, DiceType, GroupEditState, RollState, SettingsState, ThrowControlState, UiState,
-    ZoomState,
+    DiceBoxHighlightMaterial, DiceContainerStyle, DiceResults, DiceType, GroupEditState, RollState, SettingsState, ShakeState, ContainerShakeAnimation, ContainerShakeConfig, ThrowControlState, UiState,
+    ZoomState, CharacterScreenRollBridge,
 };
 
 /// DnD Game Rolls - CLI and 3D Visualization
@@ -281,10 +311,15 @@ fn run_3d_mode(cli: Cli) {
 
     // System to set the window icon from embedded resources
     fn set_window_icon(
-        windows: NonSend<WinitWindows>,
+        windows: Option<NonSend<WinitWindows>>,
         primary_query: Query<Entity, With<bevy::window::PrimaryWindow>>,
     ) {
-        let primary_entity = primary_query.single();
+        let Some(windows) = windows else {
+            return;
+        };
+        let Ok(primary_entity) = primary_query.single() else {
+            return;
+        };
         let Some(primary) = windows.get_window(primary_entity) else {
             return;
         };
@@ -338,15 +373,29 @@ fn run_3d_mode(cli: Cli) {
     };
 
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "DnD Game Rolls".to_string(),
-                resolution: (1280.0, 720.0).into(),
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "DnD Game Rolls".to_string(),
+                        resolution: (1280u32, 720u32).into(),
+                        ..default()
+                    }),
+                    ..default()
+                })
+                // Keep app logs at info, but silence bevy_material_ui scroll spam.
+                .set(bevy::log::LogPlugin {
+                    level: bevy::log::Level::INFO,
+                    filter: "info,wgpu=error,bevy_material_ui=warn,bevy_material_ui::scroll=off"
+                        .to_string(),
+                    ..default()
+                }),
+        )
+        .add_plugins(bevy::pbr::MaterialPlugin::<DiceBoxHighlightMaterial>::default())
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        .add_plugins(MaterialUiPlugin)
+        // Ensure UI Buttons spawned without ButtonBundle still receive click events
+        .add_systems(PreUpdate, ensure_buttons_have_interaction)
         .insert_resource(dice_config)
         .insert_resource(character_data)
         .insert_resource(DiceResults::default())
@@ -355,9 +404,14 @@ fn run_3d_mode(cli: Cli) {
         .insert_resource(CommandHistory::default())
         .insert_resource(ZoomState::default())
         .insert_resource(UiState::default())
+        .insert_resource(DiceContainerStyle::default())
+        .insert_resource(ShakeState::default())
+        .insert_resource(ContainerShakeAnimation::default())
+        .insert_resource(ContainerShakeConfig::default())
         .insert_resource(GroupEditState::default())
         .insert_resource(AddingEntryState::default())
         .insert_resource(SettingsState::default())
+        .insert_resource(CharacterScreenRollBridge::default())
         .insert_resource(ThrowControlState::default())
         .insert_resource(AvatarLoader::default())
         .add_systems(
@@ -367,6 +421,7 @@ fn run_3d_mode(cli: Cli) {
                 load_icons,
                 init_character_manager,
                 init_contributors,
+                apply_initial_shake_config,
                 setup,
                 setup_tab_bar,
                 setup_character_screen,
@@ -384,14 +439,29 @@ fn run_3d_mode(cli: Cli) {
                 update_results_display,
                 handle_input,
                 handle_command_input,
+                rebuild_command_history_panel,
                 handle_quick_roll_clicks,
                 rebuild_quick_roll_panel,
                 rotate_camera,
-                handle_zoom_slider,
+                handle_zoom_slider_changes,
+                sync_dice_container_mode_text,
+                sync_dice_container_toggle_icon,
+                handle_dice_box_rotate_click,
+                handle_dice_box_shake_box_click,
+                animate_container_shake,
+                handle_dice_box_toggle_container_click,
                 // Mouse-controlled throw systems
                 update_throw_from_mouse,
-                handle_strength_slider,
+                update_dice_box_highlight,
+                handle_strength_slider_changes,
+                handle_shake_slider_changes,
                 update_throw_arrow,
+            ),
+        )
+        .add_systems(Update, handle_command_history_item_clicks)
+        .add_systems(
+            Update,
+            (
                 // Avatar loading systems
                 request_avatars,
                 process_avatar_loads,
@@ -406,9 +476,15 @@ fn run_3d_mode(cli: Cli) {
         )
         .add_systems(
             Update,
+            record_character_screen_roll_on_settle.after(check_dice_settled),
+        )
+        .add_systems(Update, handle_slider_group_drag)
+        .add_systems(
+            Update,
             (
                 // Tab styling (separate to avoid tuple size limit)
                 update_tab_styles,
+                // Character sheet tab systems
                 // Character editing systems - input handling
                 handle_scroll_input,
                 handle_stat_field_click,
@@ -424,6 +500,7 @@ fn run_3d_mode(cli: Cli) {
                 // Dice roll buttons for attributes
                 handle_roll_all_stats_click,
                 handle_roll_attribute_click,
+                handle_roll_skill_click,
             ),
         )
         .add_systems(
@@ -435,13 +512,16 @@ fn run_3d_mode(cli: Cli) {
                 update_save_button_appearance,
                 update_character_list_modified_indicator,
                 refresh_character_display,
-                rebuild_character_panel_on_change,
                 rebuild_character_list_on_change,
+                rebuild_character_panel_on_change,
+                sync_character_screen_roll_result_texts,
             )
+                .chain()
                 .after(handle_new_entry_confirm)
                 .after(handle_delete_click)
                 .after(handle_roll_all_stats_click)
                 .after(handle_roll_attribute_click)
+                .after(handle_roll_skill_click)
                 .after(handle_text_input),
         )
         .add_systems(
@@ -449,15 +529,34 @@ fn run_3d_mode(cli: Cli) {
             (
                 // Settings systems
                 handle_settings_button_click,
-                handle_settings_button_hover,
                 manage_settings_modal,
                 handle_settings_ok_click,
                 handle_settings_cancel_click,
-                handle_color_slider_drag,
-                handle_slider_release,
-                handle_slider_drag_continuous,
+                handle_settings_reset_layout_click,
+                handle_quick_roll_die_type_select_change,
+                handle_color_slider_changes,
                 handle_color_text_input,
+                handle_shake_duration_text_input,
+                handle_shake_curve_chip_clicks,
+                (
+                    handle_shake_curve_point_press,
+                    handle_shake_curve_bezier_handle_press,
+                    handle_shake_curve_graph_click_to_add_point,
+                    drag_shake_curve_bezier_handle,
+                    drag_shake_curve_point,
+                    sync_shake_curve_graph_ui,
+                )
+                    .chain(),
+                sync_shake_curve_chip_ui,
                 update_color_ui,
+                autosave_and_apply_shake_config.after(sync_shake_curve_graph_ui),
+
+                // Character sheet dice settings modal
+                handle_character_sheet_settings_button_click,
+                manage_character_sheet_settings_modal,
+                handle_character_sheet_die_type_select_change,
+                handle_character_sheet_settings_save_click,
+                handle_character_sheet_settings_cancel_click,
             ),
         )
         .run();

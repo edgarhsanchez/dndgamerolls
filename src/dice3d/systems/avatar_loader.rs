@@ -3,9 +3,9 @@
 //! This module provides async loading of profile images from URLs (GitHub, Google, etc.)
 //! Images are loaded in background threads and converted to Bevy textures.
 
+use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
-use bevy::render::render_asset::RenderAssetUsages;
-use bevy::render::texture::Image;
+use bevy::ui::widget::ImageNode;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -186,7 +186,7 @@ pub fn process_avatar_loads(
 /// System to update UI images when avatars are loaded
 pub fn update_avatar_images(
     avatar_loader: Res<AvatarLoader>,
-    mut query: Query<(&mut UiImage, &mut AvatarImage)>,
+    mut query: Query<(&mut ImageNode, &mut AvatarImage)>,
 ) {
     for (mut ui_image, mut avatar) in query.iter_mut() {
         if avatar.loaded || avatar.failed {
@@ -194,7 +194,7 @@ pub fn update_avatar_images(
         }
 
         if let Some(handle) = avatar_loader.get(&avatar.url) {
-            ui_image.texture = handle;
+            ui_image.image = handle;
             avatar.loaded = true;
         } else if avatar_loader.has_failed(&avatar.url) {
             avatar.failed = true;

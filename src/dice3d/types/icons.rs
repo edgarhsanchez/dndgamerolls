@@ -3,6 +3,7 @@
 //! This module provides embedded icons for the application UI.
 //! Icons are stored as base64-encoded PNG data and loaded at runtime.
 
+use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use std::collections::HashMap;
@@ -643,7 +644,7 @@ pub fn load_icons(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             TextureDimension::D2,
             pixels,
             TextureFormat::Rgba8UnormSrgb,
-            bevy::render::render_asset::RenderAssetUsages::RENDER_WORLD,
+            bevy::asset::RenderAssetUsages::RENDER_WORLD,
         );
 
         let handle = images.add(image);
@@ -662,7 +663,7 @@ pub struct IconButton {
 
 /// Spawn an icon button with the given icon
 pub fn spawn_icon_button(
-    parent: &mut ChildBuilder,
+    parent: &mut ChildSpawnerCommands,
     icon_assets: &IconAssets,
     icon_type: IconType,
     size: f32,
@@ -672,33 +673,30 @@ pub fn spawn_icon_button(
 
     parent
         .spawn((
-            ButtonBundle {
-                style: Style {
-                    width: Val::Px(size),
-                    height: Val::Px(size),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    padding: UiRect::all(Val::Px(4.0)),
-                    ..default()
-                },
-                background_color: BackgroundColor(Color::srgba(0.2, 0.2, 0.25, 0.8)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+            Button,
+            Node {
+                width: Val::Px(size),
+                height: Val::Px(size),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                padding: UiRect::all(Val::Px(4.0)),
                 ..default()
             },
+            BackgroundColor(Color::srgba(0.2, 0.2, 0.25, 0.8)),
+            BorderRadius::all(Val::Px(4.0)),
             IconButton { icon_type },
             Name::new(tooltip.to_string()),
         ))
         .with_children(|btn| {
             if let Some(handle) = icon_handle {
-                btn.spawn(ImageBundle {
-                    image: UiImage::new(handle),
-                    style: Style {
+                btn.spawn((
+                    ImageNode::new(handle),
+                    Node {
                         width: Val::Px(size - 8.0),
                         height: Val::Px(size - 8.0),
                         ..default()
                     },
-                    ..default()
-                });
+                ));
             }
         })
         .id()

@@ -16,6 +16,28 @@ pub struct Die {
 #[derive(Component)]
 pub struct DiceBox;
 
+/// Marker component for dice container wall segments.
+#[derive(Component)]
+pub struct DiceBoxWall;
+
+/// Marker component for the dice container ceiling collider.
+#[derive(Component)]
+pub struct DiceBoxCeiling;
+
+/// Visual/physics style for the dice container.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DiceContainerStyle {
+    #[default]
+    Box,
+    Cup,
+}
+
+/// Materials used for spawning the dice container visuals.
+#[derive(Resource, Clone)]
+pub struct DiceContainerMaterials {
+    pub crystal: Handle<StandardMaterial>,
+}
+
 /// All supported dice types
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DiceType {

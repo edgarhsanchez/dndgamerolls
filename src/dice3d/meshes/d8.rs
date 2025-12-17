@@ -1,6 +1,6 @@
 use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology};
-use bevy::render::render_asset::RenderAssetUsages;
+use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy_rapier3d::prelude::*;
 
 pub fn create_d8() -> (Mesh, Collider, Vec<(Vec3, u32)>) {

@@ -6,6 +6,46 @@
 use super::state::*;
 use bevy::prelude::*;
 
+use bevy_material_ui::prelude::SliderChangeEvent;
+
+use crate::dice3d::types::{ContainerShakeAnimation, SettingsState};
+
+fn ray_intersects_aabb(ray_origin: Vec3, ray_dir: Vec3, aabb_min: Vec3, aabb_max: Vec3) -> bool {
+    // Slab method.
+    let mut tmin = f32::NEG_INFINITY;
+    let mut tmax = f32::INFINITY;
+
+    for (origin, dir, minv, maxv) in [
+        (ray_origin.x, ray_dir.x, aabb_min.x, aabb_max.x),
+        (ray_origin.y, ray_dir.y, aabb_min.y, aabb_max.y),
+        (ray_origin.z, ray_dir.z, aabb_min.z, aabb_max.z),
+    ] {
+        if dir.abs() < 1e-6 {
+            // Ray parallel to slab: must be within slab to intersect.
+            if origin < minv || origin > maxv {
+                return false;
+            }
+            continue;
+        }
+
+        let inv = 1.0 / dir;
+        let mut t1 = (minv - origin) * inv;
+        let mut t2 = (maxv - origin) * inv;
+        if t1 > t2 {
+            std::mem::swap(&mut t1, &mut t2);
+        }
+
+        tmin = tmin.max(t1);
+        tmax = tmax.min(t2);
+        if tmin > tmax {
+            return false;
+        }
+    }
+
+    // Intersection must be in front of the camera.
+    tmax >= 0.0
+}
+
 /// System to track mouse position and raycast to find target point on box floor
 ///
 /// This system casts a ray from the camera through the mouse cursor position
@@ -16,13 +56,20 @@ pub fn update_throw_from_mouse(
     mut throw_state: ResMut<ThrowControlState>,
     command_input: Res<crate::dice3d::types::CommandInput>,
     ui_state: Res<crate::dice3d::types::UiState>,
+    settings_state: Res<crate::dice3d::types::SettingsState>,
 ) {
     // Don't update when in command input mode or not on dice roller tab
     if command_input.active || ui_state.active_tab != crate::dice3d::types::AppTab::DiceRoller {
         return;
     }
 
-    let Ok(window) = windows.get_single() else {
+    // Modal dialog open: treat as not hovering the box.
+    if settings_state.show_modal {
+        throw_state.mouse_over_box = false;
+        return;
+    }
+
+    let Ok(window) = windows.single() else {
         return;
     };
 
@@ -31,16 +78,26 @@ pub fn update_throw_from_mouse(
         return;
     };
 
-    let Ok((camera, camera_transform)) = camera_query.get_single() else {
+    let Ok((camera, camera_transform)) = camera_query.single() else {
         return;
     };
 
     // Cast ray from camera through cursor position
-    let Some(ray) = camera.viewport_to_world(camera_transform, cursor_position) else {
+    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) else {
         return;
     };
 
-    // Find intersection with the box floor plane (Y = BOX_FLOOR_Y)
+    let ray_dir: Vec3 = *ray.direction;
+
+    // First: detect whether the cursor ray intersects the dice box volume.
+    // This makes any part of the box (including walls) count as "hovering the box".
+    // Expand slightly so the visible wall thickness is included.
+    let click_margin = 0.2;
+    let box_min = Vec3::new(BOX_MIN_X - click_margin, BOX_FLOOR_Y, BOX_MIN_Z - click_margin);
+    let box_max = Vec3::new(BOX_MAX_X + click_margin, BOX_TOP_Y, BOX_MAX_Z + click_margin);
+    let is_over_box_volume = ray_intersects_aabb(ray.origin, ray_dir, box_min, box_max);
+
+    // Next: find intersection with the box floor plane (Y = BOX_FLOOR_Y)
     // Ray: P = origin + t * direction
     // Plane: Y = BOX_FLOOR_Y
     // Solve: origin.y + t * direction.y = BOX_FLOOR_Y
@@ -48,7 +105,7 @@ pub fn update_throw_from_mouse(
 
     if ray.direction.y.abs() < 0.0001 {
         // Ray is parallel to floor, no intersection
-        throw_state.mouse_over_box = false;
+        throw_state.mouse_over_box = is_over_box_volume;
         return;
     }
 
@@ -63,7 +120,8 @@ pub fn update_throw_from_mouse(
     // Calculate intersection point
     let intersection = ray.origin + ray.direction * t;
 
-    // Check if intersection is within or near the box
+    // Check if intersection is within the box footprint.
+    // (Target point is still driven by the floor projection.)
     let is_in_box = ThrowControlState::is_point_in_box(intersection);
 
     // Clamp to box boundaries for target point
@@ -71,7 +129,8 @@ pub fn update_throw_from_mouse(
 
     // Update state
     throw_state.target_point = target;
-    throw_state.mouse_over_box = is_in_box;
+    // Hover/click should work on the floor and the walls.
+    throw_state.mouse_over_box = is_over_box_volume || is_in_box;
     throw_state.throw_strength = ThrowControlState::calculate_strength_from_distance(target);
 }
 
@@ -80,10 +139,17 @@ pub fn update_throw_arrow(
     throw_state: Res<ThrowControlState>,
     mut arrow_query: Query<(&mut Transform, &mut Visibility), With<ThrowDirectionArrow>>,
     ui_state: Res<crate::dice3d::types::UiState>,
+    shake_anim: Res<ContainerShakeAnimation>,
 ) {
     for (mut transform, mut visibility) in arrow_query.iter_mut() {
         // Only show arrow on dice roller tab
         if ui_state.active_tab != crate::dice3d::types::AppTab::DiceRoller {
+            *visibility = Visibility::Hidden;
+            continue;
+        }
+
+        // Hide arrow during container shaking so it doesn't distract / look wrong.
+        if shake_anim.active {
             *visibility = Visibility::Hidden;
             continue;
         }
@@ -137,81 +203,45 @@ pub fn spawn_throw_arrow(
     // Spawn arrow as a parent entity with children
     commands
         .spawn((
-            PbrBundle {
-                transform: Transform::from_translation(Vec3::new(0.0, BOX_FLOOR_Y + 0.1, 0.0)),
-                visibility: Visibility::Visible,
-                ..default()
-            },
+            Transform::from_translation(Vec3::new(0.0, BOX_FLOOR_Y + 0.1, 0.0)),
+            Visibility::Visible,
             ThrowDirectionArrow,
         ))
         .with_children(|parent| {
             // Arrow body - rotated to point in +Z and positioned
-            parent.spawn(PbrBundle {
-                mesh: body_mesh,
-                material: arrow_material.clone(),
-                transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.2))
+            parent.spawn((
+                Mesh3d(body_mesh),
+                MeshMaterial3d(arrow_material.clone()),
+                Transform::from_translation(Vec3::new(0.0, 0.0, 0.2))
                     .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
-                ..default()
-            });
+            ));
 
             // Arrow head - at the tip
-            parent.spawn(PbrBundle {
-                mesh: head_mesh,
-                material: arrow_material,
-                transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.5))
+            parent.spawn((
+                Mesh3d(head_mesh),
+                MeshMaterial3d(arrow_material),
+                Transform::from_translation(Vec3::new(0.0, 0.0, 0.5))
                     .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
-                ..default()
-            });
+            ));
         });
 }
 
-/// Handle mouse interaction with the strength slider
-pub fn handle_strength_slider(
-    mouse_button: Res<ButtonInput<MouseButton>>,
+/// Apply throw strength when the Material slider changes.
+pub fn handle_strength_slider_changes(
+    settings_state: Res<SettingsState>,
+    mut events: MessageReader<SliderChangeEvent>,
     mut throw_state: ResMut<ThrowControlState>,
-    track_query: Query<(&Node, &GlobalTransform), With<StrengthSliderTrack>>,
-    mut handle_query: Query<&mut Style, With<StrengthSliderHandle>>,
-    windows: Query<&Window>,
+    slider_query: Query<(), With<StrengthSlider>>,
 ) {
-    // Only handle when left mouse button is pressed
-    if !mouse_button.pressed(MouseButton::Left) {
+    if settings_state.show_modal {
         return;
     }
 
-    let Ok(window) = windows.get_single() else {
-        return;
-    };
-
-    let Some(cursor_position) = window.cursor_position() else {
-        return;
-    };
-
-    // Check if cursor is within the slider track area
-    for (node, global_transform) in track_query.iter() {
-        let track_rect = node.logical_rect(global_transform);
-
-        // Expand the click area horizontally for easier interaction
-        let expanded_rect = bevy::math::Rect {
-            min: Vec2::new(track_rect.min.x - 15.0, track_rect.min.y),
-            max: Vec2::new(track_rect.max.x + 15.0, track_rect.max.y),
-        };
-
-        if expanded_rect.contains(cursor_position) {
-            // Calculate level from cursor Y position within track
-            let relative_y = cursor_position.y - track_rect.min.y;
-            let track_height = track_rect.height();
-            let normalized = (relative_y / track_height).clamp(0.0, 1.0);
-
-            // Invert so top = max strength (1.0), bottom = min strength (0.0)
-            let inverted = 1.0 - normalized;
-
-            // Map to max_strength range (1.0 to 15.0)
-            throw_state.max_strength = 1.0 + inverted * 14.0;
-
-            // Update handle position
-            for mut style in handle_query.iter_mut() {
-                style.top = Val::Percent(normalized * 100.0);
-            }
+    for event in events.read() {
+        if slider_query.get(event.entity).is_err() {
+            continue;
         }
+
+        throw_state.max_strength = event.value.clamp(1.0, 15.0);
     }
 }

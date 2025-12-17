@@ -3,7 +3,7 @@ members = [".", "crates/dndgamerolls-cli"]
 
 [package]
 name = "dndgamerolls"
-version = "0.2.13"
+version = "0.2.14"
 edition = "2021"
 authors = ["Edgar Sanchez <esanchez@m2iab.com>"]
 description = "DnD Game Rolls - D&D dice roller with CLI and 3D visualization using Bevy"
@@ -53,10 +53,13 @@ image = "0.25"
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
 
-# Bevy Game Engine
+# Bevy Game Engine (0.17.3)
 # Note: dynamic_linking is only for dev - release builds use static linking
-bevy = "0.14"
-bevy_rapier3d = { version = "0.27", features = ["simd-stable"] }
+bevy = "0.17.3"
+bevy_rapier3d = { version = "0.32", features = ["simd-stable"] }
+
+# Material Design 3 UI Components
+bevy_material_ui = { path = "../bevy_material_ui", features = ["clipboard"] }
 
 # Winit for window icon setting (must match Bevy's winit version)
 winit = "0.30"

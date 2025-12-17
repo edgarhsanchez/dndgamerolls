@@ -5,6 +5,8 @@
 
 use bevy::prelude::*;
 
+use std::collections::HashMap;
+
 // ============================================================================
 // Tab Navigation
 // ============================================================================
@@ -71,11 +73,25 @@ pub enum EditingField {
 #[derive(Component)]
 pub struct TabBar;
 
-/// Marker for a tab button
+/// Marker for the app-level tab bar (to distinguish from character sheet tabs)
+#[derive(Component)]
+pub struct AppTabBar;
+
+/// Marker for a tab button (legacy, kept for compatibility)
 #[derive(Component)]
 pub struct TabButton {
     pub tab: AppTab,
 }
+
+/// Marker for an app-level tab button with index
+#[derive(Component)]
+pub struct AppTabButton {
+    pub index: usize,
+}
+
+/// Marker for app tab text (for styling updates)
+#[derive(Component)]
+pub struct AppTabText;
 
 // ============================================================================
 // Character Screen Components
@@ -305,6 +321,10 @@ pub struct ResultsText;
 #[derive(Component)]
 pub struct CommandInputText;
 
+/// Marker component for the Material text field used for dice commands.
+#[derive(Component)]
+pub struct CommandInputField;
+
 /// Resource for storing the current command input
 #[derive(Resource, Default)]
 pub struct CommandInput {
@@ -362,21 +382,337 @@ impl ZoomState {
     }
 }
 
-/// Component for the zoom slider container
+/// Marker for the Material slider controlling camera zoom
 #[derive(Component)]
-pub struct ZoomSliderContainer;
+pub struct ZoomSlider;
 
-/// Component for the zoom slider handle
-#[derive(Component)]
-pub struct ZoomSliderHandle;
+/// Resource controlling how strong the "Shake" action is.
+#[derive(Resource)]
+pub struct ShakeState {
+    /// 0.0 = no shake, 1.0 = max shake.
+    pub strength: f32,
+}
 
-/// Component for the zoom slider track
+impl Default for ShakeState {
+    fn default() -> Self {
+        Self { strength: 0.6 }
+    }
+}
+
+/// Marker for the Material slider controlling shake strength.
 #[derive(Component)]
-pub struct ZoomSliderTrack;
+pub struct ShakeSlider;
+
+/// Marker for the Material slider controlling container shake distance.
+#[derive(Component)]
+pub struct ShakeDistanceSlider;
+
+/// Marker for the Material slider controlling container shake speed.
+#[derive(Component)]
+pub struct ShakeSpeedSlider;
+
+// ============================================================================
+// Shake Curve Editor (Settings Modal)
+// ============================================================================
+
+/// Marker for the shake curve graph container.
+#[derive(Component)]
+pub struct ShakeCurveGraphRoot;
+
+/// Marker for the inner plot area of the shake curve graph.
+///
+/// This is inset from the graph border so dots/handles never touch the edges,
+/// and all cursor-to-(t,value) math uses this node's size.
+#[derive(Component)]
+pub struct ShakeCurveGraphPlotRoot;
+
+/// Marker for sampled curve dot (for rendering the line).
+#[derive(Component)]
+pub struct ShakeCurveGraphDot {
+    pub axis: ShakeAxis,
+    pub index: usize,
+}
+
+/// Draggable point handle in the curve editor.
+#[derive(Component)]
+pub struct ShakeCurvePointHandle {
+    pub id: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShakeAxis {
+    X,
+    Y,
+    Z,
+}
+
+/// Edit mode for the shake curve graph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ShakeCurveEditMode {
+    #[default]
+    None,
+    Add,
+    Delete,
+}
+
+/// Chip to toggle add/delete edit modes.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ShakeCurveEditModeChip {
+    pub mode: ShakeCurveEditMode,
+}
+
+/// Chip to enable/disable adding points to an axis.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ShakeCurveAxisChip {
+    pub axis: ShakeAxis,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ShakeCurvePoint {
+    pub id: u64,
+    pub t: f32,
+    pub value: f32,
+
+    /// Optional Bezier handles in normalized curve space.
+    ///
+    /// Stored as absolute (t, value) positions in the same normalized domain as the points.
+    /// `in_handle` is used for the segment coming *into* this point; `out_handle` for the segment
+    /// going *out of* this point.
+    pub in_handle: Option<Vec2>,
+    pub out_handle: Option<Vec2>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShakeCurveBezierHandleKind {
+    In,
+    Out,
+}
+
+/// Draggable Bezier handle for the currently-selected curve point.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ShakeCurveBezierHandle {
+    pub point_id: u64,
+    pub kind: ShakeCurveBezierHandleKind,
+}
+
+/// User-configurable parameters for the container shake animation.
+#[derive(Resource, Debug, Clone)]
+pub struct ContainerShakeConfig {
+    /// Max left/right offset (world units) at shake strength = 1.0.
+    pub distance: f32,
+    /// 0.0 = slow, 1.0 = fast.
+    pub speed: f32,
+
+    /// Fine speed multiplier applied on top of `speed`.
+    pub speed_fine: f32,
+
+    /// Total time (seconds) of a single shake, from start (t=0) to finish (t=1).
+    pub duration_seconds: f32,
+
+    /// Per-axis curves sampled over the full shake from start (t=0) to finish (t=1).
+    ///
+    /// Points are in normalized time `t` in [0..1] and `value` in [-1..1].
+    pub curve_points_x: Vec<ShakeCurvePoint>,
+    pub curve_points_y: Vec<ShakeCurvePoint>,
+    pub curve_points_z: Vec<ShakeCurvePoint>,
+
+    /// Monotonic ID generator for new curve points (only used by the UI editor).
+    pub next_curve_point_id: u64,
+}
+
+impl Default for ContainerShakeConfig {
+    fn default() -> Self {
+        Self {
+            distance: 0.8,
+            speed: 0.5,
+            speed_fine: 1.0,
+            duration_seconds: 1.0,
+            curve_points_x: vec![
+                ShakeCurvePoint {
+                    id: 1,
+                    t: 0.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                ShakeCurvePoint {
+                    id: 2,
+                    t: 0.25,
+                    value: 1.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                ShakeCurvePoint {
+                    id: 3,
+                    t: 0.50,
+                    value: -1.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                ShakeCurvePoint {
+                    id: 4,
+                    t: 0.75,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                ShakeCurvePoint {
+                    id: 5,
+                    t: 1.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+            ],
+            curve_points_y: vec![
+                ShakeCurvePoint {
+                    id: 6,
+                    t: 0.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                ShakeCurvePoint {
+                    id: 7,
+                    t: 1.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+            ],
+            curve_points_z: vec![
+                ShakeCurvePoint {
+                    id: 8,
+                    t: 0.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                ShakeCurvePoint {
+                    id: 9,
+                    t: 1.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+            ],
+            next_curve_point_id: 10,
+        }
+    }
+}
+
+/// Runtime animation state for shaking the dice container (box/cup).
+#[derive(Resource, Default)]
+pub struct ContainerShakeAnimation {
+    pub active: bool,
+    pub elapsed: f32,
+    pub phase: f32,
+    pub min_frequency_hz: f32,
+    pub max_frequency_hz: f32,
+    pub duration: f32,
+    pub amplitude: f32,
+    pub base_positions: HashMap<Entity, Vec3>,
+}
 
 /// Marker for the dice roller view root (to show/hide)
 #[derive(Component)]
 pub struct DiceRollerRoot;
+
+/// Root node for the dice-box control buttons (Rotate / Shake).
+#[derive(Component)]
+pub struct DiceBoxControlsRoot;
+
+/// Button that rotates the dice box view.
+#[derive(Component)]
+pub struct DiceBoxRotateButton;
+
+/// Button that shakes the dice box.
+#[derive(Component)]
+pub struct DiceBoxShakeButton;
+
+// ============================================================================
+// Dice Container Controls Panel (draggable)
+// ============================================================================
+
+/// Root node for the draggable dice container controls panel.
+#[derive(Component)]
+pub struct DiceBoxControlsPanelRoot;
+
+/// Drag handle for the dice container controls panel.
+#[derive(Component)]
+pub struct DiceBoxControlsPanelHandle;
+
+/// Internal drag state for the dice container controls panel.
+#[derive(Component, Default)]
+pub struct DiceBoxControlsPanelDragState {
+    pub dragging: bool,
+    pub grab_offset: Vec2,
+}
+
+/// Rotate camera around the dice container (draggable panel).
+#[derive(Component)]
+pub struct DiceBoxControlsPanelRotateButton;
+
+/// Shake dice inside the container.
+#[derive(Component)]
+pub struct DiceBoxShakeBoxButton;
+
+/// Toggle between box and cup container styles.
+#[derive(Component)]
+pub struct DiceBoxToggleContainerButton;
+
+/// The Text entity that renders the toggle-container icon glyph.
+#[derive(Component)]
+pub struct DiceBoxToggleContainerIconText;
+
+/// Text node showing current container mode.
+#[derive(Component)]
+pub struct DiceBoxContainerModeText;
+
+/// Root node for the draggable results panel.
+#[derive(Component)]
+pub struct ResultsPanelRoot;
+
+/// Drag handle button for the results panel.
+#[derive(Component)]
+pub struct ResultsPanelHandle;
+
+/// Internal drag state for the results panel.
+#[derive(Component, Default)]
+pub struct ResultsPanelDragState {
+    pub dragging: bool,
+    pub grab_offset: Vec2,
+}
+
+/// Root node for the draggable slider group panel.
+#[derive(Component)]
+pub struct SliderGroupRoot;
+
+/// Drag handle button for the slider group panel.
+#[derive(Component)]
+pub struct SliderGroupHandle;
+
+/// Internal drag state for the slider group panel.
+#[derive(Component, Default)]
+pub struct SliderGroupDragState {
+    pub dragging: bool,
+    pub grab_offset: Vec2,
+}
+
+/// Root node for the draggable command history panel.
+#[derive(Component)]
+pub struct CommandHistoryPanelRoot;
+
+/// Drag handle button for the command history panel.
+#[derive(Component)]
+pub struct CommandHistoryPanelHandle;
+
+/// Internal drag state for the command history panel.
+#[derive(Component, Default)]
+pub struct CommandHistoryPanelDragState {
+    pub dragging: bool,
+    pub grab_offset: Vec2,
+}
 
 // ============================================================================
 // Quick Roll Panel Components
@@ -385,6 +721,17 @@ pub struct DiceRollerRoot;
 /// Marker for the quick roll panel container
 #[derive(Component)]
 pub struct QuickRollPanel;
+
+/// Drag handle button for the quick roll panel.
+#[derive(Component)]
+pub struct QuickRollPanelHandle;
+
+/// Internal drag state for the quick roll panel.
+#[derive(Component, Default)]
+pub struct QuickRollPanelDragState {
+    pub dragging: bool,
+    pub grab_offset: Vec2,
+}
 
 /// Types of quick roll actions
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -398,6 +745,46 @@ pub enum QuickRollType {
 #[derive(Component)]
 pub struct QuickRollButton {
     pub roll_type: QuickRollType,
+}
+
+// ============================================================================
+// Character Sheet Roll UI (dice buttons -> 3D dice roller)
+// ============================================================================
+
+/// Dice roll button for a skill check (from the character sheet).
+#[derive(Component)]
+pub struct RollSkillButton {
+    pub skill: String,
+}
+
+/// Text node that displays the last roll total for an attribute.
+#[derive(Component)]
+pub struct AttributeRollResultText {
+    pub attribute: String,
+}
+
+/// Text node that displays the last roll total for a skill.
+#[derive(Component)]
+pub struct SkillRollResultText {
+    pub skill: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CharacterScreenRollTarget {
+    Attribute(String),
+    Skill(String),
+}
+
+/// Bridges character-sheet dice buttons to the dice roller and back.
+///
+/// - When a dice icon is clicked on the character sheet, `pending` is set.
+/// - When the dice roller finishes, we store the total in the corresponding map.
+#[derive(Resource, Default)]
+pub struct CharacterScreenRollBridge {
+    pub pending: Option<CharacterScreenRollTarget>,
+    pub last_attribute_totals: HashMap<String, i32>,
+    pub last_skill_totals: HashMap<String, i32>,
+    pub last_character_id: Option<i64>,
 }
 
 #[cfg(test)]

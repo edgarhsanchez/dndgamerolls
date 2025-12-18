@@ -608,7 +608,11 @@ pub fn setup(
                         ScrollPosition::default(),
                         Node {
                             width: Val::Percent(100.0),
+                            // Important in a flex column: allow the scroll area to be smaller than
+                            // its content so overflow/scrolling can actually happen.
+                            min_height: Val::Px(0.0),
                             flex_grow: 1.0,
+                            flex_shrink: 1.0,
                             overflow: Overflow::scroll_y(),
                             ..default()
                         },

@@ -36,6 +36,8 @@ pub use camera::{handle_zoom_slider_changes, rotate_camera};
 pub use character_screen::{
     // UI fixups
     ensure_buttons_have_interaction,
+    // Legacy SQLite -> SurrealDB conversion
+    finalize_sqlite_conversion_if_done,
     handle_character_list_clicks,
     handle_character_sheet_die_type_select_change,
     // Character sheet dice settings modal
@@ -58,6 +60,9 @@ pub use character_screen::{
     handle_save_click,
     // Scroll handling
     handle_scroll_input,
+    handle_sqlite_conversion_no_click,
+    handle_sqlite_conversion_ok_click,
+    handle_sqlite_conversion_yes_click,
     // Editing handlers
     handle_stat_field_click,
     handle_tab_clicks,
@@ -71,6 +76,7 @@ pub use character_screen::{
     // Character sheet dice -> dice roller bridge
     record_character_screen_roll_on_settle,
     refresh_character_display,
+    run_sqlite_conversion_step,
     // Character screen setup
     setup_character_screen,
     // DnD info screen
@@ -79,11 +85,13 @@ pub use character_screen::{
     setup_tab_bar,
     // Character list systems
     spawn_character_list_panel,
+    start_sqlite_conversion_if_needed,
     sync_character_screen_roll_result_texts,
     update_character_list_modified_indicator,
     update_editing_display,
     update_new_entry_input_display,
     update_save_button_appearance,
+    update_sqlite_conversion_dialog_ui,
     update_tab_styles,
     update_tab_visibility,
     MD3_ERROR,

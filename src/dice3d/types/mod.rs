@@ -17,6 +17,7 @@ pub mod database;
 pub mod dice;
 pub mod icons;
 pub mod settings;
+pub mod sqlite_conversion;
 pub mod ui;
 
 // Re-export all public types for convenient access
@@ -27,4 +28,5 @@ pub use database::*;
 pub use dice::*;
 pub use icons::*;
 pub use settings::*;
+pub use sqlite_conversion::*;
 pub use ui::*;

@@ -37,7 +37,7 @@ pub fn persist_settings_to_db(
 
     match settings_state.settings.save_to_db(&db) {
         Ok(()) => settings_state.is_modified = false,
-        Err(e) => warn!("Failed to persist settings to SQLite: {}", e),
+        Err(e) => warn!("Failed to persist settings to SurrealDB: {}", e),
     }
 }
 
@@ -478,8 +478,7 @@ pub fn handle_settings_button_click(
         settings_state.editing_shake_config = shake_config.clone();
 
         // Keep autosave snapshot aligned so opening the modal doesn't immediately rewrite.
-        settings_state.last_saved_shake_config_json =
-            serde_json::to_string(&settings_state.settings.shake_config).unwrap_or_default();
+        settings_state.last_saved_shake_config = settings_state.settings.shake_config.clone();
 
         settings_state.shake_duration_input_text = format!(
             "{:.3}",
@@ -508,16 +507,13 @@ pub fn autosave_and_apply_shake_config(
 
     // Convert the editing config into the persisted representation.
     let persisted = ShakeConfigSetting::from_runtime(&settings_state.editing_shake_config);
-    let Ok(json) = serde_json::to_string(&persisted) else {
-        return;
-    };
 
-    if json == settings_state.last_saved_shake_config_json {
+    if persisted == settings_state.last_saved_shake_config {
         return;
     }
 
     settings_state.settings.shake_config = persisted;
-    settings_state.last_saved_shake_config_json = json;
+    settings_state.last_saved_shake_config = settings_state.settings.shake_config.clone();
 
     // Apply to runtime immediately so the shake feature uses the latest curve without
     // requiring an explicit OK click.
@@ -540,7 +536,6 @@ pub fn manage_settings_modal(
     settings_state: Res<SettingsState>,
     theme: Res<MaterialTheme>,
     modal_query: Query<Entity, With<SettingsModalOverlay>>,
-    children_query: Query<&Children>,
 ) {
     if !settings_state.is_changed() {
         return;
@@ -561,11 +556,6 @@ pub fn manage_settings_modal(
     } else {
         // Despawn modal
         for entity in modal_query.iter() {
-            if let Ok(children) = children_query.get(entity) {
-                for child in children.iter() {
-                    commands.entity(child).despawn();
-                }
-            }
             commands.entity(entity).despawn();
         }
     }
@@ -987,8 +977,9 @@ pub fn handle_shake_curve_graph_click_to_add_point(
     // Use window physical cursor mapping (robust under DPI scaling).
     let cursor_local = if let Some(window) = window {
         let cursor_in_ui_target = ui_target_cursor_physical_px(window, ui_camera);
-        cursor_in_ui_target
-            .and_then(|c| window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed))
+        cursor_in_ui_target.and_then(|c| {
+            window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed)
+        })
     } else {
         None
     };

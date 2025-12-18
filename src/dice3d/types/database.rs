@@ -1,97 +1,100 @@
-//! SQLite database for character storage
+//! Embedded SurrealDB database for character & settings storage.
 //!
-//! This module provides persistent storage for characters using SQLite.
-//! Each character has a stable internal ID that doesn't change when renamed.
+//! This module provides persistent storage for:
+//! - characters
+//! - app settings
+//! - command history
+//!
+//! The embedded database is stored in the same app-data folder previously used for the
+//! legacy SQLite `characters.db` file.
 
 use bevy::prelude::*;
-use rusqlite::{params, Connection};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use surrealdb::engine::local::{Db, SurrealKv};
+use surrealdb::sql::Thing;
+use surrealdb::Surreal;
+
 use super::character::{CharacterListEntry, CharacterSheet};
 
-/// Database file name
-const DATABASE_FILE: &str = "characters.db";
-/// App data folder name
+/// Legacy SQLite database file name (for one-time migration).
+const LEGACY_SQLITE_FILE: &str = "characters.db";
+/// SurrealDB folder name (embedded database).
+const DATABASE_FOLDER: &str = "characters.surrealdb";
+/// App data folder name.
 const APP_DATA_FOLDER: &str = "DnDGameRolls";
 
-/// A character entry in the database
+const NS: &str = "dndgamerolls";
+const DB: &str = "dndgamerolls";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CharacterEntry {
-    /// Stable internal ID (never changes)
-    pub id: i64,
-    /// Character name (can be changed)
-    pub name: String,
-    /// Character class for display
-    pub class: String,
-    /// Character race for display  
-    pub race: String,
-    /// Character level for display
-    pub level: i32,
-    /// Full character sheet data as JSON
-    pub data: String,
+struct Record<T> {
+    #[serde(default)]
+    id: Option<Thing>,
+    #[serde(flatten)]
+    data: T,
 }
 
-/// Resource for managing the character database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CharacterDocument {
+    /// Stable internal ID (never changes).
+    sid: i64,
+    /// Legacy SQLite character ID, if this record was converted.
+    ///
+    /// This is used to prevent repeated conversion runs from re-importing
+    /// the same characters.
+    #[serde(default)]
+    legacy_sqlite_id: Option<i64>,
+    /// Convenience fields for listing/indexing.
+    name: String,
+    class: String,
+    race: String,
+    level: i32,
+    /// Full character sheet.
+    sheet: CharacterSheet,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SidRow {
+    sid: i64,
+}
+
+/// Resource for managing the character database.
 #[derive(Resource)]
 pub struct CharacterDatabase {
-    /// Database connection wrapped in Mutex for thread safety
-    connection: Mutex<Connection>,
-    /// Path to the database file
+    rt: tokio::runtime::Runtime,
+    db: Mutex<Surreal<Db>>,
+    /// Path to the database folder.
     pub db_path: PathBuf,
 }
 
 impl CharacterDatabase {
-    /// Get the app data directory for storing the database
-    /// Uses LocalAppData on Windows, which is accessible to MSIX apps
+    /// Get the app data directory for storing the database.
+    /// Uses LocalAppData on Windows, which is accessible to MSIX apps.
     fn get_data_dir() -> Result<PathBuf, String> {
-        // Try to get the user's local app data directory
-        // On Windows: C:\Users\<user>\AppData\Local\DnDGameRolls
-        // On Linux: ~/.local/share/DnDGameRolls
-        // On macOS: ~/Library/Application Support/DnDGameRolls
-
         #[cfg(target_os = "windows")]
         {
-            // Try LOCALAPPDATA first (standard Windows location)
             if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
                 let app_dir = PathBuf::from(&local_app_data).join(APP_DATA_FOLDER);
-                println!("Attempting to use app data directory: {:?}", app_dir);
                 match std::fs::create_dir_all(&app_dir) {
-                    Ok(_) => {
-                        println!(
-                            "Successfully created/verified app data directory: {:?}",
-                            app_dir
-                        );
-                        return Ok(app_dir);
-                    }
+                    Ok(_) => return Ok(app_dir),
                     Err(e) => {
                         eprintln!("Failed to create app data directory {:?}: {}", app_dir, e);
-                        // Fall through to try other options
                     }
                 }
-            } else {
-                eprintln!("LOCALAPPDATA environment variable not set");
             }
 
-            // Fallback: try user profile directory
             if let Ok(user_profile) = std::env::var("USERPROFILE") {
                 let app_dir = PathBuf::from(&user_profile)
                     .join("AppData")
                     .join("Local")
                     .join(APP_DATA_FOLDER);
-                println!("Trying fallback user profile path: {:?}", app_dir);
-                match std::fs::create_dir_all(&app_dir) {
-                    Ok(_) => {
-                        println!(
-                            "Successfully created/verified fallback directory: {:?}",
-                            app_dir
-                        );
-                        return Ok(app_dir);
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to create fallback directory {:?}: {}", app_dir, e);
-                    }
+                if std::fs::create_dir_all(&app_dir).is_ok() {
+                    return Ok(app_dir);
                 }
             }
         }
@@ -127,175 +130,219 @@ impl CharacterDatabase {
             }
         }
 
-        // Fallback to current directory
         Ok(std::env::current_dir().unwrap_or_default())
     }
 
-    /// Open or create the database
+    fn make_runtime() -> Result<tokio::runtime::Runtime, String> {
+        tokio::runtime::Runtime::new().map_err(|e| format!("Failed to create tokio runtime: {}", e))
+    }
+
+    async fn init(db: &Surreal<Db>) -> Result<(), String> {
+        db.use_ns(NS)
+            .use_db(DB)
+            .await
+            .map_err(|e| format!("Failed to select namespace/db: {}", e))?;
+
+        // Minimal schema + indexes.
+        let schema = r#"
+            DEFINE TABLE character SCHEMALESS;
+            DEFINE INDEX character_sid_unique ON character FIELDS sid UNIQUE;
+            DEFINE INDEX character_name ON character FIELDS name;
+            DEFINE INDEX character_legacy_sqlite_id ON character FIELDS legacy_sqlite_id;
+
+            DEFINE TABLE setting SCHEMALESS;
+
+            DEFINE TABLE command_history SCHEMALESS;
+        "#;
+
+        db.query(schema)
+            .await
+            .map_err(|e| format!("Failed to initialize schema: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Open or create the database.
     pub fn open() -> Result<Self, String> {
         let data_dir = Self::get_data_dir()?;
-        let db_path = data_dir.join(DATABASE_FILE);
+        let db_path = data_dir.join(DATABASE_FOLDER);
 
-        println!("Opening database at: {:?}", db_path);
+        let rt = Self::make_runtime()?;
+        std::fs::create_dir_all(&db_path)
+            .map_err(|e| format!("Failed to create database folder {:?}: {}", db_path, e))?;
 
-        let conn =
-            Connection::open(&db_path).map_err(|e| format!("Failed to open database: {}", e))?;
+        let db = rt
+            .block_on(async { Surreal::new::<SurrealKv>(db_path.clone()).await })
+            .map_err(|e| format!("Failed to open SurrealDB: {}", e))?;
 
-        let db = Self {
-            connection: Mutex::new(conn),
-            db_path,
+        rt.block_on(Self::init(&db))?;
+
+        let this = Self {
+            rt,
+            db: Mutex::new(db),
+            db_path: db_path.clone(),
         };
 
-        db.initialize_schema()?;
-
-        Ok(db)
+        Ok(this)
     }
 
-    /// Open database at a specific path (for testing)
+    /// Path to the legacy SQLite database file (if the app-data folder can be resolved).
+    pub fn legacy_sqlite_path() -> Option<PathBuf> {
+        Self::get_data_dir()
+            .ok()
+            .map(|dir| dir.join(LEGACY_SQLITE_FILE))
+    }
+
+    /// Returns true if a character record exists with the given SurrealDB record id.
+    pub fn character_id_exists(&self, id: i64) -> Result<bool, String> {
+        self.with_db(|db| {
+            self.rt.block_on(async {
+                // Decode the minimum field we need; reuses a shared type so we don't
+                // accumulate unused-field warnings.
+                let record: Option<Record<SidRow>> = db
+                    .select(("character", id))
+                    .await
+                    .map_err(|e| format!("Failed to check character existence: {}", e))?;
+                Ok(record.is_some())
+            })
+        })
+    }
+
+    /// Returns true if any character record has `legacy_sqlite_id == legacy_id`.
+    pub fn legacy_sqlite_id_exists(&self, legacy_id: i64) -> Result<bool, String> {
+        self.with_db(|db| {
+            self.rt.block_on(async {
+                let mut response = db
+                    .query("SELECT VALUE sid FROM character WHERE legacy_sqlite_id = $id LIMIT 1")
+                    .bind(("id", legacy_id))
+                    .await
+                    .map_err(|e| format!("Failed to query legacy_sqlite_id: {}", e))?;
+                let rows: Vec<i64> = response
+                    .take(0)
+                    .map_err(|e| format!("Failed to decode legacy_sqlite_id query: {}", e))?;
+                Ok(!rows.is_empty())
+            })
+        })
+    }
+
+    /// Open database at a specific path (for testing).
     pub fn open_at(path: PathBuf) -> Result<Self, String> {
-        let conn =
-            Connection::open(&path).map_err(|e| format!("Failed to open database: {}", e))?;
+        let rt = Self::make_runtime()?;
+        std::fs::create_dir_all(&path)
+            .map_err(|e| format!("Failed to create database folder {:?}: {}", path, e))?;
 
-        let db = Self {
-            connection: Mutex::new(conn),
+        let db = rt
+            .block_on(async { Surreal::new::<SurrealKv>(path.clone()).await })
+            .map_err(|e| format!("Failed to open SurrealDB: {}", e))?;
+
+        rt.block_on(Self::init(&db))?;
+
+        Ok(Self {
+            rt,
+            db: Mutex::new(db),
             db_path: path,
-        };
-
-        db.initialize_schema()?;
-
-        Ok(db)
+        })
     }
 
-    /// Open an in-memory database (for testing or fallback)
+    /// "In-memory" database for testing: uses a unique temp folder.
     pub fn open_in_memory() -> Result<Self, String> {
-        let conn = Connection::open_in_memory()
-            .map_err(|e| format!("Failed to open in-memory database: {}", e))?;
-
-        let db = Self {
-            connection: Mutex::new(conn),
-            db_path: PathBuf::from(":memory:"),
-        };
-
-        db.initialize_schema()?;
-
-        Ok(db)
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!("dndgamerolls-test-{}", nanos));
+        Self::open_at(path)
     }
 
-    /// Create database tables if they don't exist
-    fn initialize_schema(&self) -> Result<(), String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS characters (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                class TEXT NOT NULL DEFAULT '',
-                race TEXT NOT NULL DEFAULT '',
-                level INTEGER NOT NULL DEFAULT 1,
-                data TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE INDEX IF NOT EXISTS idx_characters_name ON characters(name);
-
-            CREATE TABLE IF NOT EXISTS app_settings (
-                key TEXT PRIMARY KEY,
-                json TEXT NOT NULL,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            ",
-        )
-        .map_err(|e| format!("Failed to initialize database schema: {}", e))?;
-
-        Ok(())
+    fn with_db<T>(&self, f: impl FnOnce(&Surreal<Db>) -> Result<T, String>) -> Result<T, String> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        f(&db)
     }
 
-    /// Get a JSON blob from the app settings table.
-    pub fn get_setting_json(&self, key: &str) -> Result<Option<String>, String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
+    fn next_character_id(&self) -> Result<i64, String> {
+        self.with_db(|db| {
+            self.rt.block_on(async {
+                let mut response = db
+                    .query("SELECT sid FROM character ORDER BY sid DESC LIMIT 1")
+                    .await
+                    .map_err(|e| format!("Failed to query next id: {}", e))?;
+                let rows: Vec<SidRow> = response
+                    .take(0)
+                    .map_err(|e| format!("Failed to decode next id: {}", e))?;
+                Ok(rows.first().map(|r| r.sid + 1).unwrap_or(1))
+            })
+        })
+    }
 
-        let mut stmt = conn
-            .prepare("SELECT json FROM app_settings WHERE key = ?1")
-            .map_err(|e| format!("Failed to prepare query: {}", e))?;
-
-        let result: Result<String, _> = stmt.query_row(params![key], |row| row.get(0));
-        match result {
-            Ok(json) => Ok(Some(json)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(format!("Failed to load setting '{}': {}", key, e)),
+    fn to_doc(
+        sid: i64,
+        sheet: &CharacterSheet,
+        legacy_sqlite_id: Option<i64>,
+    ) -> CharacterDocument {
+        CharacterDocument {
+            sid,
+            legacy_sqlite_id,
+            name: sheet.character.name.clone(),
+            class: sheet.character.class.clone(),
+            race: sheet.character.race.clone(),
+            level: sheet.character.level,
+            sheet: sheet.clone(),
         }
     }
 
-    /// Upsert a JSON blob into the app settings table.
-    pub fn set_setting_json(&self, key: &str, json: &str) -> Result<(), String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        conn.execute(
-            "
-            INSERT INTO app_settings (key, json, updated_at)
-            VALUES (?1, ?2, CURRENT_TIMESTAMP)
-            ON CONFLICT(key) DO UPDATE SET
-                json = excluded.json,
-                updated_at = CURRENT_TIMESTAMP
-            ",
-            params![key, json],
-        )
-        .map_err(|e| format!("Failed to save setting '{}': {}", key, e))?;
-
-        Ok(())
-    }
-
-    /// Save a new character and return its ID
+    /// Save a new character and return its ID.
     pub fn create_character(&self, sheet: &CharacterSheet) -> Result<i64, String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        let data = serde_json::to_string(sheet)
-            .map_err(|e| format!("Failed to serialize character: {}", e))?;
-
-        conn.execute(
-            "INSERT INTO characters (name, class, race, level, data) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                sheet.character.name,
-                sheet.character.class,
-                sheet.character.race,
-                sheet.character.level,
-                data
-            ],
-        )
-        .map_err(|e| format!("Failed to create character: {}", e))?;
-
-        Ok(conn.last_insert_rowid())
+        let sid = self.next_character_id()?;
+        self.upsert_character(sid, sheet)?;
+        Ok(sid)
     }
 
-    /// Update an existing character by ID
+    fn upsert_character(&self, sid: i64, sheet: &CharacterSheet) -> Result<(), String> {
+        let doc = Self::to_doc(sid, sheet, None);
+
+        self.with_db(|db| {
+            self.rt.block_on(async {
+                let _: Option<Record<CharacterDocument>> = db
+                    .upsert(("character", sid))
+                    .content(doc)
+                    .await
+                    .map_err(|e| format!("Failed to save character: {}", e))?;
+                Ok(())
+            })
+        })
+    }
+
+    /// Upsert a character converted from legacy SQLite.
+    ///
+    /// Uses the legacy SQLite id as the SurrealDB record id so it stays stable,
+    /// and also records it in `legacy_sqlite_id` to prevent re-imports.
+    pub fn upsert_legacy_character(
+        &self,
+        legacy_id: i64,
+        sheet: &CharacterSheet,
+    ) -> Result<(), String> {
+        let doc = Self::to_doc(legacy_id, sheet, Some(legacy_id));
+
+        self.with_db(|db| {
+            self.rt.block_on(async {
+                let _: Option<Record<CharacterDocument>> = db
+                    .upsert(("character", legacy_id))
+                    .content(doc)
+                    .await
+                    .map_err(|e| format!("Failed to save legacy character: {}", e))?;
+                Ok(())
+            })
+        })
+    }
+
+    /// Update an existing character by ID.
     pub fn update_character(&self, id: i64, sheet: &CharacterSheet) -> Result<(), String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        let data = serde_json::to_string(sheet)
-            .map_err(|e| format!("Failed to serialize character: {}", e))?;
-
-        let rows_updated = conn.execute(
-            "UPDATE characters SET name = ?1, class = ?2, race = ?3, level = ?4, data = ?5, updated_at = CURRENT_TIMESTAMP WHERE id = ?6",
-            params![
-                sheet.character.name,
-                sheet.character.class,
-                sheet.character.race,
-                sheet.character.level,
-                data,
-                id
-            ],
-        ).map_err(|e| format!("Failed to update character: {}", e))?;
-
-        if rows_updated == 0 {
-            return Err(format!("Character with id {} not found", id));
-        }
-
-        Ok(())
+        // Ensure it exists, to preserve the old behavior.
+        self.load_character(id)?;
+        self.upsert_character(id, sheet)
     }
 
-    /// Save character - creates if id is None, updates if id exists
+    /// Save character - creates if id is None, updates if id exists.
     pub fn save_character(&self, id: Option<i64>, sheet: &CharacterSheet) -> Result<i64, String> {
         match id {
             Some(existing_id) => {
@@ -306,116 +353,173 @@ impl CharacterDatabase {
         }
     }
 
-    /// Load a character by ID
+    /// Load a character by ID.
     pub fn load_character(&self, id: i64) -> Result<CharacterSheet, String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        let data: String = conn
-            .query_row(
-                "SELECT data FROM characters WHERE id = ?1",
-                params![id],
-                |row| row.get(0),
-            )
-            .map_err(|e| format!("Character not found: {}", e))?;
-
-        serde_json::from_str(&data).map_err(|e| format!("Failed to deserialize character: {}", e))
-    }
-
-    /// Delete a character by ID
-    pub fn delete_character(&self, id: i64) -> Result<(), String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        conn.execute("DELETE FROM characters WHERE id = ?1", params![id])
-            .map_err(|e| format!("Failed to delete character: {}", e))?;
-
-        Ok(())
-    }
-
-    /// List all characters (for the character selection UI)
-    pub fn list_characters(&self) -> Result<Vec<CharacterListEntry>, String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        let mut stmt = conn
-            .prepare("SELECT id, name, class, level FROM characters ORDER BY name")
-            .map_err(|e| format!("Failed to prepare query: {}", e))?;
-
-        let entries = stmt
-            .query_map([], |row| {
-                Ok(CharacterListEntry {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    class: row.get(2)?,
-                    level: row.get(3)?,
-                })
+        let doc = self.with_db(|db| {
+            self.rt.block_on(async {
+                let record: Option<Record<CharacterDocument>> = db
+                    .select(("character", id))
+                    .await
+                    .map_err(|e| format!("Failed to load character: {}", e))?;
+                Ok(record)
             })
-            .map_err(|e| format!("Failed to query characters: {}", e))?;
+        })?;
 
-        let mut result = Vec::new();
-        for entry in entries {
-            result.push(entry.map_err(|e| format!("Failed to read character: {}", e))?);
-        }
+        let Some(record) = doc else {
+            return Err(format!("Character with id {} not found", id));
+        };
 
-        Ok(result)
+        Ok(record.data.sheet)
     }
 
-    /// Get character count
+    /// Delete a character by ID.
+    pub fn delete_character(&self, id: i64) -> Result<(), String> {
+        self.with_db(|db| {
+            self.rt.block_on(async {
+                let _: Option<Record<CharacterDocument>> = db
+                    .delete(("character", id))
+                    .await
+                    .map_err(|e| format!("Failed to delete character: {}", e))?;
+                Ok(())
+            })
+        })
+    }
+
+    /// List all characters (for the character selection UI).
+    pub fn list_characters(&self) -> Result<Vec<CharacterListEntry>, String> {
+        self.with_db(|db| {
+            self.rt.block_on(async {
+                let mut response = db
+                    .query("SELECT sid AS id, name, class, level FROM character ORDER BY name")
+                    .await
+                    .map_err(|e| format!("Failed to query characters: {}", e))?;
+                let rows: Vec<CharacterListEntry> = response
+                    .take(0)
+                    .map_err(|e| format!("Failed to decode character list: {}", e))?;
+                Ok(rows)
+            })
+        })
+    }
+
+    /// Get character count.
     pub fn character_count(&self) -> Result<i64, String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        conn.query_row("SELECT COUNT(*) FROM characters", [], |row| row.get(0))
-            .map_err(|e| format!("Failed to count characters: {}", e))
+        Ok(self.list_characters()?.len() as i64)
     }
 
-    /// Check if a character with the given name exists (excluding a specific ID)
+    /// Check if a character with the given name exists (excluding a specific ID).
     pub fn name_exists(&self, name: &str, exclude_id: Option<i64>) -> Result<bool, String> {
-        let conn = self.connection.lock().map_err(|e| e.to_string())?;
-
-        let count: i64 = match exclude_id {
-            Some(id) => conn.query_row(
-                "SELECT COUNT(*) FROM characters WHERE name = ?1 AND id != ?2",
-                params![name, id],
-                |row| row.get(0),
-            ),
-            None => conn.query_row(
-                "SELECT COUNT(*) FROM characters WHERE name = ?1",
-                params![name],
-                |row| row.get(0),
-            ),
-        }
-        .map_err(|e| format!("Failed to check name: {}", e))?;
-
-        Ok(count > 0)
+        let list = self.list_characters()?;
+        Ok(list
+            .iter()
+            .any(|c| c.name == name && exclude_id.map(|id| id != c.id).unwrap_or(true)))
     }
 
-    /// Import a character from JSON (for migration from file-based storage)
-    pub fn import_from_json(&self, json_str: &str) -> Result<i64, String> {
-        let sheet: CharacterSheet =
-            serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    /// Load a document by key from the `setting` table.
+    pub fn get_setting<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, String> {
+        let key = key.to_owned();
+        self.with_db(move |db| {
+            self.rt.block_on(async {
+                // Preferred schema: store everything as JSON under a single `value` field.
+                // This avoids SurrealDB-specific types (Thing) and avoids binding/serde issues
+                // when saving complex Rust types.
+                let mut response = db
+                    .query("SELECT VALUE value FROM type::thing('setting', $key)")
+                    .bind(("key", key.clone()))
+                    .await
+                    .map_err(|e| format!("Failed to load setting '{}': {}", key, e))?;
 
-        // Check if character with same name already exists
-        if self.name_exists(&sheet.character.name, None)? {
-            return Err(format!(
-                "Character '{}' already exists",
-                sheet.character.name
-            ));
-        }
+                let rows: Result<Vec<JsonValue>, _> = response.take(0);
+                if let Ok(mut rows) = rows {
+                    if let Some(v) = rows.pop() {
+                        if v.is_null() {
+                            return Ok(None);
+                        }
+                        let decoded: T = serde_json::from_value(v).map_err(|e| {
+                            format!("Failed to decode setting '{}' as JSON: {}", key, e)
+                        })?;
+                        return Ok(Some(decoded));
+                    }
+                    return Ok(None);
+                }
 
-        self.create_character(&sheet)
+                // Back-compat: older builds stored the settings directly as the record content.
+                // Keep reading that format so existing installs don't break.
+                let mut response = db
+                    .query("SELECT VALUE * FROM type::thing('setting', $key)")
+                    .bind(("key", key.clone()))
+                    .await
+                    .map_err(|e| format!("Failed to load setting '{}': {}", key, e))?;
+
+                let mut rows: Vec<T> = response
+                    .take(0)
+                    .map_err(|e| format!("Failed to decode setting '{}': {}", key, e))?;
+                Ok(rows.pop())
+            })
+        })
     }
 
-    /// Import a character from a JSON file path (for migration from file-based storage)
-    pub fn import_from_file(&self, path: &std::path::Path) -> Result<i64, String> {
-        let json_str =
-            std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
-        self.import_from_json(&json_str)
+    /// Upsert a document by key into the `setting` table.
+    pub fn set_setting<T: Serialize + 'static>(&self, key: &str, value: T) -> Result<(), String> {
+        let key = key.to_owned();
+        self.with_db(move |db| {
+            self.rt.block_on(async {
+                let json_value = serde_json::to_value(&value)
+                    .map_err(|e| format!("Failed to serialize setting '{}' to JSON: {}", key, e))?;
+
+                // Store under a dedicated `value` field so we can reliably load primitives
+                // (bool) and complex structs (AppSettings) without SurrealDB internal types.
+                db.query("UPSERT type::thing('setting', $key) SET value = $value RETURN NONE")
+                    .bind(("key", key.clone()))
+                    .bind(("value", json_value))
+                    .await
+                    .map_err(|e| format!("Failed to save setting '{}': {}", key, e))?;
+                Ok(())
+            })
+        })
+    }
+
+    pub fn load_command_history(&self) -> Result<Vec<String>, String> {
+        #[derive(Serialize, Deserialize, Default)]
+        struct Doc {
+            commands: Vec<String>,
+        }
+
+        let doc: Option<Record<Doc>> = self.with_db(|db| {
+            self.rt.block_on(async {
+                db.select(("command_history", "default"))
+                    .await
+                    .map_err(|e| format!("Failed to load command history: {}", e))
+            })
+        })?;
+
+        Ok(doc.map(|d| d.data.commands).unwrap_or_default())
+    }
+
+    pub fn save_command_history(&self, commands: &[String]) -> Result<(), String> {
+        #[derive(Serialize, Deserialize)]
+        struct Doc {
+            commands: Vec<String>,
+        }
+
+        self.with_db(|db| {
+            self.rt.block_on(async {
+                let _: Option<Record<Doc>> = db
+                    .upsert(("command_history", "default"))
+                    .content(Doc {
+                        commands: commands.to_vec(),
+                    })
+                    .await
+                    .map_err(|e| format!("Failed to save command history: {}", e))?;
+                Ok(())
+            })
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dice3d::types::character::{AttributeModifiers, Attributes, CharacterInfo, Combat};
-    use std::collections::HashMap;
+    use crate::dice3d::types::character::{Attributes, CharacterInfo, Combat};
 
     fn create_test_sheet(name: &str) -> CharacterSheet {
         CharacterSheet {
@@ -434,48 +538,37 @@ mod tests {
                 wisdom: 10,
                 charisma: 10,
             },
-            modifiers: AttributeModifiers::default(),
-            combat: Combat::default(),
-            proficiency_bonus: 2,
-            saving_throws: HashMap::new(),
-            skills: HashMap::new(),
-            equipment: None,
-            features: Vec::new(),
-            spells: None,
-            custom_attributes: HashMap::new(),
-            custom_basic_info: HashMap::new(),
-            custom_combat: HashMap::new(),
+            combat: Combat {
+                armor_class: 10,
+                initiative: 0,
+                ..Default::default()
+            },
+            ..Default::default()
         }
     }
 
     #[test]
     fn test_create_and_load_character() {
         let db = CharacterDatabase::open_in_memory().unwrap();
-        let sheet = create_test_sheet("Thorin");
+        let sheet = create_test_sheet("Gimli");
 
         let id = db.create_character(&sheet).unwrap();
-        assert!(id > 0);
-
         let loaded = db.load_character(id).unwrap();
-        assert_eq!(loaded.character.name, "Thorin");
+        assert_eq!(loaded.character.name, "Gimli");
     }
 
     #[test]
-    fn test_update_character_name() {
+    fn test_update_character() {
         let db = CharacterDatabase::open_in_memory().unwrap();
         let mut sheet = create_test_sheet("Thorin");
 
         let id = db.create_character(&sheet).unwrap();
 
-        // Rename the character
         sheet.character.name = "Thorin Oakenshield".to_string();
         db.update_character(id, &sheet).unwrap();
 
-        // Verify the update - same ID, new name
         let loaded = db.load_character(id).unwrap();
         assert_eq!(loaded.character.name, "Thorin Oakenshield");
-
-        // Verify only one character exists
         assert_eq!(db.character_count().unwrap(), 1);
     }
 
@@ -489,8 +582,6 @@ mod tests {
 
         let list = db.list_characters().unwrap();
         assert_eq!(list.len(), 3);
-
-        // Should be sorted by name
         assert_eq!(list[0].name, "Aragorn");
         assert_eq!(list[1].name, "Gandalf");
         assert_eq!(list[2].name, "Legolas");
@@ -517,8 +608,6 @@ mod tests {
 
         assert!(db.name_exists("Bilbo", None).unwrap());
         assert!(!db.name_exists("Frodo", None).unwrap());
-
-        // Should not count itself when checking
         assert!(!db.name_exists("Bilbo", Some(id)).unwrap());
     }
 
@@ -527,11 +616,9 @@ mod tests {
         let db = CharacterDatabase::open_in_memory().unwrap();
         let mut sheet = create_test_sheet("Sam");
 
-        // First save creates
         let id = db.save_character(None, &sheet).unwrap();
         assert_eq!(db.character_count().unwrap(), 1);
 
-        // Second save with ID updates
         sheet.character.level = 5;
         let same_id = db.save_character(Some(id), &sheet).unwrap();
         assert_eq!(id, same_id);

@@ -3,22 +3,20 @@
 //! This module handles loading and saving application settings.
 
 use super::DiceType;
-use bevy::log::{debug, info, warn};
+use bevy::log::info;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::fs;
 
 use super::database::CharacterDatabase;
 use super::ui::{
     ContainerShakeConfig, ShakeCurveBezierHandleKind, ShakeCurveEditMode, ShakeCurvePoint,
 };
-use std::path::PathBuf;
 
 // ============================================================================
 // Persistent Shake Curve Settings
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShakeCurvePointSetting {
     pub id: u64,
     pub t: f32,
@@ -52,7 +50,7 @@ impl ShakeCurvePointSetting {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShakeConfigSetting {
     #[serde(default = "default_shake_distance")]
     pub distance: f32,
@@ -332,7 +330,7 @@ impl ColorSetting {
     }
 }
 
-/// Application settings (persisted to SQLite; legacy migration from settings.json).
+/// Application settings (persisted to SQLite).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default)]
@@ -442,85 +440,32 @@ impl Default for AppSettings {
 }
 
 impl AppSettings {
-    const SETTINGS_FILE: &'static str = "settings.json";
     const SETTINGS_DB_KEY: &'static str = "app_settings";
 
-    /// Load settings from SQLite (preferred), falling back to legacy `settings.json`.
-    ///
-    /// If the SQLite database does not yet have settings stored, this will attempt a
-    /// one-time migration from `settings.json`.
+    /// Load settings from SurrealDB.
     pub fn load() -> Self {
         if let Ok(db) = CharacterDatabase::open() {
-            if let Ok(Some(json)) = db.get_setting_json(Self::SETTINGS_DB_KEY) {
-                match serde_json::from_str::<AppSettings>(&json) {
-                    Ok(settings) => {
-                        info!("Loaded settings from SQLite");
-                        return settings;
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse settings from SQLite: {}", e);
-                    }
-                }
-            } else if let Some(legacy) = Self::load_legacy_json() {
-                // Best-effort migration; ignore write errors and still return the value.
-                let _ = legacy.save_to_db(&db);
-                info!("Migrated settings from {} into SQLite", Self::SETTINGS_FILE);
-                return legacy;
+            if let Ok(Some(settings)) = db.get_setting::<AppSettings>(Self::SETTINGS_DB_KEY) {
+                info!("Loaded settings from SurrealDB");
+                return settings;
             }
 
             return Self::default();
         }
 
-        // DB unavailable: fall back to legacy settings.json.
-        Self::load_legacy_json().unwrap_or_default()
+        // If the DB cannot be opened (or isn't writable), fall back to defaults.
+        // We intentionally do not read/write any JSON files for persistence.
+        Self::default()
     }
 
-    fn load_legacy_json() -> Option<Self> {
-        let path = PathBuf::from(Self::SETTINGS_FILE);
-
-        if path.exists() {
-            match fs::read_to_string(&path) {
-                Ok(contents) => match serde_json::from_str(&contents) {
-                    Ok(settings) => {
-                        info!("Loaded settings from {}", Self::SETTINGS_FILE);
-                        return Some(settings);
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse {}: {}", Self::SETTINGS_FILE, e);
-                    }
-                },
-                Err(e) => {
-                    warn!("Failed to read {}: {}", Self::SETTINGS_FILE, e);
-                }
-            }
-        }
-
-        None
-    }
-
-    /// Save settings to SQLite (preferred). Falls back to legacy `settings.json` if the
-    /// database cannot be opened.
+    /// Save settings to SurrealDB.
     pub fn save(&self) -> Result<(), String> {
-        if let Ok(db) = CharacterDatabase::open() {
-            return self.save_to_db(&db);
-        }
-
-        // Legacy fallback
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-        fs::write(Self::SETTINGS_FILE, json)
-            .map_err(|e| format!("Failed to write settings: {}", e))?;
-
-        debug!("Settings saved to {}", Self::SETTINGS_FILE);
-        Ok(())
+        let db = CharacterDatabase::open()?;
+        self.save_to_db(&db)
     }
 
     pub fn save_to_db(&self, db: &CharacterDatabase) -> Result<(), String> {
-        let json = serde_json::to_string(self)
-            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-        db.set_setting_json(Self::SETTINGS_DB_KEY, &json)?;
+        db.set_setting(Self::SETTINGS_DB_KEY, self.clone())?;
 
         Ok(())
     }
@@ -582,8 +527,8 @@ pub struct SettingsState {
     /// Text buffer for shake duration input (seconds).
     pub shake_duration_input_text: String,
 
-    /// Snapshot of the last saved shake config json (used to avoid saving every frame).
-    pub last_saved_shake_config_json: String,
+    /// Snapshot of the last saved shake config (used to avoid saving every frame).
+    pub last_saved_shake_config: ShakeConfigSetting,
 }
 
 impl Default for SettingsState {
@@ -595,8 +540,7 @@ impl Default for SettingsState {
         let editing_color = settings.background_color.clone();
         let editing_highlight_color = settings.dice_box_highlight_color.clone();
         let editing_shake_config = settings.shake_config.to_runtime();
-        let last_saved_shake_config_json =
-            serde_json::to_string(&settings.shake_config).unwrap_or_default();
+        let last_saved_shake_config = settings.shake_config.clone();
 
         Self {
             settings,
@@ -619,7 +563,7 @@ impl Default for SettingsState {
             shake_curve_add_y: false,
             shake_curve_add_z: false,
             shake_duration_input_text: "1.0".to_string(),
-            last_saved_shake_config_json,
+            last_saved_shake_config,
         }
     }
 }

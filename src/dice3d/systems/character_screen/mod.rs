@@ -22,6 +22,7 @@ use bevy::prelude::*;
 // Submodules
 mod character_list;
 mod components;
+mod conversion_dialog;
 mod handlers;
 mod tab_bar;
 mod tabs;
@@ -73,6 +74,13 @@ pub use handlers::{
     record_character_screen_roll_on_settle, refresh_character_display, setup_dnd_info_screen,
     sync_character_screen_roll_result_texts, update_editing_display,
     update_new_entry_input_display, update_save_button_appearance,
+};
+
+pub use conversion_dialog::{
+    finalize_sqlite_conversion_if_done, handle_sqlite_conversion_no_click,
+    handle_sqlite_conversion_ok_click, handle_sqlite_conversion_yes_click,
+    run_sqlite_conversion_step, start_sqlite_conversion_if_needed,
+    update_sqlite_conversion_dialog_ui,
 };
 pub use tab_bar::{handle_tab_clicks, setup_tab_bar, update_tab_styles, update_tab_visibility};
 pub use tabs::setup_character_screen;

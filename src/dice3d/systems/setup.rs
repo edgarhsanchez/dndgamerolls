@@ -1552,24 +1552,14 @@ pub fn rebuild_quick_roll_panel(
     settings_state: Res<SettingsState>,
     icon_font: Res<MaterialIconFont>,
     panel_query: Query<Entity, With<QuickRollPanel>>,
-    children_query: Query<&Children>,
 ) {
     if !character_data.is_changed() {
         return;
     }
 
-    fn despawn_tree(commands: &mut Commands, root: Entity, children_query: &Query<&Children>) {
-        if let Ok(children) = children_query.get(root) {
-            for child in children.iter() {
-                despawn_tree(commands, child, children_query);
-            }
-        }
-        commands.entity(root).despawn();
-    }
-
     // Despawn existing panel (and its descendants)
     for entity in panel_query.iter() {
-        despawn_tree(&mut commands, entity, &children_query);
+        commands.entity(entity).despawn();
     }
 
     // Spawn new panel with updated character data

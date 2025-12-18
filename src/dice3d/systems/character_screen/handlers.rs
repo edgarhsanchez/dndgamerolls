@@ -1126,7 +1126,6 @@ pub fn manage_character_sheet_settings_modal(
     settings_state: Res<SettingsState>,
     theme: Res<MaterialTheme>,
     modal_query: Query<Entity, With<CharacterSheetSettingsModalOverlay>>,
-    children_query: Query<&Children>,
 ) {
     if !settings_state.is_changed() {
         return;
@@ -1141,11 +1140,6 @@ pub fn manage_character_sheet_settings_modal(
         }
     } else {
         for entity in modal_query.iter() {
-            if let Ok(children) = children_query.get(entity) {
-                for child in children.iter() {
-                    commands.entity(child).despawn();
-                }
-            }
             commands.entity(entity).despawn();
         }
     }
@@ -1415,7 +1409,6 @@ pub fn rebuild_character_list_on_change(
     theme: Option<Res<MaterialTheme>>,
     screen_root: Query<Entity, With<CharacterScreenRoot>>,
     list_panel: Query<Entity, With<CharacterListPanel>>,
-    children_query: Query<&Children>,
 ) {
     if !character_manager.is_changed() {
         return;
@@ -1425,22 +1418,9 @@ pub fn rebuild_character_list_on_change(
         return;
     };
 
-    fn despawn_recursive(
-        commands: &mut Commands,
-        entity: Entity,
-        children_query: &Query<&Children>,
-    ) {
-        if let Ok(children) = children_query.get(entity) {
-            for child in children.iter() {
-                despawn_recursive(commands, child, children_query);
-            }
-        }
-        commands.entity(entity).despawn();
-    }
-
     // Despawn existing panel (and its subtree)
     for entity in list_panel.iter() {
-        despawn_recursive(&mut commands, entity, &children_query);
+        commands.entity(entity).despawn();
     }
 
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
@@ -1471,7 +1451,6 @@ pub fn rebuild_character_panel_on_change(
     theme: Option<Res<MaterialTheme>>,
     screen_root: Query<Entity, With<CharacterScreenRoot>>,
     stats_panel: Query<Entity, With<CharacterStatsPanel>>,
-    children_query: Query<&Children>,
 ) {
     if !character_manager.is_changed()
         && !character_data.is_changed()
@@ -1488,22 +1467,9 @@ pub fn rebuild_character_panel_on_change(
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
     let icon_font = icon_font.0.clone();
 
-    fn despawn_recursive(
-        commands: &mut Commands,
-        entity: Entity,
-        children_query: &Query<&Children>,
-    ) {
-        if let Ok(children) = children_query.get(entity) {
-            for child in children.iter() {
-                despawn_recursive(commands, child, children_query);
-            }
-        }
-        commands.entity(entity).despawn();
-    }
-
     // Remove the old stats panel subtree
     for entity in stats_panel.iter() {
-        despawn_recursive(&mut commands, entity, &children_query);
+        commands.entity(entity).despawn();
     }
 
     // Recreate the stats panel subtree
@@ -2028,14 +1994,19 @@ pub fn init_character_manager(mut commands: Commands) {
     // Get character list from database
     let characters = db.list_characters().unwrap_or_default();
 
+    // Load command history from the database (best-effort).
+    let commands_list = db.load_command_history().unwrap_or_default();
+
     commands.insert_resource(db);
+    commands.insert_resource(CommandHistory {
+        commands: commands_list,
+        selected_index: None,
+    });
 
     commands.insert_resource(CharacterManager {
         characters: characters.clone(),
         current_character_id: None,
         list_version: 0,
-        available_characters: vec![],
-        current_character_path: None,
     });
 
     commands.insert_resource(TextInputState::default());

@@ -1,13 +1,12 @@
 //! Character data types for D&D character sheets
 //!
 //! This module contains all types related to loading, saving, and accessing
-//! character data from JSON files, including file discovery and validation.
+//! character data persisted via the app's database layer.
 
 use bevy::prelude::*;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
 // ============================================================================
 // Character Schema Types - Full D&D 5e Character Sheet
@@ -243,19 +242,11 @@ pub struct SpellCasting {
 }
 
 // ============================================================================
-// Character File Management
+// Character Management
 // ============================================================================
 
-/// Discovered character file info (legacy, for migration)
-#[derive(Debug, Clone)]
-pub struct CharacterFile {
-    pub path: PathBuf,
-    pub name: String,
-    pub is_valid: bool,
-}
-
 /// Character list entry for UI display (from database)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterListEntry {
     /// Database ID (stable, never changes)
     pub id: i64,
@@ -276,113 +267,9 @@ pub struct CharacterManager {
     pub current_character_id: Option<i64>,
     /// Version counter that increments when the list needs to be refreshed
     pub list_version: u32,
-    /// Legacy: available character files (for migration only)
-    pub available_characters: Vec<CharacterFile>,
-    /// Legacy: current character path (for migration only)
-    pub current_character_path: Option<PathBuf>,
 }
 
 impl CharacterManager {
-    /// Scan directory for valid character JSON files
-    pub fn scan_directory(dir: &Path) -> Vec<CharacterFile> {
-        let mut characters = Vec::new();
-
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "json") {
-                    if let Some(char_file) = Self::try_load_character_file(&path) {
-                        // Only include valid, readable character files
-                        if char_file.is_valid {
-                            characters.push(char_file);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sort by character name
-        characters.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        characters
-    }
-
-    /// Try to load and validate a character file
-    fn try_load_character_file(path: &Path) -> Option<CharacterFile> {
-        match std::fs::read_to_string(path) {
-            Ok(contents) => {
-                let (name, is_valid) = match serde_json::from_str::<CharacterSheet>(&contents) {
-                    Ok(sheet) => (sheet.character.name.clone(), true),
-                    Err(_) => {
-                        // Try to at least get the character name
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&contents) {
-                            let name = val
-                                .get("character")
-                                .and_then(|c| c.get("name"))
-                                .and_then(|n| n.as_str())
-                                .unwrap_or("Unknown")
-                                .to_string();
-                            (name, false)
-                        } else {
-                            return None; // Not a valid JSON at all
-                        }
-                    }
-                };
-                Some(CharacterFile {
-                    path: path.to_path_buf(),
-                    name,
-                    is_valid,
-                })
-            }
-            Err(_) => None,
-        }
-    }
-
-    /// Generate a snake_case filename from character name
-    pub fn generate_filename(name: &str) -> String {
-        let sanitized: String = name
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() {
-                    c.to_ascii_lowercase()
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-
-        // Remove consecutive underscores and trim
-        let mut result = String::new();
-        let mut last_was_underscore = false;
-        for c in sanitized.chars() {
-            if c == '_' {
-                if !last_was_underscore && !result.is_empty() {
-                    result.push(c);
-                    last_was_underscore = true;
-                }
-            } else {
-                result.push(c);
-                last_was_underscore = false;
-            }
-        }
-
-        // Trim trailing underscore
-        result.trim_end_matches('_').to_string() + ".json"
-    }
-
-    /// Sanitize character name input (alphanumeric only, special chars become underscore)
-    pub fn sanitize_name(input: &str) -> String {
-        input
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == ' ' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect()
-    }
-
     /// Refresh the character list from the database
     pub fn refresh_from_database(&mut self, db: &super::database::CharacterDatabase) {
         match db.list_characters() {
@@ -414,117 +301,12 @@ pub struct CharacterData {
     pub sheet: Option<CharacterSheet>,
     /// Database ID for this character (None if not yet saved to database)
     pub character_id: Option<i64>,
-    /// Legacy file path (kept for backwards compatibility during migration)
-    pub file_path: Option<PathBuf>,
     pub is_modified: bool,
     /// Flag to trigger UI refresh - set when data changes, cleared after refresh
     pub needs_refresh: bool,
 }
 
 impl CharacterData {
-    /// Load character data from a JSON file
-    /// If the file doesn't exist, tries to find any character JSON file in the current directory
-    pub fn load_from_file(path: &str) -> Self {
-        let path_buf = PathBuf::from(path);
-
-        // First try the specified path
-        if path_buf.exists() {
-            return Self::try_load_from_path(&path_buf);
-        }
-
-        // If the specified file doesn't exist, try to find any character JSON file
-        let current_dir = std::env::current_dir().unwrap_or_default();
-        let available = CharacterManager::scan_directory(&current_dir);
-
-        if let Some(first_char) = available.first() {
-            println!("Loading character: '{}'", first_char.name);
-            return Self::try_load_from_path(&first_char.path);
-        }
-
-        // No character files found - this is fine, user can create one
-        println!(
-            "No character files found. Use the Character Sheet tab to create a new character."
-        );
-        Self::default()
-    }
-
-    /// Try to load from a specific path (legacy file-based loading)
-    fn try_load_from_path(path_buf: &PathBuf) -> Self {
-        match std::fs::read_to_string(path_buf) {
-            Ok(contents) => match serde_json::from_str(&contents) {
-                Ok(sheet) => {
-                    println!("Loaded character sheet from {}", path_buf.display());
-                    Self {
-                        sheet: Some(sheet),
-                        character_id: None, // Not from database
-                        file_path: Some(path_buf.clone()),
-                        is_modified: false,
-                        needs_refresh: true,
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to parse character sheet '{}': {}",
-                        path_buf.display(),
-                        e
-                    );
-                    Self::default()
-                }
-            },
-            Err(e) => {
-                // Only show error if the file was supposed to exist
-                if path_buf.exists() {
-                    eprintln!(
-                        "Warning: Failed to read character file '{}': {}",
-                        path_buf.display(),
-                        e
-                    );
-                }
-                Self::default()
-            }
-        }
-    }
-
-    /// Load from a PathBuf
-    pub fn load_from_path(path: &Path) -> Self {
-        Self::load_from_file(path.to_str().unwrap_or(""))
-    }
-
-    /// Save character data to file
-    /// Always generates a new filename based on character name
-    pub fn save(&mut self) -> Result<(), String> {
-        let sheet = self
-            .sheet
-            .as_ref()
-            .ok_or_else(|| "No character data to save".to_string())?;
-
-        // Always use the character name for the filename
-        let filename = CharacterManager::generate_filename(&sheet.character.name);
-
-        // Create full path in current directory to match how files are loaded
-        let current_dir = std::env::current_dir()
-            .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        let new_path = current_dir.join(&filename);
-
-        let json = serde_json::to_string_pretty(sheet)
-            .map_err(|e| format!("Failed to serialize character: {}", e))?;
-
-        std::fs::write(&new_path, json).map_err(|e| format!("Failed to write file: {}", e))?;
-
-        // Note: We intentionally do NOT delete the old file when renaming
-        // This prevents data loss and allows the user to manually clean up old files
-
-        self.file_path = Some(new_path);
-        self.is_modified = false;
-        Ok(())
-    }
-
-    /// Save to a specific path (legacy)
-    pub fn save_to(&mut self, path: &Path) -> Result<(), String> {
-        self.file_path = Some(path.to_path_buf());
-        self.save()
-    }
-
     /// Save character to database
     /// Creates a new entry if character_id is None, updates existing if set
     pub fn save_to_database(
@@ -553,7 +335,6 @@ impl CharacterData {
         Ok(Self {
             sheet: Some(sheet),
             character_id: Some(id),
-            file_path: None,
             is_modified: false,
             needs_refresh: true,
         })
@@ -631,7 +412,6 @@ impl CharacterData {
         Self {
             sheet: Some(sheet),
             character_id: None, // New character, not yet in database
-            file_path: None,
             is_modified: true,
             needs_refresh: true,
         }
@@ -745,32 +525,6 @@ mod tests {
         assert!(data.get_skill_modifier("stealth").is_none());
         assert!(data.get_ability_modifier("dex").is_none());
         assert!(data.get_saving_throw_modifier("dex").is_none());
-    }
-
-    #[test]
-    fn test_generate_filename() {
-        assert_eq!(
-            CharacterManager::generate_filename("Strawberry Picker"),
-            "strawberry_picker.json"
-        );
-        // Special characters become underscores, consecutive underscores are collapsed
-        assert_eq!(
-            CharacterManager::generate_filename("Test@#$Character"),
-            "test_character.json"
-        );
-        assert_eq!(CharacterManager::generate_filename("Simple"), "simple.json");
-    }
-
-    #[test]
-    fn test_sanitize_name() {
-        assert_eq!(
-            CharacterManager::sanitize_name("Test@Character"),
-            "Test_Character"
-        );
-        assert_eq!(
-            CharacterManager::sanitize_name("Normal Name"),
-            "Normal Name"
-        );
     }
 
     #[test]

@@ -18,6 +18,7 @@ use super::setup::{calculate_dice_position, spawn_die};
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct CommandInputParams<'w, 's> {
     pub commands: Commands<'w, 's>,
+    pub db: Res<'w, CharacterDatabase>,
     pub settings_state: Res<'w, crate::dice3d::types::SettingsState>,
     pub command_history: ResMut<'w, CommandHistory>,
     pub dice_config: ResMut<'w, DiceConfig>,
@@ -39,6 +40,7 @@ pub struct CommandInputParams<'w, 's> {
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct CommandHistoryRerollParams<'w, 's> {
     pub commands: Commands<'w, 's>,
+    pub db: Res<'w, CharacterDatabase>,
     pub ui_state: Res<'w, UiState>,
     pub settings_state: Res<'w, crate::dice3d::types::SettingsState>,
     pub command_history: ResMut<'w, CommandHistory>,
@@ -60,6 +62,7 @@ pub struct CommandHistoryRerollParams<'w, 's> {
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct QuickRollParams<'w, 's> {
     pub commands: Commands<'w, 's>,
+    pub db: Res<'w, CharacterDatabase>,
     pub dice_config: ResMut<'w, DiceConfig>,
     pub character_data: Res<'w, CharacterData>,
     pub roll_state: ResMut<'w, RollState>,
@@ -221,6 +224,9 @@ pub fn handle_command_input(
         if let Some(new_config) = parse_command(&cmd, &params.character_data) {
             // Add to command history (only unique commands)
             params.command_history.add_command(cmd.clone());
+            let _ = params
+                .db
+                .save_command_history(&params.command_history.commands);
 
             // Remove old dice
             for entity in params.dice_query.iter() {
@@ -542,6 +548,9 @@ pub fn handle_quick_roll_clicks(
             sign,
             modifier
         ));
+        let _ = params
+            .db
+            .save_command_history(&params.command_history.commands);
 
         // Trigger the roll
         params.roll_state.rolling = true;

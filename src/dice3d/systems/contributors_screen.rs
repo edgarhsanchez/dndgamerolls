@@ -1,6 +1,6 @@
 //! Contributors screen system
 //!
-//! This module displays GitHub contributors loaded from contributors.json
+//! This module displays GitHub contributors loaded from the bundled contributors asset.
 
 use super::avatar_loader::AvatarImage;
 use crate::dice3d::types::{

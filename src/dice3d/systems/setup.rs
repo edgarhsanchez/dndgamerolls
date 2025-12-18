@@ -81,8 +81,11 @@ pub fn setup(
 
     let floor_material = box_materials.add(DiceBoxHighlightMaterial {
         base: StandardMaterial {
-            base_color: Color::srgba(0.7, 0.85, 0.95, 0.3),
-            alpha_mode: AlphaMode::Blend,
+            // Windows Sandbox often runs with a virtual GPU / software rendering path where
+            // blended transparency can sort incorrectly or appear to vanish. Keep the floor
+            // opaque so the "bottom of the box" is always visible.
+            base_color: Color::srgba(0.7, 0.85, 0.95, 1.0),
+            alpha_mode: AlphaMode::Opaque,
             reflectance: 0.8,
             perceptual_roughness: 0.1,
             metallic: 0.0,

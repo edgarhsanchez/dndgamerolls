@@ -44,6 +44,9 @@ Thumbs.db
 *.local
 msi_logs.txt
 
+# Local compiler warning captures
+warnings_full*.txt
+
 # WiX installer outputs
 *.msi
 *.wixpdb

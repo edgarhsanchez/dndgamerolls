@@ -19,9 +19,9 @@ Powered by Bevy game engine with real physics simulation.
 
 ## Local Data Storage
 
-- **Characters and app settings** are stored locally in a SQLite database: `characters.db`.
-- By default on Windows this lives under `%LOCALAPPDATA%\DnDGameRolls\characters.db`.
-- Older installs may have a `settings.json`; on first run, settings are migrated into SQLite.
+- **Characters and app settings** are stored locally in an embedded SurrealDB (SurrealKV) database: `characters.surrealdb`.
+- By default on Windows this lives under `%LOCALAPPDATA%\DnDGameRolls\characters.surrealdb`.
+- Older installs may have a legacy SQLite database at `%LOCALAPPDATA%\DnDGameRolls\characters.db`; on first run the app can migrate data into SurrealDB.
 
 ## Screenshots
 
@@ -256,10 +256,19 @@ dndgamerolls --cli --dice 1d20 --checkon perception --advantage
 ```
 
 #### Custom Character File
-By default, the tool looks for `dnd_stats.json` in the current directory. You can specify a different file:
+By default, CLI mode loads character data from the local SurrealDB database (`characters.surrealdb`).
+
+You can explicitly provide a JSON file as one-off input via `--file`:
 
 ```bash
 dndgamerolls -f path/to/character.json intelligence
+```
+
+You can also select which local character to use:
+
+```bash
+dndgamerolls --character "Thorin" stats
+dndgamerolls --character-id 3 skill stealth
 ```
 
 ## Features
@@ -270,7 +279,8 @@ dndgamerolls -f path/to/character.json intelligence
 - 📊 Displays both dice roll and final total
 - 🎯 Automatic modifier calculation from character stats
 - 🗡️ Attack rolls with weapon stats
-- 💾 Loads character data from JSON file
+- 💾 Loads character data from SQLite by default (optional one-off JSON input)
+- 💾 Loads character data from SurrealDB by default (optional one-off JSON input)
 - 🎭 Shows expertise on relevant skills
 
 ## D&D Rules Implemented
@@ -284,7 +294,7 @@ dndgamerolls -f path/to/character.json intelligence
 
 ## Character File Format
 
-The tool expects a JSON file with your character stats. See `dnd_stats.json` for the full structure.
+If you pass `--file`, the tool expects a JSON file with your character stats.
 
 ## Building for Release
 

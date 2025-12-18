@@ -15,9 +15,9 @@ use serde_json::Value as JsonValue;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use surrealdb::engine::local::{Db, SurrealKv};
-use surrealdb::sql::Thing;
+use surrealdb::engine::local::{Db, Mem, SurrealKv};
 use surrealdb::Surreal;
+use surrealdb::types::{Array as SurrealArray, Object as SurrealObject, Value as SurrealValue};
 
 use super::character::{CharacterListEntry, CharacterSheet};
 
@@ -30,14 +30,6 @@ const APP_DATA_FOLDER: &str = "DnDGameRolls";
 
 const NS: &str = "dndgamerolls";
 const DB: &str = "dndgamerolls";
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Record<T> {
-    #[serde(default)]
-    id: Option<Thing>,
-    #[serde(flatten)]
-    data: T,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CharacterDocument {
@@ -58,9 +50,51 @@ struct CharacterDocument {
     sheet: CharacterSheet,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct SidRow {
-    sid: i64,
+fn surreal_value_to_json(value: SurrealValue) -> JsonValue {
+    value.into_json_value()
+}
+
+fn json_to_surreal_value(value: &JsonValue) -> SurrealValue {
+    match value {
+        JsonValue::Null => SurrealValue::Null,
+        JsonValue::Bool(b) => SurrealValue::from_t(*b),
+        JsonValue::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                SurrealValue::from_t(i)
+            } else if let Some(u) = n.as_u64() {
+                // SurrealDB Number supports signed ints; clamp if needed.
+                SurrealValue::from_t(i64::try_from(u).unwrap_or(i64::MAX))
+            } else if let Some(f) = n.as_f64() {
+                SurrealValue::from_t(f)
+            } else {
+                SurrealValue::Null
+            }
+        }
+        JsonValue::String(s) => SurrealValue::from_t(s.clone()),
+        JsonValue::Array(arr) => {
+            let inner: Vec<SurrealValue> = arr.iter().map(json_to_surreal_value).collect();
+            SurrealValue::Array(SurrealArray::from(inner))
+        }
+        JsonValue::Object(map) => {
+            let mut obj = SurrealObject::new();
+            for (k, v) in map {
+                obj.insert(k.clone(), json_to_surreal_value(v));
+            }
+            SurrealValue::Object(obj)
+        }
+    }
+}
+
+fn to_surreal_value<T: Serialize>(value: &T, label: &str) -> Result<SurrealValue, String> {
+    let json_value =
+        serde_json::to_value(value).map_err(|e| format!("Failed to serialize {} to JSON: {}", label, e))?;
+    Ok(json_to_surreal_value(&json_value))
+}
+
+fn from_surreal_value<T: DeserializeOwned>(value: SurrealValue, label: &str) -> Result<T, String> {
+    let json_value = surreal_value_to_json(value);
+    serde_json::from_value(json_value)
+        .map_err(|e| format!("Failed to decode {} from SurrealDB value: {}", label, e))
 }
 
 /// Resource for managing the character database.
@@ -68,7 +102,7 @@ struct SidRow {
 pub struct CharacterDatabase {
     rt: tokio::runtime::Runtime,
     db: Mutex<Surreal<Db>>,
-    /// Path to the database folder.
+    /// Path to the embedded datastore.
     pub db_path: PathBuf,
 }
 
@@ -168,11 +202,13 @@ impl CharacterDatabase {
         let db_path = data_dir.join(DATABASE_FOLDER);
 
         let rt = Self::make_runtime()?;
-        std::fs::create_dir_all(&db_path)
-            .map_err(|e| format!("Failed to create database folder {:?}: {}", db_path, e))?;
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create database folder {:?}: {}", parent, e))?;
+        }
 
         let db = rt
-            .block_on(async { Surreal::new::<SurrealKv>(db_path.clone()).await })
+            .block_on(async { Surreal::new::<SurrealKv>(db_path.to_string_lossy().to_string()).await })
             .map_err(|e| format!("Failed to open SurrealDB: {}", e))?;
 
         rt.block_on(Self::init(&db))?;
@@ -197,9 +233,8 @@ impl CharacterDatabase {
     pub fn character_id_exists(&self, id: i64) -> Result<bool, String> {
         self.with_db(|db| {
             self.rt.block_on(async {
-                // Decode the minimum field we need; reuses a shared type so we don't
-                // accumulate unused-field warnings.
-                let record: Option<Record<SidRow>> = db
+                // Avoid typed record decoding; use raw SurrealDB Value.
+                let record: Option<SurrealValue> = db
                     .select(("character", id))
                     .await
                     .map_err(|e| format!("Failed to check character existence: {}", e))?;
@@ -228,11 +263,13 @@ impl CharacterDatabase {
     /// Open database at a specific path (for testing).
     pub fn open_at(path: PathBuf) -> Result<Self, String> {
         let rt = Self::make_runtime()?;
-        std::fs::create_dir_all(&path)
-            .map_err(|e| format!("Failed to create database folder {:?}: {}", path, e))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create database folder {:?}: {}", parent, e))?;
+        }
 
         let db = rt
-            .block_on(async { Surreal::new::<SurrealKv>(path.clone()).await })
+            .block_on(async { Surreal::new::<SurrealKv>(path.to_string_lossy().to_string()).await })
             .map_err(|e| format!("Failed to open SurrealDB: {}", e))?;
 
         rt.block_on(Self::init(&db))?;
@@ -246,12 +283,18 @@ impl CharacterDatabase {
 
     /// "In-memory" database for testing: uses a unique temp folder.
     pub fn open_in_memory() -> Result<Self, String> {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let path = std::env::temp_dir().join(format!("dndgamerolls-test-{}", nanos));
-        Self::open_at(path)
+        let rt = Self::make_runtime()?;
+        let db = rt
+            .block_on(async { Surreal::new::<Mem>(()).await })
+            .map_err(|e| format!("Failed to open SurrealDB (mem): {}", e))?;
+
+        rt.block_on(Self::init(&db))?;
+
+        Ok(Self {
+            rt,
+            db: Mutex::new(db),
+            db_path: PathBuf::new(),
+        })
     }
 
     fn with_db<T>(&self, f: impl FnOnce(&Surreal<Db>) -> Result<T, String>) -> Result<T, String> {
@@ -263,13 +306,13 @@ impl CharacterDatabase {
         self.with_db(|db| {
             self.rt.block_on(async {
                 let mut response = db
-                    .query("SELECT sid FROM character ORDER BY sid DESC LIMIT 1")
+                    .query("SELECT VALUE sid FROM character ORDER BY sid DESC LIMIT 1")
                     .await
                     .map_err(|e| format!("Failed to query next id: {}", e))?;
-                let rows: Vec<SidRow> = response
+                let rows: Vec<i64> = response
                     .take(0)
                     .map_err(|e| format!("Failed to decode next id: {}", e))?;
-                Ok(rows.first().map(|r| r.sid + 1).unwrap_or(1))
+                Ok(rows.first().map(|sid| sid + 1).unwrap_or(1))
             })
         })
     }
@@ -302,9 +345,10 @@ impl CharacterDatabase {
 
         self.with_db(|db| {
             self.rt.block_on(async {
-                let _: Option<Record<CharacterDocument>> = db
+                let content = to_surreal_value(&doc, "character")?;
+                let _: Option<SurrealValue> = db
                     .upsert(("character", sid))
-                    .content(doc)
+                    .content(content)
                     .await
                     .map_err(|e| format!("Failed to save character: {}", e))?;
                 Ok(())
@@ -325,9 +369,10 @@ impl CharacterDatabase {
 
         self.with_db(|db| {
             self.rt.block_on(async {
-                let _: Option<Record<CharacterDocument>> = db
+                let content = to_surreal_value(&doc, "legacy character")?;
+                let _: Option<SurrealValue> = db
                     .upsert(("character", legacy_id))
-                    .content(doc)
+                    .content(content)
                     .await
                     .map_err(|e| format!("Failed to save legacy character: {}", e))?;
                 Ok(())
@@ -357,7 +402,7 @@ impl CharacterDatabase {
     pub fn load_character(&self, id: i64) -> Result<CharacterSheet, String> {
         let doc = self.with_db(|db| {
             self.rt.block_on(async {
-                let record: Option<Record<CharacterDocument>> = db
+                let record: Option<SurrealValue> = db
                     .select(("character", id))
                     .await
                     .map_err(|e| format!("Failed to load character: {}", e))?;
@@ -365,18 +410,19 @@ impl CharacterDatabase {
             })
         })?;
 
-        let Some(record) = doc else {
+        let Some(value) = doc else {
             return Err(format!("Character with id {} not found", id));
         };
 
-        Ok(record.data.sheet)
+        let decoded: CharacterDocument = from_surreal_value(value, "character")?;
+        Ok(decoded.sheet)
     }
 
     /// Delete a character by ID.
     pub fn delete_character(&self, id: i64) -> Result<(), String> {
         self.with_db(|db| {
             self.rt.block_on(async {
-                let _: Option<Record<CharacterDocument>> = db
+                let _: Option<SurrealValue> = db
                     .delete(("character", id))
                     .await
                     .map_err(|e| format!("Failed to delete character: {}", e))?;
@@ -393,10 +439,15 @@ impl CharacterDatabase {
                     .query("SELECT sid AS id, name, class, level FROM character ORDER BY name")
                     .await
                     .map_err(|e| format!("Failed to query characters: {}", e))?;
-                let rows: Vec<CharacterListEntry> = response
+                let rows: Vec<SurrealValue> = response
                     .take(0)
                     .map_err(|e| format!("Failed to decode character list: {}", e))?;
-                Ok(rows)
+
+                let mut decoded = Vec::with_capacity(rows.len());
+                for row in rows {
+                    decoded.push(from_surreal_value(row, "character list row")?);
+                }
+                Ok(decoded)
             })
         })
     }
@@ -428,13 +479,13 @@ impl CharacterDatabase {
                     .await
                     .map_err(|e| format!("Failed to load setting '{}': {}", key, e))?;
 
-                let rows: Result<Vec<JsonValue>, _> = response.take(0);
-                if let Ok(mut rows) = rows {
+                if let Ok(mut rows) = response.take::<Vec<SurrealValue>>(0) {
                     if let Some(v) = rows.pop() {
-                        if v.is_null() {
+                        let json = surreal_value_to_json(v);
+                        if json.is_null() {
                             return Ok(None);
                         }
-                        let decoded: T = serde_json::from_value(v).map_err(|e| {
+                        let decoded: T = serde_json::from_value(json).map_err(|e| {
                             format!("Failed to decode setting '{}' as JSON: {}", key, e)
                         })?;
                         return Ok(Some(decoded));
@@ -450,10 +501,15 @@ impl CharacterDatabase {
                     .await
                     .map_err(|e| format!("Failed to load setting '{}': {}", key, e))?;
 
-                let mut rows: Vec<T> = response
+                let mut rows: Vec<SurrealValue> = response
                     .take(0)
                     .map_err(|e| format!("Failed to decode setting '{}': {}", key, e))?;
-                Ok(rows.pop())
+
+                if let Some(v) = rows.pop() {
+                    Ok(Some(from_surreal_value(v, "setting")?))
+                } else {
+                    Ok(None)
+                }
             })
         })
     }
@@ -465,12 +521,13 @@ impl CharacterDatabase {
             self.rt.block_on(async {
                 let json_value = serde_json::to_value(&value)
                     .map_err(|e| format!("Failed to serialize setting '{}' to JSON: {}", key, e))?;
+                let value = json_to_surreal_value(&json_value);
 
                 // Store under a dedicated `value` field so we can reliably load primitives
                 // (bool) and complex structs (AppSettings) without SurrealDB internal types.
                 db.query("UPSERT type::thing('setting', $key) SET value = $value RETURN NONE")
                     .bind(("key", key.clone()))
-                    .bind(("value", json_value))
+                    .bind(("value", value))
                     .await
                     .map_err(|e| format!("Failed to save setting '{}': {}", key, e))?;
                 Ok(())
@@ -484,7 +541,7 @@ impl CharacterDatabase {
             commands: Vec<String>,
         }
 
-        let doc: Option<Record<Doc>> = self.with_db(|db| {
+        let doc: Option<SurrealValue> = self.with_db(|db| {
             self.rt.block_on(async {
                 db.select(("command_history", "default"))
                     .await
@@ -492,7 +549,13 @@ impl CharacterDatabase {
             })
         })?;
 
-        Ok(doc.map(|d| d.data.commands).unwrap_or_default())
+        match doc {
+            Some(v) => {
+                let decoded: Doc = from_surreal_value(v, "command history")?;
+                Ok(decoded.commands)
+            }
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn save_command_history(&self, commands: &[String]) -> Result<(), String> {
@@ -503,11 +566,16 @@ impl CharacterDatabase {
 
         self.with_db(|db| {
             self.rt.block_on(async {
-                let _: Option<Record<Doc>> = db
-                    .upsert(("command_history", "default"))
-                    .content(Doc {
+                let content = to_surreal_value(
+                    &Doc {
                         commands: commands.to_vec(),
-                    })
+                    },
+                    "command history",
+                )?;
+
+                let _: Option<SurrealValue> = db
+                    .upsert(("command_history", "default"))
+                    .content(content)
                     .await
                     .map_err(|e| format!("Failed to save command history: {}", e))?;
                 Ok(())

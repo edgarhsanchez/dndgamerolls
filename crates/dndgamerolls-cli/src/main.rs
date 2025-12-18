@@ -6,12 +6,23 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use surrealdb::engine::local::SurrealKv;
-use surrealdb::sql::Thing;
+use surrealdb::types::Value as SurrealValue;
 use surrealdb::Surreal;
+
+fn surreal_value_to_json(value: SurrealValue) -> Result<JsonValue, String> {
+    Ok(value.into_json_value())
+}
+
+fn from_surreal_value<T: DeserializeOwned>(value: SurrealValue) -> Result<T, String> {
+    let json = surreal_value_to_json(value)?;
+    serde_json::from_value(json).map_err(|e| format!("Failed to decode JSON: {e}"))
+}
 
 /// DnD Game Rolls - CLI dice roller
 #[derive(Parser)]
@@ -813,7 +824,7 @@ fn load_character(
     #[derive(Debug, Deserialize)]
     struct Record<T> {
         #[allow(dead_code)]
-        id: Option<Thing>,
+        id: Option<JsonValue>,
         #[serde(flatten)]
         data: T,
     }
@@ -840,10 +851,12 @@ fn load_character(
     }
 
     let db_path = get_surreal_path()?;
-    std::fs::create_dir_all(&db_path)?;
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
 
     let rt = tokio::runtime::Runtime::new()?;
-    let db = rt.block_on(async { Surreal::new::<SurrealKv>(&db_path).await })?;
+    let db = rt.block_on(async { Surreal::new::<SurrealKv>(db_path.to_string_lossy().to_string()).await })?;
     rt.block_on(async {
         db.use_ns(NS).use_db(DB).await?;
         Ok::<(), surrealdb::Error>(())
@@ -856,7 +869,11 @@ fn load_character(
             db.query("SELECT sid AS id, name FROM character ORDER BY name")
                 .await
         })?;
-        let rows: Vec<ListRow> = response.take(0)?;
+        let raw_rows: Vec<SurrealValue> = response.take(0)?;
+        let mut rows: Vec<ListRow> = Vec::with_capacity(raw_rows.len());
+        for raw in raw_rows {
+            rows.push(from_surreal_value(raw).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?);
+        }
 
         if rows.is_empty() {
             return Err("No characters found in local database".into());
@@ -883,8 +900,12 @@ fn load_character(
         }
     };
 
-    let record: Option<Record<CharacterDoc>> =
+    let raw_record: Option<SurrealValue> =
         rt.block_on(async { db.select(("character", target_id)).await })?;
+    let record: Option<Record<CharacterDoc>> = match raw_record {
+        Some(v) => Some(from_surreal_value(v).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?),
+        None => None,
+    };
     let Some(record) = record else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,

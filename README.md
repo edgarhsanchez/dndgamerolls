@@ -19,9 +19,16 @@ Powered by Bevy game engine with real physics simulation.
 
 ## Local Data Storage
 
-- **Characters and app settings** are stored locally in an embedded SurrealDB (SurrealKV) database: `characters.surrealdb`.
+- **Characters and app settings** are stored locally in an embedded SurrealDB (SurrealKV) datastore at `characters.surrealdb`.
 - By default on Windows this lives under `%LOCALAPPDATA%\DnDGameRolls\characters.surrealdb`.
 - Older installs may have a legacy SQLite database at `%LOCALAPPDATA%\DnDGameRolls\characters.db`; on first run the app can migrate data into SurrealDB.
+
+## Releasing the CLI (crates.io)
+
+The publishable CLI crate lives at `crates/dndgamerolls-cli`.
+
+- Dry-run publish locally: `cargo publish -p dndgamerolls-cli --dry-run`
+- GitHub Actions workflow: `.github/workflows/publish-cli-crates-io.yml` (manual dispatch; uses `CARGO_REGISTRY_TOKEN`)
 
 ## Screenshots
 

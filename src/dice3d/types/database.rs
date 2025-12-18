@@ -470,46 +470,35 @@ impl CharacterDatabase {
         let key = key.to_owned();
         self.with_db(move |db| {
             self.rt.block_on(async {
-                // Preferred schema: store everything as JSON under a single `value` field.
-                // This avoids SurrealDB-specific types (Thing) and avoids binding/serde issues
-                // when saving complex Rust types.
-                let mut response = db
-                    .query("SELECT VALUE value FROM type::thing('setting', $key)")
-                    .bind(("key", key.clone()))
+                let record: Option<SurrealValue> = db
+                    .select(("setting", key.clone()))
                     .await
                     .map_err(|e| format!("Failed to load setting '{}': {}", key, e))?;
 
-                if let Ok(mut rows) = response.take::<Vec<SurrealValue>>(0) {
-                    if let Some(v) = rows.pop() {
-                        let json = surreal_value_to_json(v);
-                        if json.is_null() {
+                let Some(record) = record else {
+                    return Ok(None);
+                };
+
+                // Preferred schema: store everything as JSON under a single `value` field.
+                // This avoids SurrealDB-specific types (Thing/type::thing) and avoids binding issues.
+                let json = surreal_value_to_json(record);
+                if let JsonValue::Object(map) = &json {
+                    if let Some(inner) = map.get("value") {
+                        if inner.is_null() {
                             return Ok(None);
                         }
-                        let decoded: T = serde_json::from_value(json).map_err(|e| {
+                        let decoded: T = serde_json::from_value(inner.clone()).map_err(|e| {
                             format!("Failed to decode setting '{}' as JSON: {}", key, e)
                         })?;
                         return Ok(Some(decoded));
                     }
-                    return Ok(None);
                 }
 
                 // Back-compat: older builds stored the settings directly as the record content.
-                // Keep reading that format so existing installs don't break.
-                let mut response = db
-                    .query("SELECT VALUE * FROM type::thing('setting', $key)")
-                    .bind(("key", key.clone()))
-                    .await
-                    .map_err(|e| format!("Failed to load setting '{}': {}", key, e))?;
-
-                let mut rows: Vec<SurrealValue> = response
-                    .take(0)
-                    .map_err(|e| format!("Failed to decode setting '{}': {}", key, e))?;
-
-                if let Some(v) = rows.pop() {
-                    Ok(Some(from_surreal_value(v, "setting")?))
-                } else {
-                    Ok(None)
-                }
+                let decoded: T = serde_json::from_value(json).map_err(|e| {
+                    format!("Failed to decode legacy setting '{}' as JSON: {}", key, e)
+                })?;
+                Ok(Some(decoded))
             })
         })
     }
@@ -521,13 +510,22 @@ impl CharacterDatabase {
             self.rt.block_on(async {
                 let json_value = serde_json::to_value(&value)
                     .map_err(|e| format!("Failed to serialize setting '{}' to JSON: {}", key, e))?;
-                let value = json_to_surreal_value(&json_value);
+
+                #[derive(Serialize)]
+                struct SettingDoc {
+                    value: JsonValue,
+                }
+
+                let content = to_surreal_value(
+                    &SettingDoc { value: json_value },
+                    "setting",
+                )?;
 
                 // Store under a dedicated `value` field so we can reliably load primitives
                 // (bool) and complex structs (AppSettings) without SurrealDB internal types.
-                db.query("UPSERT type::thing('setting', $key) SET value = $value RETURN NONE")
-                    .bind(("key", key.clone()))
-                    .bind(("value", value))
+                let _: Option<SurrealValue> = db
+                    .upsert(("setting", key.clone()))
+                    .content(content)
                     .await
                     .map_err(|e| format!("Failed to save setting '{}': {}", key, e))?;
                 Ok(())

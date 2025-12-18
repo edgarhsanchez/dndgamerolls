@@ -64,7 +64,7 @@ bevy = "0.17.3"
 bevy_rapier3d = { version = "0.32", features = ["simd-stable"] }
 
 # Material Design 3 UI Components
-bevy_material_ui = { git = "https://github.com/edgarhsanchez/bevy_material_ui.git", tag = "v0.2.0", features = ["clipboard"] }
+bevy_material_ui = { git = "https://github.com/edgarhsanchez/bevy_material_ui.git", tag = "v0.2.1", features = ["clipboard"] }
 
 # Winit for window icon setting (must match Bevy's winit version)
 winit = "0.30"

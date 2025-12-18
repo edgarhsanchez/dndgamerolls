@@ -14,10 +14,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use surrealdb::engine::local::{Db, Mem, SurrealKv};
 use surrealdb::Surreal;
-use surrealdb::types::{Array as SurrealArray, Object as SurrealObject, Value as SurrealValue};
 
 use super::character::{CharacterListEntry, CharacterSheet};
 
@@ -50,52 +50,7 @@ struct CharacterDocument {
     sheet: CharacterSheet,
 }
 
-fn surreal_value_to_json(value: SurrealValue) -> JsonValue {
-    value.into_json_value()
-}
 
-fn json_to_surreal_value(value: &JsonValue) -> SurrealValue {
-    match value {
-        JsonValue::Null => SurrealValue::Null,
-        JsonValue::Bool(b) => SurrealValue::from_t(*b),
-        JsonValue::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                SurrealValue::from_t(i)
-            } else if let Some(u) = n.as_u64() {
-                // SurrealDB Number supports signed ints; clamp if needed.
-                SurrealValue::from_t(i64::try_from(u).unwrap_or(i64::MAX))
-            } else if let Some(f) = n.as_f64() {
-                SurrealValue::from_t(f)
-            } else {
-                SurrealValue::Null
-            }
-        }
-        JsonValue::String(s) => SurrealValue::from_t(s.clone()),
-        JsonValue::Array(arr) => {
-            let inner: Vec<SurrealValue> = arr.iter().map(json_to_surreal_value).collect();
-            SurrealValue::Array(SurrealArray::from(inner))
-        }
-        JsonValue::Object(map) => {
-            let mut obj = SurrealObject::new();
-            for (k, v) in map {
-                obj.insert(k.clone(), json_to_surreal_value(v));
-            }
-            SurrealValue::Object(obj)
-        }
-    }
-}
-
-fn to_surreal_value<T: Serialize>(value: &T, label: &str) -> Result<SurrealValue, String> {
-    let json_value =
-        serde_json::to_value(value).map_err(|e| format!("Failed to serialize {} to JSON: {}", label, e))?;
-    Ok(json_to_surreal_value(&json_value))
-}
-
-fn from_surreal_value<T: DeserializeOwned>(value: SurrealValue, label: &str) -> Result<T, String> {
-    let json_value = surreal_value_to_json(value);
-    serde_json::from_value(json_value)
-        .map_err(|e| format!("Failed to decode {} from SurrealDB value: {}", label, e))
-}
 
 /// Resource for managing the character database.
 #[derive(Resource)]
@@ -202,14 +157,88 @@ impl CharacterDatabase {
         let db_path = data_dir.join(DATABASE_FOLDER);
 
         let rt = Self::make_runtime()?;
-        if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create database folder {:?}: {}", parent, e))?;
+        // Ensure the app data directory exists and is writable.
+        std::fs::create_dir_all(&data_dir)
+            .map_err(|e| format!("Failed to create app data directory {:?}: {}", data_dir, e))?;
+
+        // SurrealKV expects a directory path. If a file exists with this name (or a prior
+        // incompatible store created something unexpected), back it up and recreate.
+        if db_path.exists() && db_path.is_file() {
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let backup_path = data_dir.join(format!("{}.file.bak-{}", DATABASE_FOLDER, ts));
+            warn!(
+                "Database path {:?} is a file; backing up to {:?} and recreating as a directory",
+                db_path,
+                backup_path
+            );
+            std::fs::rename(&db_path, &backup_path).map_err(|e| {
+                format!(
+                    "Failed to back up database file {:?} -> {:?}: {}",
+                    db_path, backup_path, e
+                )
+            })?;
         }
 
-        let db = rt
-            .block_on(async { Surreal::new::<SurrealKv>(db_path.to_string_lossy().to_string()).await })
-            .map_err(|e| format!("Failed to open SurrealDB: {}", e))?;
+        // Ensure the datastore directory exists.
+        std::fs::create_dir_all(&db_path)
+            .map_err(|e| format!("Failed to create SurrealDB datastore dir {:?}: {}", db_path, e))?;
+
+        let db_path_str = db_path.to_string_lossy().to_string();
+        let open_err_to_string = |e: surrealdb::Error| format!("Failed to open SurrealDB: {}", e);
+
+        let db = match rt.block_on(async { Surreal::new::<SurrealKv>(db_path_str.clone()).await }) {
+            Ok(db) => db,
+            Err(e) => {
+                // SurrealDB local stores can become incompatible across major/beta versions.
+                // If we detect a recoverable datastore issue, back up the old folder and recreate.
+                let err_string = open_err_to_string(e);
+                let is_recoverable_datastore_issue = err_string.contains("Unsupported manifest format version")
+                    || err_string.contains("Failed to load manifest")
+                    // Common corruption / partial-write signatures (seen on Windows).
+                    || err_string.contains("unexpected end of file")
+                    || err_string.contains("failed to fill whole buffer")
+                    || err_string.contains("There was a problem with the underlying datastore");
+
+                if is_recoverable_datastore_issue && db_path.exists() {
+                    let ts = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+
+                    let backup_path = data_dir.join(format!("{}.bak-{}", DATABASE_FOLDER, ts));
+
+                    warn!(
+                        "SurrealDB datastore appears unreadable at {:?} ({}). Backing up to {:?} and recreating.",
+                        db_path,
+                        err_string,
+                        backup_path
+                    );
+
+                    std::fs::rename(&db_path, &backup_path).map_err(|re| {
+                        format!(
+                            "{} (also failed to back up {:?} -> {:?}: {})",
+                            err_string, db_path, backup_path, re
+                        )
+                    })?;
+
+                    // Recreate the directory after backup.
+                    std::fs::create_dir_all(&db_path).map_err(|ce| {
+                        format!(
+                            "{} (also failed to recreate datastore dir {:?}: {})",
+                            err_string, db_path, ce
+                        )
+                    })?;
+
+                    rt.block_on(async { Surreal::new::<SurrealKv>(db_path_str.clone()).await })
+                        .map_err(open_err_to_string)?
+                } else {
+                    return Err(err_string);
+                }
+            }
+        };
 
         rt.block_on(Self::init(&db))?;
 
@@ -233,8 +262,7 @@ impl CharacterDatabase {
     pub fn character_id_exists(&self, id: i64) -> Result<bool, String> {
         self.with_db(|db| {
             self.rt.block_on(async {
-                // Avoid typed record decoding; use raw SurrealDB Value.
-                let record: Option<SurrealValue> = db
+                let record: Option<JsonValue> = db
                     .select(("character", id))
                     .await
                     .map_err(|e| format!("Failed to check character existence: {}", e))?;
@@ -263,10 +291,13 @@ impl CharacterDatabase {
     /// Open database at a specific path (for testing).
     pub fn open_at(path: PathBuf) -> Result<Self, String> {
         let rt = Self::make_runtime()?;
+        // SurrealKV expects a directory path.
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create database folder {:?}: {}", parent, e))?;
         }
+        std::fs::create_dir_all(&path)
+            .map_err(|e| format!("Failed to create SurrealDB datastore dir {:?}: {}", path, e))?;
 
         let db = rt
             .block_on(async { Surreal::new::<SurrealKv>(path.to_string_lossy().to_string()).await })
@@ -345,10 +376,9 @@ impl CharacterDatabase {
 
         self.with_db(|db| {
             self.rt.block_on(async {
-                let content = to_surreal_value(&doc, "character")?;
-                let _: Option<SurrealValue> = db
+                let _: Option<CharacterDocument> = db
                     .upsert(("character", sid))
-                    .content(content)
+                    .content(doc)
                     .await
                     .map_err(|e| format!("Failed to save character: {}", e))?;
                 Ok(())
@@ -369,10 +399,9 @@ impl CharacterDatabase {
 
         self.with_db(|db| {
             self.rt.block_on(async {
-                let content = to_surreal_value(&doc, "legacy character")?;
-                let _: Option<SurrealValue> = db
+                let _: Option<CharacterDocument> = db
                     .upsert(("character", legacy_id))
-                    .content(content)
+                    .content(doc)
                     .await
                     .map_err(|e| format!("Failed to save legacy character: {}", e))?;
                 Ok(())
@@ -400,21 +429,18 @@ impl CharacterDatabase {
 
     /// Load a character by ID.
     pub fn load_character(&self, id: i64) -> Result<CharacterSheet, String> {
-        let doc = self.with_db(|db| {
+        let doc: Option<CharacterDocument> = self.with_db(|db| {
             self.rt.block_on(async {
-                let record: Option<SurrealValue> = db
-                    .select(("character", id))
+                db.select(("character", id))
                     .await
-                    .map_err(|e| format!("Failed to load character: {}", e))?;
-                Ok(record)
+                    .map_err(|e| format!("Failed to load character: {}", e))
             })
         })?;
 
-        let Some(value) = doc else {
+        let Some(decoded) = doc else {
             return Err(format!("Character with id {} not found", id));
         };
 
-        let decoded: CharacterDocument = from_surreal_value(value, "character")?;
         Ok(decoded.sheet)
     }
 
@@ -422,7 +448,7 @@ impl CharacterDatabase {
     pub fn delete_character(&self, id: i64) -> Result<(), String> {
         self.with_db(|db| {
             self.rt.block_on(async {
-                let _: Option<SurrealValue> = db
+                let _: Option<CharacterDocument> = db
                     .delete(("character", id))
                     .await
                     .map_err(|e| format!("Failed to delete character: {}", e))?;
@@ -439,15 +465,9 @@ impl CharacterDatabase {
                     .query("SELECT sid AS id, name, class, level FROM character ORDER BY name")
                     .await
                     .map_err(|e| format!("Failed to query characters: {}", e))?;
-                let rows: Vec<SurrealValue> = response
-                    .take(0)
-                    .map_err(|e| format!("Failed to decode character list: {}", e))?;
-
-                let mut decoded = Vec::with_capacity(rows.len());
-                for row in rows {
-                    decoded.push(from_surreal_value(row, "character list row")?);
-                }
-                Ok(decoded)
+                response
+                    .take::<Vec<CharacterListEntry>>(0)
+                    .map_err(|e| format!("Failed to decode character list: {}", e))
             })
         })
     }
@@ -470,35 +490,29 @@ impl CharacterDatabase {
         let key = key.to_owned();
         self.with_db(move |db| {
             self.rt.block_on(async {
-                let record: Option<SurrealValue> = db
-                    .select(("setting", key.clone()))
-                    .await
-                    .map_err(|e| format!("Failed to load setting '{}': {}", key, e))?;
+                #[derive(Deserialize)]
+                struct SettingRecord {
+                    value: String,
+                }
 
-                let Some(record) = record else {
-                    return Ok(None);
-                };
-
-                // Preferred schema: store everything as JSON under a single `value` field.
-                // This avoids SurrealDB-specific types (Thing/type::thing) and avoids binding issues.
-                let json = surreal_value_to_json(record);
-                if let JsonValue::Object(map) = &json {
-                    if let Some(inner) = map.get("value") {
-                        if inner.is_null() {
-                            return Ok(None);
-                        }
-                        let decoded: T = serde_json::from_value(inner.clone()).map_err(|e| {
-                            format!("Failed to decode setting '{}' as JSON: {}", key, e)
+                // Preferred schema: store settings as a JSON string under a single `value` field.
+                match db.select::<Option<SettingRecord>>(("setting", key.clone())).await {
+                    Ok(Some(record)) => {
+                        let decoded: T = serde_json::from_str(&record.value).map_err(|e| {
+                            format!("Failed to decode setting '{}' from JSON string: {}", key, e)
                         })?;
                         return Ok(Some(decoded));
                     }
+                    Ok(None) => return Ok(None),
+                    Err(_) => {
+                        // Back-compat: older builds stored the settings directly as the record content.
+                        let legacy: Option<T> = db
+                            .select(("setting", key.clone()))
+                            .await
+                            .map_err(|e| format!("Failed to load legacy setting '{}': {}", key, e))?;
+                        Ok(legacy)
+                    }
                 }
-
-                // Back-compat: older builds stored the settings directly as the record content.
-                let decoded: T = serde_json::from_value(json).map_err(|e| {
-                    format!("Failed to decode legacy setting '{}' as JSON: {}", key, e)
-                })?;
-                Ok(Some(decoded))
             })
         })
     }
@@ -508,24 +522,28 @@ impl CharacterDatabase {
         let key = key.to_owned();
         self.with_db(move |db| {
             self.rt.block_on(async {
-                let json_value = serde_json::to_value(&value)
-                    .map_err(|e| format!("Failed to serialize setting '{}' to JSON: {}", key, e))?;
+                // Store settings as a JSON string. This avoids SurrealDB local-engine
+                // serialization edge cases and keeps the schema stable across versions.
+                let json_string = serde_json::to_string(&value).map_err(|e| {
+                    format!("Failed to serialize setting '{}' to JSON string: {}", key, e)
+                })?;
 
                 #[derive(Serialize)]
-                struct SettingDoc {
-                    value: JsonValue,
+                struct SettingDoc<T> {
+                    value: T,
                 }
-
-                let content = to_surreal_value(
-                    &SettingDoc { value: json_value },
-                    "setting",
-                )?;
 
                 // Store under a dedicated `value` field so we can reliably load primitives
                 // (bool) and complex structs (AppSettings) without SurrealDB internal types.
-                let _: Option<SurrealValue> = db
+                #[derive(Deserialize)]
+                struct SettingSaved {
+                    #[allow(dead_code)]
+                    value: String,
+                }
+
+                let _: Option<SettingSaved> = db
                     .upsert(("setting", key.clone()))
-                    .content(content)
+                    .content(SettingDoc { value: json_string })
                     .await
                     .map_err(|e| format!("Failed to save setting '{}': {}", key, e))?;
                 Ok(())
@@ -539,7 +557,7 @@ impl CharacterDatabase {
             commands: Vec<String>,
         }
 
-        let doc: Option<SurrealValue> = self.with_db(|db| {
+        let doc: Option<Doc> = self.with_db(|db| {
             self.rt.block_on(async {
                 db.select(("command_history", "default"))
                     .await
@@ -547,13 +565,7 @@ impl CharacterDatabase {
             })
         })?;
 
-        match doc {
-            Some(v) => {
-                let decoded: Doc = from_surreal_value(v, "command history")?;
-                Ok(decoded.commands)
-            }
-            None => Ok(Vec::new()),
-        }
+        Ok(doc.unwrap_or_default().commands)
     }
 
     pub fn save_command_history(&self, commands: &[String]) -> Result<(), String> {
@@ -564,16 +576,11 @@ impl CharacterDatabase {
 
         self.with_db(|db| {
             self.rt.block_on(async {
-                let content = to_surreal_value(
-                    &Doc {
-                        commands: commands.to_vec(),
-                    },
-                    "command history",
-                )?;
-
-                let _: Option<SurrealValue> = db
+                let _: Option<JsonValue> = db
                     .upsert(("command_history", "default"))
-                    .content(content)
+                    .content(Doc {
+                        commands: commands.to_vec(),
+                    })
                     .await
                     .map_err(|e| format!("Failed to save command history: {}", e))?;
                 Ok(())
@@ -584,6 +591,7 @@ impl CharacterDatabase {
 
 #[cfg(test)]
 mod tests {
+    use crate::dice3d::types::settings::{AppSettings, ColorSetting};
     use super::*;
     use crate::dice3d::types::character::{Attributes, CharacterInfo, Combat};
 
@@ -692,5 +700,66 @@ mod tests {
 
         let loaded = db.load_character(id).unwrap();
         assert_eq!(loaded.character.level, 5);
+    }
+
+    #[test]
+    fn test_settings_round_trip_includes_background_color() {
+        fn approx_eq(a: f32, b: f32) -> bool {
+            (a - b).abs() < 1e-6
+        }
+
+        let db = CharacterDatabase::open_in_memory().unwrap();
+
+        let mut settings = AppSettings::default();
+        settings.background_color = ColorSetting {
+            a: 0.75,
+            r: 0.12,
+            g: 0.34,
+            b: 0.56,
+        };
+
+        db.set_setting("app_settings", settings.clone()).unwrap();
+        let loaded: AppSettings = db.get_setting("app_settings").unwrap().unwrap();
+
+        assert!(approx_eq(loaded.background_color.a, settings.background_color.a));
+        assert!(approx_eq(loaded.background_color.r, settings.background_color.r));
+        assert!(approx_eq(loaded.background_color.g, settings.background_color.g));
+        assert!(approx_eq(loaded.background_color.b, settings.background_color.b));
+    }
+
+    #[test]
+    fn test_settings_persist_to_disk_round_trip() {
+        // Use a unique folder under the OS temp dir.
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!("dndgamerolls-test-{}", ts));
+
+        // First run: save.
+        {
+            let db = CharacterDatabase::open_at(path.clone()).unwrap();
+            let mut settings = AppSettings::default();
+            settings.background_color = ColorSetting {
+                a: 0.5,
+                r: 0.1,
+                g: 0.2,
+                b: 0.3,
+            };
+            db.set_setting("app_settings", settings.clone()).unwrap();
+        }
+
+        // Second run: reload.
+        {
+            let db = CharacterDatabase::open_at(path.clone()).unwrap();
+            let loaded: AppSettings = db.get_setting("app_settings").unwrap().unwrap();
+            assert!((loaded.background_color.a - 0.5).abs() < 1e-6);
+            assert!((loaded.background_color.r - 0.1).abs() < 1e-6);
+            assert!((loaded.background_color.g - 0.2).abs() < 1e-6);
+            assert!((loaded.background_color.b - 0.3).abs() < 1e-6);
+        }
+
+        // Best-effort cleanup.
+        let _ = std::fs::remove_dir_all(&path);
     }
 }

@@ -41,6 +41,63 @@ pub fn persist_settings_to_db(
     }
 }
 
+/// Load persisted settings after the database resource has been initialized.
+///
+/// This avoids opening the on-disk datastore twice at startup (which can fail on
+/// Windows/MSIX due to file locking or permission constraints).
+pub fn load_settings_state_from_db(
+    mut settings_state: ResMut<SettingsState>,
+    db: Option<Res<CharacterDatabase>>,
+) {
+    let Some(db) = db else {
+        warn!("No CharacterDatabase resource; using default settings");
+        return;
+    };
+
+    if db.db_path.as_os_str().is_empty() {
+        warn!("CharacterDatabase is in-memory; settings will not persist across restarts");
+        return;
+    }
+
+    match AppSettings::load_from_db(&db) {
+        Ok(Some(loaded)) => {
+            info!(
+                "Loaded settings from SurrealDB at {:?} (background={})",
+                db.db_path,
+                loaded.background_color.to_hex()
+            );
+
+            settings_state.settings = loaded.clone();
+            settings_state.is_modified = false;
+
+            settings_state.character_sheet_editing_die = loaded.character_sheet_default_die;
+            settings_state.quick_roll_editing_die = loaded.quick_roll_default_die;
+            settings_state.default_roll_uses_shake_editing = loaded.default_roll_uses_shake;
+
+            settings_state.editing_color = loaded.background_color.clone();
+            settings_state.editing_highlight_color = loaded.dice_box_highlight_color.clone();
+            settings_state.editing_shake_config = loaded.shake_config.to_runtime();
+            settings_state.last_saved_shake_config = loaded.shake_config.clone();
+
+            settings_state.color_input_text.clear();
+            settings_state.highlight_input_text.clear();
+        }
+        Ok(None) => {
+            info!(
+                "No persisted settings found in SurrealDB at {:?}; using defaults",
+                db.db_path
+            );
+        }
+        Err(e) => {
+            warn!(
+                "Failed to load settings from SurrealDB at {:?}: {}; using defaults",
+                db.db_path,
+                e
+            );
+        }
+    }
+}
+
 /// Spawn the settings (gear) icon button in the dice roller view.
 pub fn spawn_settings_button(
     commands: &mut Commands,
@@ -568,6 +625,7 @@ pub fn handle_settings_ok_click(
     mut settings_state: ResMut<SettingsState>,
     mut clear_color: ResMut<ClearColor>,
     mut shake_config: ResMut<ContainerShakeConfig>,
+    db: Option<Res<CharacterDatabase>>,
 ) {
     for event in click_events.read() {
         if ok_query.get(event.entity).is_err() {
@@ -590,6 +648,24 @@ pub fn handle_settings_ok_click(
         *shake_config = settings_state.editing_shake_config.clone();
 
         settings_state.is_modified = true;
+
+        // Persist immediately so OK behaves like an explicit save.
+        // (We still keep `is_modified` as a fallback for the once-per-frame flusher.)
+        if let Some(db) = db.as_deref() {
+            match settings_state.settings.save_to_db(db) {
+                Ok(()) => {
+                    settings_state.is_modified = false;
+                    info!(
+                        "Saved settings to SurrealDB at {:?} (background={})",
+                        db.db_path,
+                        settings_state.settings.background_color.to_hex()
+                    );
+                }
+                Err(e) => warn!("Failed to persist settings to SurrealDB: {}", e),
+            }
+        } else {
+            warn!("CharacterDatabase resource not available; settings not persisted");
+        }
 
         // Close modal
         settings_state.show_modal = false;
@@ -2079,4 +2155,9 @@ pub fn apply_initial_settings(
     mut clear_color: ResMut<ClearColor>,
 ) {
     clear_color.0 = settings_state.settings.background_color.to_color();
+
+    info!(
+        "Applied startup background color: {}",
+        settings_state.settings.background_color.to_hex()
+    );
 }

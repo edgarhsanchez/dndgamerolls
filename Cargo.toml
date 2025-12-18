@@ -54,7 +54,7 @@ reqwest = { version = "0.12", features = ["blocking"] }
 image = "0.25"
 
 # Database
-surrealdb = { version = "3.0.0-beta.1", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
+surrealdb = { version = "2.4.0", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "net", "io-util"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 

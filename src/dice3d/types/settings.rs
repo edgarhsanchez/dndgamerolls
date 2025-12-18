@@ -444,18 +444,50 @@ impl AppSettings {
 
     /// Load settings from SurrealDB.
     pub fn load() -> Self {
-        if let Ok(db) = CharacterDatabase::open() {
-            if let Ok(Some(settings)) = db.get_setting::<AppSettings>(Self::SETTINGS_DB_KEY) {
-                info!("Loaded settings from SurrealDB");
-                return settings;
+        match CharacterDatabase::open() {
+            Ok(db) => {
+                match db.get_setting::<AppSettings>(Self::SETTINGS_DB_KEY) {
+                    Ok(Some(settings)) => {
+                        info!(
+                            "Loaded settings from SurrealDB at {:?} (background={})",
+                            db.db_path,
+                            settings.background_color.to_hex()
+                        );
+                        return settings;
+                    }
+                    Ok(None) => {
+                        info!(
+                            "No persisted settings found in SurrealDB at {:?}; using defaults",
+                            db.db_path
+                        );
+                        return Self::default();
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to load settings from SurrealDB at {:?}: {}; using defaults",
+                            db.db_path,
+                            e
+                        );
+                        return Self::default();
+                    }
+                }
             }
-
-            return Self::default();
+            Err(e) => {
+                warn!(
+                    "Failed to open SurrealDB for settings ({}); using defaults",
+                    e
+                );
+            }
         }
 
         // If the DB cannot be opened (or isn't writable), fall back to defaults.
         // We intentionally do not read/write any JSON files for persistence.
         Self::default()
+    }
+
+    /// Load settings from an already-open database.
+    pub fn load_from_db(db: &CharacterDatabase) -> Result<Option<Self>, String> {
+        db.get_setting::<AppSettings>(Self::SETTINGS_DB_KEY)
     }
 
     /// Save settings to SurrealDB.
@@ -533,7 +565,9 @@ pub struct SettingsState {
 
 impl Default for SettingsState {
     fn default() -> Self {
-        let settings = AppSettings::load();
+        // Avoid doing any database I/O in `Default`.
+        // Settings are loaded during Startup once the DB resource is initialized.
+        let settings = AppSettings::default();
         let character_sheet_editing_die = settings.character_sheet_default_die;
         let quick_roll_editing_die = settings.quick_roll_default_die;
         let default_roll_uses_shake_editing = settings.default_roll_uses_shake;

@@ -125,7 +125,8 @@ pub use settings::{
     handle_shake_curve_bezier_handle_press, handle_shake_curve_chip_clicks,
     handle_shake_curve_graph_click_to_add_point, handle_shake_curve_point_press,
     handle_shake_duration_text_input, manage_settings_modal, persist_settings_to_db,
-    spawn_settings_button, sync_shake_curve_chip_ui, sync_shake_curve_graph_ui, update_color_ui,
+    load_settings_state_from_db, spawn_settings_button, sync_shake_curve_chip_ui,
+    sync_shake_curve_graph_ui, update_color_ui,
 };
 pub use setup::{
     calculate_dice_position, rebuild_command_history_panel, rebuild_quick_roll_panel, setup,

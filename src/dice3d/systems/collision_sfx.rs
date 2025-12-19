@@ -1,6 +1,6 @@
 //! Plays positional collision sound effects when dice hit the active container.
 
-use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings};
+use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use std::collections::HashMap;
@@ -45,6 +45,7 @@ pub fn play_dice_container_collision_sfx(
     mut collision_events: MessageReader<CollisionEvent>,
     dice_query: Query<(), With<Die>>,
     container_query: Query<(), Or<(With<DiceContainerVoxelCollider>, With<DiceContainerProceduralCollider>)>>,
+    die_velocity: Query<&Velocity, With<Die>>,
     global_transforms: Query<&GlobalTransform>,
     time: Res<Time>,
 ) {
@@ -82,9 +83,28 @@ pub fn play_dice_container_collision_sfx(
 
         debounce.last_played_s.insert(die_entity, now_s);
 
+        // Approximate collision "strength" from the die's current velocities.
+        // This is cheaper than force/impulse events and works well for audio scaling.
+        let strength = die_velocity
+            .get(die_entity)
+            .map(|v| v.linvel.length() + 0.15 * v.angvel.length())
+            .unwrap_or(0.0);
+
+        // Map strength -> volume. Keep a small floor so quiet collisions are still audible.
+        // Tunables:
+        // - `strength_ref`: roughly the velocity magnitude that should sound "full volume".
+        // - `min_volume`: audible floor.
+        let strength_ref = 4.5_f32;
+        let min_volume = 0.05_f32;
+        let max_volume = 1.0_f32;
+        let t = (strength / strength_ref).clamp(0.0, 1.0);
+        let volume = min_volume + (max_volume - min_volume) * t.powf(0.7);
+
         commands.spawn((
             AudioPlayer(sound),
-            PlaybackSettings::DESPAWN.with_spatial(true),
+            PlaybackSettings::DESPAWN
+                .with_spatial(true)
+                .with_volume(Volume::Linear(volume)),
             Transform::from_translation(pos),
             GlobalTransform::default(),
         ));

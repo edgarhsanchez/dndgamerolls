@@ -61,7 +61,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Bevy Game Engine (0.17.3)
 # Note: dynamic_linking is only for dev - release builds use static linking
-bevy = "0.17.3"
+bevy = { version = "0.17.3", features = ["mp3"] }
 bevy_rapier3d = { version = "0.32", features = ["simd-stable"] }
 bevy_mesh = "0.17.3"
 

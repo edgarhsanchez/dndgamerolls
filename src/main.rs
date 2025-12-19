@@ -143,6 +143,8 @@ use dndgamerolls::dice3d::{
     DiceSpawnPointsApplied,
     UiState,
     ZoomState,
+    init_collision_sounds,
+    play_dice_container_collision_sfx,
 };
 
 use dndgamerolls::dice3d::types::database::CharacterDatabase;
@@ -509,6 +511,7 @@ fn run_3d_mode(cli: Cli) {
                 load_settings_state_from_db,
                 init_contributors,
                 apply_initial_shake_config,
+                init_collision_sounds,
                 setup,
                 setup_tab_bar,
                 setup_character_screen,
@@ -545,6 +548,7 @@ fn run_3d_mode(cli: Cli) {
                 update_throw_arrow,
             ),
         )
+        .add_systems(Update, play_dice_container_collision_sfx)
         // Separate to avoid Bevy's tuple-size limit, and ensure it runs before highlight tagging.
         .add_systems(
             Update,

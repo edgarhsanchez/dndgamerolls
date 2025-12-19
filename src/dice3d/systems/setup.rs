@@ -19,6 +19,8 @@ use crate::dice3d::throw_control::{
 };
 use crate::dice3d::types::*;
 
+use bevy::audio::SpatialListener;
+
 use super::rendering::{create_number_mesh, get_label_offset, get_label_rotation, get_label_scale};
 
 /// Main setup system - initializes the entire 3D scene
@@ -45,6 +47,7 @@ pub fn setup(
         Camera3d::default(),
         Transform::from_xyz(0.0, camera_height, camera_distance * 0.7)
             .looking_at(Vec3::ZERO, Vec3::Y),
+        SpatialListener::default(),
         MainCamera,
     ));
 
@@ -1210,6 +1213,7 @@ pub fn spawn_die(
         // Prevent fast dice from tunneling through the walls/ceiling.
         Ccd::enabled(),
         collider,
+        ActiveEvents::COLLISION_EVENTS,
         Velocity {
             linvel: throw_vel,
             angvel: angular_vel,

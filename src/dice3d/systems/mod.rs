@@ -16,6 +16,7 @@
 mod avatar_loader;
 mod box_highlight;
 mod camera;
+mod collision_sfx;
 pub mod character_screen;
 mod contributors_screen;
 mod dice;
@@ -37,6 +38,7 @@ pub use avatar_loader::{
 };
 pub use box_highlight::update_dice_box_highlight;
 pub use camera::{handle_zoom_slider_changes, rotate_camera};
+pub use collision_sfx::{init_collision_sounds, play_dice_container_collision_sfx, DiceCollisionSfx};
 pub use character_screen::{
     // UI fixups
     ensure_buttons_have_interaction,

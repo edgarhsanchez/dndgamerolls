@@ -48,6 +48,7 @@ use dndgamerolls::dice3d::{
     handle_new_entry_input,
     handle_quick_roll_clicks,
     handle_quick_roll_die_type_select_change,
+    handle_theme_seed_select_change,
     handle_roll_all_stats_click,
     handle_roll_attribute_click,
     handle_roll_skill_click,
@@ -88,6 +89,10 @@ use dndgamerolls::dice3d::{
     request_avatars,
     rotate_camera,
     run_sqlite_conversion_step,
+    apply_crystal_material_to_container_models,
+    apply_spawn_points_to_dice_when_ready,
+    collect_dice_spawn_points_from_gltf,
+    spawn_colliders_from_gltf_guides,
     setup,
     setup_character_screen,
     setup_contributors_screen,
@@ -112,6 +117,8 @@ use dndgamerolls::dice3d::{
     update_tab_visibility,
     update_throw_arrow,
     update_throw_from_mouse,
+    refresh_scrollbar_colors_on_theme_change,
+    tint_recent_theme_dropdown_items,
     // Character sheet tab systems
     AddingEntryState,
     AvatarLoader,
@@ -123,6 +130,7 @@ use dndgamerolls::dice3d::{
     ContainerShakeConfig,
     DiceBoxHighlightMaterial,
     DiceConfig,
+    Dice3dEmbeddedAssetsPlugin,
     DiceContainerStyle,
     DiceResults,
     DiceType,
@@ -131,6 +139,8 @@ use dndgamerolls::dice3d::{
     SettingsState,
     ShakeState,
     ThrowControlState,
+    DiceSpawnPoints,
+    DiceSpawnPointsApplied,
     UiState,
     ZoomState,
 };
@@ -467,6 +477,7 @@ fn run_3d_mode(cli: Cli) {
         .add_plugins(bevy::pbr::MaterialPlugin::<DiceBoxHighlightMaterial>::default())
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(MaterialUiPlugin)
+            .add_plugins(Dice3dEmbeddedAssetsPlugin)
         // Ensure UI Buttons spawned without ButtonBundle still receive click events
         .add_systems(PreUpdate, ensure_buttons_have_interaction)
         .insert_resource(dice_config)
@@ -486,6 +497,8 @@ fn run_3d_mode(cli: Cli) {
         .insert_resource(SettingsState::default())
         .insert_resource(CharacterScreenRollBridge::default())
         .insert_resource(ThrowControlState::default())
+        .insert_resource(DiceSpawnPoints::default())
+        .insert_resource(DiceSpawnPointsApplied::default())
         .insert_resource(AvatarLoader::default())
         .add_systems(
             Startup,
@@ -531,6 +544,31 @@ fn run_3d_mode(cli: Cli) {
                 handle_shake_slider_changes,
                 update_throw_arrow,
             ),
+        )
+        // Separate to avoid Bevy's tuple-size limit, and ensure it runs before highlight tagging.
+        .add_systems(
+            Update,
+            spawn_colliders_from_gltf_guides
+                .before(handle_dice_box_toggle_container_click)
+                .before(update_dice_box_highlight),
+        )
+        .add_systems(
+            Update,
+            apply_crystal_material_to_container_models
+                .before(handle_dice_box_toggle_container_click)
+                .before(update_dice_box_highlight),
+        )
+        .add_systems(
+            Update,
+            collect_dice_spawn_points_from_gltf
+                .before(handle_dice_box_toggle_container_click)
+                .before(update_dice_box_highlight),
+        )
+        .add_systems(
+            Update,
+            apply_spawn_points_to_dice_when_ready
+                .before(handle_dice_box_toggle_container_click)
+                .before(update_dice_box_highlight),
         )
         .add_systems(Update, handle_command_history_item_clicks)
         .add_systems(
@@ -609,38 +647,52 @@ fn run_3d_mode(cli: Cli) {
         .add_systems(
             Update,
             (
-                // Settings systems
-                handle_settings_button_click,
-                manage_settings_modal,
-                handle_settings_ok_click,
-                handle_settings_cancel_click,
-                handle_settings_reset_layout_click,
-                handle_quick_roll_die_type_select_change,
-                handle_default_roll_uses_shake_switch_change,
-                handle_color_slider_changes,
-                handle_color_text_input,
-                handle_shake_duration_text_input,
-                handle_shake_curve_chip_clicks,
                 (
-                    handle_shake_curve_point_press,
-                    handle_shake_curve_bezier_handle_press,
-                    handle_shake_curve_graph_click_to_add_point,
-                    drag_shake_curve_bezier_handle,
-                    drag_shake_curve_point,
-                    sync_shake_curve_graph_ui,
-                )
-                    .chain(),
-                sync_shake_curve_chip_ui,
-                update_color_ui,
-                autosave_and_apply_shake_config.after(sync_shake_curve_graph_ui),
-                // Character sheet dice settings modal
-                handle_character_sheet_settings_button_click,
-                manage_character_sheet_settings_modal,
-                handle_character_sheet_die_type_select_change,
-                handle_character_sheet_settings_save_click,
-                handle_character_sheet_settings_cancel_click,
+                    // Settings systems
+                    handle_settings_button_click,
+                    manage_settings_modal,
+                    handle_settings_ok_click,
+                    handle_settings_cancel_click,
+                    handle_settings_reset_layout_click,
+                    handle_quick_roll_die_type_select_change,
+                    handle_theme_seed_select_change,
+                    handle_default_roll_uses_shake_switch_change,
+                    handle_color_slider_changes,
+                    handle_color_text_input,
+                    handle_shake_duration_text_input,
+                    handle_shake_curve_chip_clicks,
+                    (
+                        handle_shake_curve_point_press,
+                        handle_shake_curve_bezier_handle_press,
+                        handle_shake_curve_graph_click_to_add_point,
+                        drag_shake_curve_bezier_handle,
+                        drag_shake_curve_point,
+                        sync_shake_curve_graph_ui,
+                    )
+                        .chain(),
+                    sync_shake_curve_chip_ui,
+                    update_color_ui,
+                    autosave_and_apply_shake_config.after(sync_shake_curve_graph_ui),
+                ),
+                (
+                    // Character sheet dice settings modal
+                    handle_character_sheet_settings_button_click,
+                    manage_character_sheet_settings_modal,
+                    handle_character_sheet_die_type_select_change,
+                    handle_character_sheet_settings_save_click,
+                    handle_character_sheet_settings_cancel_click,
+                ),
             ),
         )
+        .add_systems(
+            Update,
+            refresh_scrollbar_colors_on_theme_change
+                .after(handle_color_text_input)
+                .after(handle_theme_seed_select_change)
+                .after(handle_settings_ok_click)
+                .after(handle_settings_cancel_click),
+        )
+        .add_systems(PostUpdate, tint_recent_theme_dropdown_items)
         .add_systems(PostUpdate, persist_settings_to_db)
         .run();
 }

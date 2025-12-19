@@ -3,7 +3,6 @@
 //! This module contains the main setup function that initializes the 3D scene,
 //! including camera, lights, dice box, dice, and UI elements.
 
-use bevy::color::LinearRgba;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
@@ -12,11 +11,12 @@ use bevy_material_ui::prelude::*;
 use bevy_rapier3d::prelude::*;
 use rand::Rng;
 
-use crate::dice3d::box_highlight::{
-    DiceBoxFloor, DiceBoxHighlightExtension, DiceBoxHighlightMaterial, DiceBoxHighlightParams,
-};
+use crate::dice3d::embedded_assets::{BOX_MODEL_SCENE_PATH, CUP_MODEL_SCENE_PATH};
 use crate::dice3d::meshes::create_die_mesh_and_collider;
-use crate::dice3d::throw_control::{spawn_throw_arrow, StrengthSlider, ThrowControlState};
+use crate::dice3d::throw_control::{
+    spawn_throw_arrow, StrengthSlider, ThrowControlState, BOX_HALF_EXTENT, BOX_WALL_HEIGHT,
+    CUP_RADIUS, ORIGINAL_BOX_HALF_EXTENT,
+};
 use crate::dice3d::types::*;
 
 use super::rendering::{create_number_mesh, get_label_offset, get_label_rotation, get_label_scale};
@@ -24,9 +24,9 @@ use super::rendering::{create_number_mesh, get_label_offset, get_label_rotation,
 /// Main setup system - initializes the entire 3D scene
 pub fn setup(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut box_materials: ResMut<Assets<DiceBoxHighlightMaterial>>,
     dice_config: Res<DiceConfig>,
     character_data: Res<CharacterData>,
     zoom_state: Res<ZoomState>,
@@ -79,109 +79,106 @@ pub fn setup(
         crystal: crystal_mat.clone(),
     });
 
-    let floor_material = box_materials.add(DiceBoxHighlightMaterial {
-        base: StandardMaterial {
-            // Windows Sandbox often runs with a virtual GPU / software rendering path where
-            // blended transparency can sort incorrectly or appear to vanish. Keep the floor
-            // opaque so the "bottom of the box" is always visible.
-            base_color: Color::srgba(0.7, 0.85, 0.95, 1.0),
-            alpha_mode: AlphaMode::Opaque,
-            reflectance: 0.8,
-            perceptual_roughness: 0.1,
-            metallic: 0.0,
-            ..default()
-        },
-        extension: DiceBoxHighlightExtension {
-            params: DiceBoxHighlightParams {
-                highlight_color: LinearRgba::from(
-                    settings_state.settings.dice_box_highlight_color.to_color(),
-                )
-                .to_vec4(),
-                hovered: 0.0,
-                strength: 1.0,
-                _pad: Vec2::ZERO,
-            },
-        },
+    // --------------------------------------------------------------------
+    // Dice container physics root (single kinematic rigid body)
+    // --------------------------------------------------------------------
+    // All container colliders + visuals are spawned as children of this entity.
+    // This keeps everything moving together during shakes and avoids needing a rigid-body
+    // per wall segment.
+    let container_root = commands
+        .spawn((
+            Transform::default(),
+            Visibility::Visible,
+            RigidBody::KinematicPositionBased,
+            DiceBox,
+        ))
+        .id();
+
+    // Floor collider only (no visible base platform). Sized to match the active container style.
+    let floor_thickness = 0.30;
+    let floor_half_height = floor_thickness / 2.0;
+    commands.entity(container_root).with_children(|parent| match *container_style {
+        DiceContainerStyle::Box => {
+            parent.spawn((
+                Transform::from_xyz(0.0, -floor_half_height, 0.0),
+                Collider::cuboid(BOX_HALF_EXTENT, floor_half_height, BOX_HALF_EXTENT),
+                Restitution::coefficient(0.2),
+                Friction::coefficient(0.8),
+                DiceBoxFloorCollider,
+                DiceContainerProceduralCollider,
+            ));
+        }
+        DiceContainerStyle::Cup => {
+            parent.spawn((
+                Transform::from_xyz(0.0, -floor_half_height, 0.0),
+                Collider::cylinder(floor_half_height, CUP_RADIUS),
+                Restitution::coefficient(0.2),
+                Friction::coefficient(0.8),
+                DiceBoxFloorCollider,
+                DiceContainerProceduralCollider,
+            ));
+        }
     });
 
-    // Floor - smaller box (4x4 units)
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(4.0, 0.3, 4.0))),
-        MeshMaterial3d(floor_material.clone()),
-        Transform::from_xyz(0.0, -0.15, 0.0),
-        Collider::cuboid(2.0, 0.15, 2.0),
-        RigidBody::KinematicPositionBased,
-        Restitution::coefficient(0.2),
-        Friction::coefficient(0.8),
-        DiceBox,
-        DiceBoxFloor,
-    ));
-
     // Walls - taller walls for better containment
-    let wall_height = 1.5;
+    let wall_height = BOX_WALL_HEIGHT;
     let wall_thickness = 0.15;
-    let box_size = 2.0;
+    let box_size = BOX_HALF_EXTENT;
 
-    let spawn_box_walls = |commands: &mut Commands,
-                           meshes: &mut ResMut<Assets<Mesh>>,
-                           crystal_mat: Handle<StandardMaterial>| {
+    let spawn_box_walls = |parent: &mut ChildSpawnerCommands| {
+        // Visual box: load the embedded glTF scene.
+        let box_scene: Handle<Scene> = asset_server.load(BOX_MODEL_SCENE_PATH);
+        let scale = (BOX_HALF_EXTENT / ORIGINAL_BOX_HALF_EXTENT).max(0.0001);
+        parent.spawn((
+            SceneRoot(box_scene),
+            Transform::from_xyz(0.0, wall_height / 2.0, 0.0).with_scale(Vec3::splat(scale)),
+            DiceBoxWall,
+            DiceContainerVisualRoot,
+        ));
+
+        // Invisible collider walls (keep physics stable / predictable).
         for (pos, size) in [
             (
                 Vec3::new(0.0, wall_height / 2.0, -box_size),
-                Vec3::new(4.0 + wall_thickness * 2.0, wall_height, wall_thickness),
+                Vec3::new(2.0 * box_size + wall_thickness * 2.0, wall_height, wall_thickness),
             ),
             (
                 Vec3::new(0.0, wall_height / 2.0, box_size),
-                Vec3::new(4.0 + wall_thickness * 2.0, wall_height, wall_thickness),
+                Vec3::new(2.0 * box_size + wall_thickness * 2.0, wall_height, wall_thickness),
             ),
             (
                 Vec3::new(-box_size, wall_height / 2.0, 0.0),
                 // Extend along Z so corners overlap with the front/back walls.
-                Vec3::new(wall_thickness, wall_height, 4.0 + wall_thickness * 2.0),
+                Vec3::new(wall_thickness, wall_height, 2.0 * box_size + wall_thickness * 2.0),
             ),
             (
                 Vec3::new(box_size, wall_height / 2.0, 0.0),
                 // Extend along Z so corners overlap with the front/back walls.
-                Vec3::new(wall_thickness, wall_height, 4.0 + wall_thickness * 2.0),
+                Vec3::new(wall_thickness, wall_height, 2.0 * box_size + wall_thickness * 2.0),
             ),
         ] {
-            commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(size.x, size.y, size.z))),
-                MeshMaterial3d(crystal_mat.clone()),
+            parent.spawn((
                 Transform::from_translation(pos),
                 Collider::cuboid(size.x / 2.0, size.y / 2.0, size.z / 2.0),
-                RigidBody::KinematicPositionBased,
                 Restitution::coefficient(0.2),
                 Friction::coefficient(0.8),
-                DiceBox,
                 DiceBoxWall,
+                DiceContainerProceduralCollider,
             ));
         }
     };
 
-    let spawn_cup_walls = |commands: &mut Commands,
-                           meshes: &mut ResMut<Assets<Mesh>>,
-                           crystal_mat: Handle<StandardMaterial>| {
-        // Visual cup: a glass cylinder + a simple handle.
+    let spawn_cup_walls = |parent: &mut ChildSpawnerCommands| {
+        // Visual cup: load the embedded glTF scene.
         // Collisions: keep the "invisible boundary" principle by using collider-only wall segments.
-        let radius: f32 = 2.0;
+        let radius: f32 = CUP_RADIUS;
 
-        // Cylinder visual
-        commands.spawn((
-            Mesh3d(meshes.add(Cylinder::new(radius, wall_height))),
-            MeshMaterial3d(crystal_mat.clone()),
+        let cup_scene: Handle<Scene> = asset_server.load(CUP_MODEL_SCENE_PATH);
+        parent.spawn((
+            SceneRoot(cup_scene),
             Transform::from_xyz(0.0, wall_height / 2.0, 0.0),
-            DiceBox,
             DiceBoxWall,
-        ));
-
-        // Handle visual (simple rectangular handle)
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(0.6, 0.8, 0.12))),
-            MeshMaterial3d(crystal_mat.clone()),
-            Transform::from_xyz(radius + 0.35, wall_height * 0.60, 0.0),
-            DiceBox,
-            DiceBoxWall,
+            DiceContainerVisualRoot,
         ));
 
         // Invisible collider ring (more segments = smoother)
@@ -198,40 +195,53 @@ pub fn setup(
             let rot = Quat::from_rotation_y(-angle);
             let size = Vec3::new(segment_length + wall_thickness, wall_height, wall_depth);
 
-            commands.spawn((
+            parent.spawn((
                 Transform::from_translation(pos).with_rotation(rot),
                 Collider::cuboid(size.x / 2.0, size.y / 2.0, size.z / 2.0),
-                RigidBody::KinematicPositionBased,
                 Restitution::coefficient(0.2),
                 Friction::coefficient(0.8),
-                DiceBox,
                 DiceBoxWall,
+                DiceContainerProceduralCollider,
             ));
         }
     };
 
-    match *container_style {
-        DiceContainerStyle::Box => spawn_box_walls(&mut commands, &mut meshes, crystal_mat.clone()),
-        DiceContainerStyle::Cup => spawn_cup_walls(&mut commands, &mut meshes, crystal_mat.clone()),
-    }
+    commands.entity(container_root).with_children(|parent| match *container_style {
+        DiceContainerStyle::Box => spawn_box_walls(parent),
+        DiceContainerStyle::Cup => spawn_cup_walls(parent),
+    });
 
     // Invisible ceiling collider to prevent dice from bouncing out.
     // Note: collider-only (no mesh/material), so it's completely see-through.
-    let ceiling_size = 4.0 + wall_thickness * 2.0;
     let ceiling_thickness = 0.10;
-    commands.spawn((
-        Transform::from_xyz(0.0, wall_height + ceiling_thickness / 2.0, 0.0),
-        Collider::cuboid(
-            ceiling_size / 2.0,
-            ceiling_thickness / 2.0,
-            ceiling_size / 2.0,
-        ),
-        RigidBody::KinematicPositionBased,
-        Restitution::coefficient(0.05),
-        Friction::coefficient(0.3),
-        DiceBox,
-        DiceBoxCeiling,
-    ));
+    let ceiling_half_height = ceiling_thickness / 2.0;
+    commands.entity(container_root).with_children(|parent| match *container_style {
+        DiceContainerStyle::Box => {
+            let ceiling_size = 2.0 * BOX_HALF_EXTENT + wall_thickness * 2.0;
+            parent.spawn((
+                Transform::from_xyz(0.0, wall_height + ceiling_half_height, 0.0),
+                Collider::cuboid(
+                    ceiling_size / 2.0,
+                    ceiling_half_height,
+                    ceiling_size / 2.0,
+                ),
+                Restitution::coefficient(0.05),
+                Friction::coefficient(0.3),
+                DiceBoxCeiling,
+                DiceContainerProceduralCollider,
+            ));
+        }
+        DiceContainerStyle::Cup => {
+            parent.spawn((
+                Transform::from_xyz(0.0, wall_height + ceiling_half_height, 0.0),
+                Collider::cylinder(ceiling_half_height, CUP_RADIUS + wall_thickness),
+                Restitution::coefficient(0.05),
+                Friction::coefficient(0.3),
+                DiceBoxCeiling,
+                DiceContainerProceduralCollider,
+            ));
+        }
+    });
 
     // Spawn dice based on configuration
     let dice_to_spawn = &dice_config.dice_to_roll;
@@ -1560,7 +1570,7 @@ pub fn rebuild_quick_roll_panel(
     icon_font: Res<MaterialIconFont>,
     panel_query: Query<Entity, With<QuickRollPanel>>,
 ) {
-    if !character_data.is_changed() {
+    if !character_data.is_changed() && !theme.is_changed() {
         return;
     }
 
@@ -1593,7 +1603,7 @@ pub fn rebuild_command_history_panel(
     list_query: Query<Entity, With<CommandHistoryList>>,
     children_query: Query<&Children>,
 ) {
-    if !history.is_changed() {
+    if !history.is_changed() && !theme.is_changed() {
         return;
     }
 

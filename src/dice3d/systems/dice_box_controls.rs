@@ -1,15 +1,19 @@
 //! Dice container controls panel (draggable) and actions.
 
 use bevy::prelude::*;
-use bevy_material_ui::prelude::{IconButtonClickEvent, MaterialIcon, SliderChangeEvent};
+use bevy_material_ui::prelude::{IconButtonClickEvent, MaterialIcon, MaterialTheme, SliderChangeEvent};
 use bevy_rapier3d::prelude::*;
 use rand::Rng;
 
-use crate::dice3d::throw_control::{BOX_MAX_X, BOX_WALL_HEIGHT};
+use crate::dice3d::throw_control::{
+    BOX_HALF_EXTENT, BOX_WALL_HEIGHT, CUP_RADIUS, ORIGINAL_BOX_HALF_EXTENT,
+};
 use crate::dice3d::types::*;
+use crate::dice3d::systems::DiceSpawnPointsApplied;
 
 /// Start/refresh a container shake animation using the current shake settings.
 ///
+use crate::dice3d::{BOX_MODEL_SCENE_PATH, CUP_MODEL_SCENE_PATH};
 /// Returns `true` if shaking was started.
 pub fn start_container_shake(
     shake_state: &ShakeState,
@@ -272,9 +276,10 @@ pub fn handle_dice_box_controls_panel_drag(
 /// Update the Mode label text to match the current container style.
 pub fn sync_dice_container_mode_text(
     style: Res<DiceContainerStyle>,
-    mut texts: Query<&mut Text, With<DiceBoxContainerModeText>>,
+    theme: Res<MaterialTheme>,
+    mut texts: Query<(&mut Text, &mut TextColor), With<DiceBoxContainerModeText>>,
 ) {
-    if !style.is_changed() {
+    if !style.is_changed() && !theme.is_changed() {
         return;
     }
 
@@ -283,8 +288,9 @@ pub fn sync_dice_container_mode_text(
         DiceContainerStyle::Cup => "Mode: Cup",
     };
 
-    for mut text in texts.iter_mut() {
+    for (mut text, mut color) in texts.iter_mut() {
         **text = label.to_string();
+        *color = TextColor(theme.primary);
     }
 }
 
@@ -472,11 +478,16 @@ pub fn handle_dice_box_toggle_container_click(
     mut click_events: MessageReader<IconButtonClickEvent>,
     buttons: Query<(), With<DiceBoxToggleContainerButton>>,
     mut style: ResMut<DiceContainerStyle>,
-    materials: Res<DiceContainerMaterials>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    _materials: Res<DiceContainerMaterials>,
+    asset_server: Res<AssetServer>,
+    _meshes: ResMut<Assets<Mesh>>,
     walls: Query<Entity, With<DiceBoxWall>>,
+    floors: Query<Entity, With<DiceBoxFloorCollider>>,
+    ceilings: Query<Entity, With<DiceBoxCeiling>>,
+    container_root: Query<Entity, With<DiceBox>>,
     mut dice_query: Query<(&mut Transform, &mut Velocity), With<Die>>,
     mut shake_anim: ResMut<ContainerShakeAnimation>,
+    mut spawn_points_applied: ResMut<DiceSpawnPointsApplied>,
 ) {
     if ui_state.active_tab != AppTab::DiceRoller {
         return;
@@ -505,93 +516,172 @@ pub fn handle_dice_box_toggle_container_click(
         commands.entity(e).despawn();
     }
 
+    // Rebuild floor/ceiling so colliders match the new container style closely.
+    for e in floors.iter() {
+        commands.entity(e).despawn();
+    }
+    for e in ceilings.iter() {
+        commands.entity(e).despawn();
+    }
+
     // Toggle style.
     *style = match *style {
         DiceContainerStyle::Box => DiceContainerStyle::Cup,
         DiceContainerStyle::Cup => DiceContainerStyle::Box,
     };
 
-    // Respawn walls in the new style.
+    // Allow spawn point placement to re-run for the new style.
+    spawn_points_applied.box_applied = false;
+    spawn_points_applied.cup_applied = false;
+
+    let mut root_iter = container_root.iter();
+    let Some(container_root) = root_iter.next() else {
+        return;
+    };
+    if root_iter.next().is_some() {
+        return;
+    }
+
+    // Respawn walls/colliders in the new style (as children of the container root).
     let wall_height = BOX_WALL_HEIGHT;
     let wall_thickness = 0.15;
-    let box_size = BOX_MAX_X;
+
+    // Floor collider
+    let floor_thickness = 0.30;
+    let floor_half_height = floor_thickness / 2.0;
+    commands.entity(container_root).with_children(|parent| match *style {
+        DiceContainerStyle::Box => {
+            parent.spawn((
+                Transform::from_xyz(0.0, -floor_half_height, 0.0),
+                Collider::cuboid(BOX_HALF_EXTENT, floor_half_height, BOX_HALF_EXTENT),
+                Restitution::coefficient(0.2),
+                Friction::coefficient(0.8),
+                DiceBoxFloorCollider,
+                DiceContainerProceduralCollider,
+            ));
+        }
+        DiceContainerStyle::Cup => {
+            parent.spawn((
+                Transform::from_xyz(0.0, -floor_half_height, 0.0),
+                Collider::cylinder(floor_half_height, CUP_RADIUS),
+                Restitution::coefficient(0.2),
+                Friction::coefficient(0.8),
+                DiceBoxFloorCollider,
+                DiceContainerProceduralCollider,
+            ));
+        }
+    });
+
+    // Ceiling collider
+    let ceiling_thickness = 0.10;
+    let ceiling_half_height = ceiling_thickness / 2.0;
+    commands.entity(container_root).with_children(|parent| match *style {
+        DiceContainerStyle::Box => {
+            let ceiling_size = 2.0 * BOX_HALF_EXTENT + wall_thickness * 2.0;
+            parent.spawn((
+                Transform::from_xyz(0.0, wall_height + ceiling_half_height, 0.0),
+                Collider::cuboid(ceiling_size / 2.0, ceiling_half_height, ceiling_size / 2.0),
+                Restitution::coefficient(0.05),
+                Friction::coefficient(0.3),
+                DiceBoxCeiling,
+                DiceContainerProceduralCollider,
+            ));
+        }
+        DiceContainerStyle::Cup => {
+            parent.spawn((
+                Transform::from_xyz(0.0, wall_height + ceiling_half_height, 0.0),
+                Collider::cylinder(ceiling_half_height, CUP_RADIUS + wall_thickness),
+                Restitution::coefficient(0.05),
+                Friction::coefficient(0.3),
+                DiceBoxCeiling,
+                DiceContainerProceduralCollider,
+            ));
+        }
+    });
 
     match *style {
         DiceContainerStyle::Box => {
-            for (pos, size) in [
+            let box_size = BOX_HALF_EXTENT;
+
+            commands.entity(container_root).with_children(|parent| {
+                // Visual box model (embedded glTF scene)
+                let box_scene: Handle<Scene> = asset_server.load(BOX_MODEL_SCENE_PATH);
+                let scale = (BOX_HALF_EXTENT / ORIGINAL_BOX_HALF_EXTENT).max(0.0001);
+                parent.spawn((
+                    SceneRoot(box_scene),
+                    Transform::from_xyz(0.0, wall_height / 2.0, 0.0)
+                        .with_scale(Vec3::splat(scale)),
+                    DiceBoxWall,
+                    DiceContainerVisualRoot,
+                ));
+
+                for (pos, size) in [
                 (
                     Vec3::new(0.0, wall_height / 2.0, -box_size),
-                    Vec3::new(4.0 + wall_thickness * 2.0, wall_height, wall_thickness),
+                    Vec3::new(2.0 * box_size + wall_thickness * 2.0, wall_height, wall_thickness),
                 ),
                 (
                     Vec3::new(0.0, wall_height / 2.0, box_size),
-                    Vec3::new(4.0 + wall_thickness * 2.0, wall_height, wall_thickness),
+                    Vec3::new(2.0 * box_size + wall_thickness * 2.0, wall_height, wall_thickness),
                 ),
                 (
                     Vec3::new(-box_size, wall_height / 2.0, 0.0),
-                    Vec3::new(wall_thickness, wall_height, 4.0 + wall_thickness * 2.0),
+                    Vec3::new(wall_thickness, wall_height, 2.0 * box_size + wall_thickness * 2.0),
                 ),
                 (
                     Vec3::new(box_size, wall_height / 2.0, 0.0),
-                    Vec3::new(wall_thickness, wall_height, 4.0 + wall_thickness * 2.0),
+                    Vec3::new(wall_thickness, wall_height, 2.0 * box_size + wall_thickness * 2.0),
                 ),
-            ] {
-                commands.spawn((
-                    Mesh3d(meshes.add(Cuboid::new(size.x, size.y, size.z))),
-                    MeshMaterial3d(materials.crystal.clone()),
+                ] {
+                    parent.spawn((
                     Transform::from_translation(pos),
                     Collider::cuboid(size.x / 2.0, size.y / 2.0, size.z / 2.0),
-                    RigidBody::KinematicPositionBased,
                     Restitution::coefficient(0.2),
                     Friction::coefficient(0.8),
-                    DiceBox,
                     DiceBoxWall,
-                ));
-            }
+                    DiceContainerProceduralCollider,
+                    ));
+                }
+            });
         }
         DiceContainerStyle::Cup => {
-            let radius: f32 = box_size;
+            let radius: f32 = CUP_RADIUS;
 
-            // Visual cylinder + handle
-            commands.spawn((
-                Mesh3d(meshes.add(Cylinder::new(radius, wall_height))),
-                MeshMaterial3d(materials.crystal.clone()),
-                Transform::from_xyz(0.0, wall_height / 2.0, 0.0),
-                DiceBox,
-                DiceBoxWall,
-            ));
-            commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.6, 0.8, 0.12))),
-                MeshMaterial3d(materials.crystal.clone()),
-                Transform::from_xyz(radius + 0.35, wall_height * 0.60, 0.0),
-                DiceBox,
-                DiceBoxWall,
-            ));
-
-            // Invisible collider ring
-            let segments: usize = 24;
-            let segment_length: f32 = (std::f32::consts::TAU * radius) / segments as f32;
-            let wall_depth: f32 = wall_thickness;
-
-            for i in 0..segments {
-                let t = i as f32 / segments as f32;
-                let angle = t * std::f32::consts::TAU;
-                let x = angle.cos() * radius;
-                let z = angle.sin() * radius;
-                let pos = Vec3::new(x, wall_height / 2.0, z);
-                let rot = Quat::from_rotation_y(-angle);
-                let size = Vec3::new(segment_length + wall_thickness, wall_height, wall_depth);
-
-                commands.spawn((
-                    Transform::from_translation(pos).with_rotation(rot),
-                    Collider::cuboid(size.x / 2.0, size.y / 2.0, size.z / 2.0),
-                    RigidBody::KinematicPositionBased,
-                    Restitution::coefficient(0.2),
-                    Friction::coefficient(0.8),
-                    DiceBox,
+            commands.entity(container_root).with_children(|parent| {
+                // Visual cup model (embedded glTF scene)
+                let cup_scene: Handle<Scene> = asset_server.load(CUP_MODEL_SCENE_PATH);
+                parent.spawn((
+                    SceneRoot(cup_scene),
+                    Transform::from_xyz(0.0, wall_height / 2.0, 0.0),
                     DiceBoxWall,
+                    DiceContainerVisualRoot,
                 ));
-            }
+
+                // Invisible collider ring
+                let segments: usize = 24;
+                let segment_length: f32 = (std::f32::consts::TAU * radius) / segments as f32;
+                let wall_depth: f32 = wall_thickness;
+
+                for i in 0..segments {
+                    let t = i as f32 / segments as f32;
+                    let angle = t * std::f32::consts::TAU;
+                    let x = angle.cos() * radius;
+                    let z = angle.sin() * radius;
+                    let pos = Vec3::new(x, wall_height / 2.0, z);
+                    let rot = Quat::from_rotation_y(-angle);
+                    let size =
+                        Vec3::new(segment_length + wall_thickness, wall_height, wall_depth);
+
+                    parent.spawn((
+                        Transform::from_translation(pos).with_rotation(rot),
+                        Collider::cuboid(size.x / 2.0, size.y / 2.0, size.z / 2.0),
+                        Restitution::coefficient(0.2),
+                        Friction::coefficient(0.8),
+                        DiceBoxWall,
+                        DiceContainerProceduralCollider,
+                    ));
+                }
+            });
         }
     }
 

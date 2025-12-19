@@ -16,6 +16,10 @@ pub struct Die {
 #[derive(Component)]
 pub struct DiceBox;
 
+/// Marker component for the dice container floor collider.
+#[derive(Component)]
+pub struct DiceBoxFloorCollider;
+
 /// Marker component for dice container wall segments.
 #[derive(Component)]
 pub struct DiceBoxWall;
@@ -23,6 +27,43 @@ pub struct DiceBoxWall;
 /// Marker component for the dice container ceiling collider.
 #[derive(Component)]
 pub struct DiceBoxCeiling;
+
+/// Marker component for the container's visual root entity (spawned via `SceneRoot`).
+#[derive(Component)]
+pub struct DiceContainerVisualRoot;
+
+/// Marker component for any mesh/material entity that is part of the container visual.
+#[derive(Component)]
+pub struct DiceContainerVisualPart;
+
+/// Marker component for glTF nodes whose name starts with `COLLIDER_`.
+///
+/// These meshes are authored in Blender as guides and should not be rendered.
+#[derive(Component)]
+pub struct DiceContainerColliderGuide;
+
+/// Marker component for Rapier colliders generated from glTF collider guides.
+#[derive(Component)]
+pub struct DiceContainerGeneratedCollider;
+
+/// Marker component for generated colliders that came from voxelizing the glTF render meshes.
+#[derive(Component)]
+pub struct DiceContainerVoxelCollider;
+
+/// Marker for the legacy/procedural container colliders (floor/walls/ceiling).
+///
+/// When glTF collider guides are present and processed, these are despawned to avoid double-collisions.
+#[derive(Component)]
+pub struct DiceContainerProceduralCollider;
+
+/// Marker component for container visual mesh entities that have had their material overridden
+/// to the game's crystal material.
+#[derive(Component)]
+pub struct DiceContainerCrystalMaterialApplied;
+
+/// Stores the original emissive color for a container visual part, so hover highlighting can be reverted.
+#[derive(Component, Clone, Copy)]
+pub struct ContainerOriginalEmissive(pub bevy::color::LinearRgba);
 
 /// Visual/physics style for the dice container.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]

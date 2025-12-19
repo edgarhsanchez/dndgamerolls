@@ -5,6 +5,7 @@
 use super::DiceType;
 use bevy::log::info;
 use bevy::prelude::*;
+use csscolorparser;
 use serde::{Deserialize, Serialize};
 
 use super::database::CharacterDatabase;
@@ -228,6 +229,18 @@ impl ColorSetting {
     pub fn parse(input: &str) -> Option<Self> {
         let input = input.trim();
 
+        // Allow simple named colors for convenience (case-insensitive).
+        // Intended primarily for theme seed input (e.g. "red", "blue").
+        if !input.is_empty()
+            && !input.starts_with('#')
+            && !input.contains(':')
+            && !input.contains(',')
+        {
+            if let Some(named) = Self::parse_named(input) {
+                return Some(named);
+            }
+        }
+
         // Try hex format first
         if input.starts_with('#') {
             return Self::parse_hex(input);
@@ -244,6 +257,29 @@ impl ColorSetting {
         }
 
         None
+    }
+
+    fn parse_named(input: &str) -> Option<Self> {
+        // Support standard CSS color keywords (e.g. "rebeccapurple", "cornflowerblue",
+        // "lightgray", etc.) via csscolorparser.
+        //
+        // Also accept common user formatting like spaces/underscores/hyphens:
+        // "Light Gray" / "light-gray" / "light_gray" -> "lightgray".
+        let cleaned: String = input
+            .trim()
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '_' && *c != '-')
+            .collect::<String>()
+            .to_ascii_lowercase();
+
+        let parsed = csscolorparser::Color::from_html(cleaned.as_str()).ok()?;
+
+        Some(Self {
+            a: parsed.a as f32,
+            r: parsed.r as f32,
+            g: parsed.g as f32,
+            b: parsed.b as f32,
+        })
     }
 
     fn parse_hex(input: &str) -> Option<Self> {
@@ -375,6 +411,16 @@ pub struct AppSettings {
     /// Saved container shake curve/settings.
     #[serde(default)]
     pub shake_config: ShakeConfigSetting,
+
+    /// Optional theme seed override (hex string like "#FFAABBCC").
+    ///
+    /// When `None`, the app uses the default `MaterialTheme`.
+    #[serde(default)]
+    pub theme_seed_hex: Option<String>,
+
+    /// Recently used theme seeds (canonical hex strings like "#FFAABBCC").
+    #[serde(default)]
+    pub recent_theme_seeds: Vec<String>,
 }
 
 /// Serializable UI position (logical pixels, top-left origin).
@@ -435,6 +481,8 @@ impl Default for AppSettings {
             quick_roll_default_die: DiceTypeSetting::default(),
             default_roll_uses_shake: false,
             shake_config: ShakeConfigSetting::default(),
+            theme_seed_hex: None,
+            recent_theme_seeds: Vec::new(),
         }
     }
 }
@@ -527,6 +575,12 @@ pub struct SettingsState {
     /// Text input for highlight color
     pub highlight_input_text: String,
 
+    /// Theme seed hex input ("#AARRGGBB"). Empty means "use default theme".
+    pub theme_seed_input_text: String,
+
+    /// Parsed theme seed override derived from `theme_seed_input_text`.
+    pub editing_theme_seed_override: Option<ColorSetting>,
+
     /// Editing value for character-sheet dice settings
     pub character_sheet_editing_die: DiceTypeSetting,
 
@@ -585,6 +639,8 @@ impl Default for SettingsState {
             editing_highlight_color,
             color_input_text: String::new(),
             highlight_input_text: String::new(),
+            theme_seed_input_text: String::new(),
+            editing_theme_seed_override: None,
             character_sheet_editing_die,
             quick_roll_editing_die,
             default_roll_uses_shake_editing,
@@ -649,6 +705,10 @@ pub struct ColorTextInput;
 #[derive(Component)]
 pub struct HighlightColorTextInput;
 
+/// Marker for theme seed text input
+#[derive(Component)]
+pub struct ThemeSeedTextInput;
+
 /// Marker for the shake duration (seconds) text input in the shake curve tab.
 #[derive(Component)]
 pub struct ShakeDurationTextInput;
@@ -707,6 +767,10 @@ pub struct ColorValueLabel {
 mod tests {
     use super::*;
 
+    fn u8f(v: u8) -> f32 {
+        v as f32 / 255.0
+    }
+
     #[test]
     fn test_color_setting_parse_hex_rgb() {
         let color = ColorSetting::parse("#FF8844").unwrap();
@@ -750,5 +814,42 @@ mod tests {
             b: 0.0,
         };
         assert_eq!(color.to_hex(), "#FFFF7F00");
+    }
+
+    #[test]
+    fn test_color_setting_parse_named_color_css() {
+        let color = ColorSetting::parse("rebeccapurple").unwrap();
+        assert!((color.a - 1.0).abs() < 0.01);
+        // RebeccaPurple is #663399
+        assert!((color.r - (0x66 as f32 / 255.0)).abs() < 0.02);
+        assert!((color.g - (0x33 as f32 / 255.0)).abs() < 0.02);
+        assert!((color.b - (0x99 as f32 / 255.0)).abs() < 0.02);
+    }
+
+    #[test]
+    fn test_color_setting_parse_named_color_with_spaces() {
+        let color = ColorSetting::parse("Light Gray").unwrap();
+        assert!((color.a - 1.0).abs() < 0.01);
+        // Just sanity-check it's a light-ish gray.
+        assert!(color.r > 0.6 && color.g > 0.6 && color.b > 0.6);
+    }
+
+    #[test]
+    fn test_color_setting_hex_to_color() {
+        let setting = ColorSetting::parse("#80FF8844").unwrap();
+        let color = setting.to_color();
+        let srgba = color.to_srgba();
+
+        assert!((srgba.alpha - u8f(0x80)).abs() < 0.000_001);
+        assert!((srgba.red - u8f(0xFF)).abs() < 0.000_001);
+        assert!((srgba.green - u8f(0x88)).abs() < 0.000_001);
+        assert!((srgba.blue - u8f(0x44)).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn test_color_setting_color_to_hex() {
+        let color = Color::srgba(u8f(0xFF), u8f(0x88), u8f(0x44), u8f(0x80));
+        let setting = ColorSetting::from_color(color);
+        assert_eq!(setting.to_hex(), "#80FF8844");
     }
 }

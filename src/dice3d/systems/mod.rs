@@ -20,12 +20,16 @@ pub mod character_screen;
 mod contributors_screen;
 mod dice;
 pub mod dice_box_controls;
+mod gltf_colliders;
+mod gltf_spawn_points;
 mod input;
 pub mod rendering;
 mod settings;
 mod settings_tabs;
+mod select_theme_preview;
 mod setup;
 mod slider_group;
+mod theme_refresh;
 
 // Re-export all public systems
 pub use avatar_loader::{
@@ -112,6 +116,13 @@ pub use dice_box_controls::{
     handle_dice_box_toggle_container_click, handle_shake_slider_changes,
     sync_dice_container_mode_text, sync_dice_container_toggle_icon,
 };
+pub use gltf_colliders::{
+    apply_crystal_material_to_container_models, spawn_colliders_from_gltf_guides,
+};
+pub use gltf_spawn_points::{
+    apply_spawn_points_to_dice_when_ready, collect_dice_spawn_points_from_gltf, DiceSpawnPoints,
+    DiceSpawnPointsApplied,
+};
 pub use input::{
     handle_command_history_item_clicks, handle_command_input, handle_input,
     handle_quick_roll_clicks,
@@ -120,7 +131,8 @@ pub use settings::{
     apply_initial_settings, apply_initial_shake_config, autosave_and_apply_shake_config,
     drag_shake_curve_bezier_handle, drag_shake_curve_point, handle_color_slider_changes,
     handle_color_text_input, handle_default_roll_uses_shake_switch_change,
-    handle_quick_roll_die_type_select_change, handle_settings_button_click,
+    handle_quick_roll_die_type_select_change, handle_theme_seed_select_change,
+    handle_settings_button_click,
     handle_settings_cancel_click, handle_settings_ok_click, handle_settings_reset_layout_click,
     handle_shake_curve_bezier_handle_press, handle_shake_curve_chip_clicks,
     handle_shake_curve_graph_click_to_add_point, handle_shake_curve_point_press,
@@ -133,3 +145,5 @@ pub use setup::{
     spawn_die,
 };
 pub use slider_group::handle_slider_group_drag;
+pub use select_theme_preview::tint_recent_theme_dropdown_items;
+pub use theme_refresh::refresh_scrollbar_colors_on_theme_change;

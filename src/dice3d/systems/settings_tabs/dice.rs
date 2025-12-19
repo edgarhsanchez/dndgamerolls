@@ -39,10 +39,6 @@ pub fn build_dice_tab(
         slot.spawn_select_with(theme, builder);
     });
 
-    parent.spawn(Node {
-        height: Val::Px(16.0),
-        ..default()
-    });
 
     parent.spawn((
         Text::new("Roll Behavior"),

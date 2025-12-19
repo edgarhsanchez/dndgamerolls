@@ -8,6 +8,7 @@ use bevy::ui::{ComputedUiTargetCamera, UiGlobalTransform};
 
 use bevy::window::PrimaryWindow;
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::theme::ThemeMode;
 use std::cmp::Ordering;
 
 use crate::dice3d::types::*;
@@ -48,6 +49,7 @@ pub fn persist_settings_to_db(
 pub fn load_settings_state_from_db(
     mut settings_state: ResMut<SettingsState>,
     db: Option<Res<CharacterDatabase>>,
+    mut theme: ResMut<MaterialTheme>,
 ) {
     let Some(db) = db else {
         warn!("No CharacterDatabase resource; using default settings");
@@ -81,6 +83,9 @@ pub fn load_settings_state_from_db(
 
             settings_state.color_input_text.clear();
             settings_state.highlight_input_text.clear();
+
+            // Apply theme override (if any) before UI setup.
+            apply_theme_override(&settings_state.settings, &mut theme);
         }
         Ok(None) => {
             info!(
@@ -96,6 +101,28 @@ pub fn load_settings_state_from_db(
             );
         }
     }
+}
+
+fn apply_theme_override(settings: &AppSettings, theme: &mut MaterialTheme) {
+    let mode = theme.mode;
+
+    let default_for_mode = || match mode {
+        ThemeMode::Dark => MaterialTheme::dark(),
+        ThemeMode::Light => MaterialTheme::light(),
+    };
+
+    let Some(seed_hex) = settings.theme_seed_hex.as_deref() else {
+        *theme = default_for_mode();
+        return;
+    };
+
+    let Some(mut parsed) = ColorSetting::parse(seed_hex) else {
+        *theme = default_for_mode();
+        return;
+    };
+
+    parsed.a = 1.0;
+    *theme = MaterialTheme::from_seed(parsed.to_color(), mode);
 }
 
 /// Spawn the settings (gear) icon button in the dice roller view.
@@ -353,6 +380,8 @@ fn spawn_settings_modal(
                                     theme,
                                     editing_color,
                                     editing_highlight_color,
+                                    &settings_state.theme_seed_input_text,
+                                    &settings_state.settings.recent_theme_seeds,
                                 );
                             },
                         );
@@ -512,6 +541,7 @@ pub fn handle_settings_button_click(
     button_query: Query<(), With<SettingsButton>>,
     mut settings_state: ResMut<SettingsState>,
     shake_config: Res<ContainerShakeConfig>,
+    _theme: Res<MaterialTheme>,
 ) {
     for event in click_events.read() {
         if button_query.get(event.entity).is_err() {
@@ -544,6 +574,22 @@ pub fn handle_settings_button_click(
                 .duration_seconds
                 .max(0.0)
         );
+
+        // Theme seed staging.
+        settings_state.theme_seed_input_text = settings_state
+            .settings
+            .theme_seed_hex
+            .clone()
+            .unwrap_or_default();
+        settings_state.editing_theme_seed_override = settings_state
+            .settings
+            .theme_seed_hex
+            .as_deref()
+            .and_then(ColorSetting::parse)
+            .map(|mut c| {
+                c.a = 1.0;
+                c
+            });
     }
 }
 
@@ -625,6 +671,7 @@ pub fn handle_settings_ok_click(
     mut settings_state: ResMut<SettingsState>,
     mut clear_color: ResMut<ClearColor>,
     mut shake_config: ResMut<ContainerShakeConfig>,
+    mut theme: ResMut<MaterialTheme>,
     db: Option<Res<CharacterDatabase>>,
 ) {
     for event in click_events.read() {
@@ -646,6 +693,28 @@ pub fn handle_settings_ok_click(
 
         // Apply shake settings from the editor
         *shake_config = settings_state.editing_shake_config.clone();
+
+        // Theme: persist override if valid.
+        let input = settings_state.theme_seed_input_text.trim();
+        if input.is_empty() {
+            settings_state.settings.theme_seed_hex = None;
+        } else if let Some(mut parsed) = ColorSetting::parse(input) {
+            parsed.a = 1.0;
+            let canonical = parsed.to_hex();
+            settings_state.settings.theme_seed_hex = Some(canonical.clone());
+
+            settings_state
+                .settings
+                .recent_theme_seeds
+                .retain(|s| !s.eq_ignore_ascii_case(&canonical));
+            settings_state.settings.recent_theme_seeds.insert(0, canonical);
+
+            const MAX_RECENT: usize = 10;
+            settings_state.settings.recent_theme_seeds.truncate(MAX_RECENT);
+        }
+
+        // Ensure runtime theme matches the persisted selection.
+        apply_theme_override(&settings_state.settings, &mut theme);
 
         settings_state.is_modified = true;
 
@@ -698,6 +767,7 @@ pub fn handle_default_roll_uses_shake_switch_change(
 pub fn handle_quick_roll_die_type_select_change(
     mut events: MessageReader<SelectChangeEvent>,
     mut settings_state: ResMut<SettingsState>,
+    selects: Query<&MaterialSelect>,
 ) {
     if !(settings_state.show_modal
         && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
@@ -715,8 +785,52 @@ pub fn handle_quick_roll_die_type_select_change(
     ];
 
     for event in events.read() {
+        // Ignore selects not related to Quick Rolls.
+        if let Ok(select) = selects.get(event.entity) {
+            if select.label.as_deref() != Some("Quick roll die") {
+                continue;
+            }
+        }
+
         if let Some(setting) = options.get(event.index).copied() {
             settings_state.quick_roll_editing_die = setting;
+        }
+    }
+}
+
+/// Handle selection changes for the theme seed dropdown.
+pub fn handle_theme_seed_select_change(
+    mut events: MessageReader<SelectChangeEvent>,
+    selects: Query<&MaterialSelect>,
+    mut settings_state: ResMut<SettingsState>,
+    mut theme: ResMut<MaterialTheme>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        let Ok(select) = selects.get(event.entity) else {
+            continue;
+        };
+        if select.label.as_deref() != Some("Recent themes") {
+            continue;
+        }
+
+        let chosen = event
+            .option
+            .value
+            .clone()
+            .unwrap_or_else(|| event.option.label.clone());
+        settings_state.theme_seed_input_text = chosen.clone();
+
+        if let Some(mut parsed) = ColorSetting::parse(chosen.as_str()) {
+            parsed.a = 1.0;
+            let seed = parsed.to_color();
+            settings_state.editing_theme_seed_override = Some(parsed);
+            *theme = MaterialTheme::from_seed(seed, theme.mode);
         }
     }
 }
@@ -1803,11 +1917,15 @@ pub fn handle_settings_cancel_click(
     mut click_events: MessageReader<ButtonClickEvent>,
     cancel_query: Query<(), With<SettingsCancelButton>>,
     mut settings_state: ResMut<SettingsState>,
+    mut theme: ResMut<MaterialTheme>,
 ) {
     for event in click_events.read() {
         if cancel_query.get(event.entity).is_err() {
             continue;
         }
+
+        // Revert any live theme preview changes.
+        apply_theme_override(&settings_state.settings, &mut theme);
 
         // Discard changes and close modal
         settings_state.show_modal = false;
@@ -1914,6 +2032,7 @@ pub fn update_color_ui(
     mut input_queries: ParamSet<(
         Query<&mut MaterialTextField, With<ColorTextInput>>,
         Query<&mut MaterialTextField, With<HighlightColorTextInput>>,
+        Query<&mut MaterialTextField, With<ThemeSeedTextInput>>,
     )>,
 ) {
     if !settings_state.is_changed() {
@@ -1970,10 +2089,12 @@ pub fn update_color_ui(
             field.error_text = None;
         } else {
             field.error = true;
-            field.error_text = Some("Invalid color format".to_string());
+            field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
         }
-        field.supporting_text =
-            Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+        field.supporting_text = Some(
+            "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                .to_string(),
+        );
     }
 
     // Sync highlight text field value (avoid stomping while the user is typing)
@@ -1989,10 +2110,39 @@ pub fn update_color_ui(
             field.error_text = None;
         } else {
             field.error = true;
-            field.error_text = Some("Invalid color format".to_string());
+            field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
         }
-        field.supporting_text =
-            Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+        field.supporting_text = Some(
+            "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                .to_string(),
+        );
+    }
+
+    // Sync theme seed text field
+    for mut field in input_queries.p2().iter_mut() {
+        if field.focused {
+            continue;
+        }
+
+        field.value = settings_state.theme_seed_input_text.clone();
+        field.has_content = !field.value.is_empty();
+
+        let trimmed = field.value.trim();
+        if trimmed.is_empty() {
+            field.error = false;
+            field.error_text = None;
+        } else if ColorSetting::parse(trimmed).is_some() {
+            field.error = false;
+            field.error_text = None;
+        } else {
+            field.error = true;
+            field.error_text = Some("Invalid color (hex or name)".to_string());
+        }
+
+        field.supporting_text = Some(
+            "#RRGGBB, #AARRGGBB (alpha ignored), or a name like red/green/blue (converts to hex on commit)"
+                .to_string(),
+        );
     }
 }
 
@@ -2004,7 +2154,9 @@ pub fn handle_color_text_input(
     mut field_queries: ParamSet<(
         Query<&mut MaterialTextField, With<ColorTextInput>>,
         Query<&mut MaterialTextField, With<HighlightColorTextInput>>,
+        Query<&mut MaterialTextField, With<ThemeSeedTextInput>>,
     )>,
+    mut theme: ResMut<MaterialTheme>,
 ) {
     if !settings_state.show_modal {
         return;
@@ -2019,11 +2171,13 @@ pub fn handle_color_text_input(
                 settings_state.editing_color = parsed;
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text =
-                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+                field.supporting_text = Some(
+                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                        .to_string(),
+                );
             } else {
                 field.error = true;
-                field.error_text = Some("Invalid color format".to_string());
+                field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
             }
 
             continue;
@@ -2036,32 +2190,67 @@ pub fn handle_color_text_input(
                 settings_state.editing_highlight_color = parsed;
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text =
-                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+                field.supporting_text = Some(
+                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                        .to_string(),
+                );
             } else {
                 field.error = true;
-                field.error_text = Some("Invalid color format".to_string());
+                field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
+            }
+
+            continue;
+        }
+
+        if let Ok(mut field) = field_queries.p2().get_mut(ev.entity) {
+            settings_state.theme_seed_input_text = ev.value.clone();
+
+            let trimmed = settings_state.theme_seed_input_text.trim();
+            if trimmed.is_empty() {
+                settings_state.editing_theme_seed_override = None;
+                field.error = false;
+                field.error_text = None;
+
+                let mode = theme.mode;
+                *theme = match mode {
+                    ThemeMode::Dark => MaterialTheme::dark(),
+                    ThemeMode::Light => MaterialTheme::light(),
+                };
+            } else if let Some(mut parsed) = ColorSetting::parse(trimmed) {
+                parsed.a = 1.0;
+                let seed = parsed.to_color();
+                settings_state.editing_theme_seed_override = Some(parsed);
+                field.error = false;
+                field.error_text = None;
+
+                *theme = MaterialTheme::from_seed(seed, theme.mode);
+            } else {
+                field.error = true;
+                field.error_text = Some("Invalid color (hex or name)".to_string());
             }
         }
     }
 
-    // On submit (Enter), normalize to canonical hex if valid
+    // On submit (Enter), validate and apply preview.
+    // We intentionally keep the user's entered text (e.g. "rebeccapurple") in the field
+    // and only use the parsed color for preview / persistence.
     for ev in submit_events.read() {
         if let Ok(mut field) = field_queries.p0().get_mut(ev.entity) {
             if let Some(parsed) = ColorSetting::parse(&ev.value) {
-                let canonical_hex = parsed.to_hex();
                 settings_state.editing_color = parsed;
-                settings_state.color_input_text = canonical_hex;
+                settings_state.color_input_text = ev.value.clone();
 
                 field.value = settings_state.color_input_text.clone();
                 field.has_content = !field.value.is_empty();
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text =
-                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+                field.supporting_text = Some(
+                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                        .to_string(),
+                );
             } else {
                 field.error = true;
-                field.error_text = Some("Invalid color format".to_string());
+                field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
             }
 
             continue;
@@ -2069,19 +2258,58 @@ pub fn handle_color_text_input(
 
         if let Ok(mut field) = field_queries.p1().get_mut(ev.entity) {
             if let Some(parsed) = ColorSetting::parse(&ev.value) {
-                let canonical_hex = parsed.to_hex();
                 settings_state.editing_highlight_color = parsed;
-                settings_state.highlight_input_text = canonical_hex;
+                settings_state.highlight_input_text = ev.value.clone();
 
                 field.value = settings_state.highlight_input_text.clone();
                 field.has_content = !field.value.is_empty();
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text =
-                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+                field.supporting_text = Some(
+                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                        .to_string(),
+                );
             } else {
                 field.error = true;
-                field.error_text = Some("Invalid color format".to_string());
+                field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
+            }
+
+            continue;
+        }
+
+        if let Ok(mut field) = field_queries.p2().get_mut(ev.entity) {
+            let trimmed = ev.value.trim();
+            if trimmed.is_empty() {
+                settings_state.theme_seed_input_text.clear();
+                settings_state.editing_theme_seed_override = None;
+
+                field.value.clear();
+                field.has_content = false;
+                field.error = false;
+                field.error_text = None;
+
+                let mode = theme.mode;
+                *theme = match mode {
+                    ThemeMode::Dark => MaterialTheme::dark(),
+                    ThemeMode::Light => MaterialTheme::light(),
+                };
+            } else if let Some(mut parsed) = ColorSetting::parse(trimmed) {
+                parsed.a = 1.0;
+                let seed = parsed.to_color();
+
+                // Keep the user's entered text (e.g. "red") in the field.
+                settings_state.theme_seed_input_text = trimmed.to_string();
+                settings_state.editing_theme_seed_override = Some(parsed);
+
+                field.value = settings_state.theme_seed_input_text.clone();
+                field.has_content = true;
+                field.error = false;
+                field.error_text = None;
+
+                *theme = MaterialTheme::from_seed(seed, theme.mode);
+            } else {
+                field.error = true;
+                field.error_text = Some("Invalid color (hex or name)".to_string());
             }
         }
     }

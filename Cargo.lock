@@ -2820,6 +2820,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "csscolorparser"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fda6aace1fbef3aa217b27f4c8d7d071ef2a70a5ca51050b1f17d40299d3f16"
+dependencies = [
+ "phf",
+]
+
+[[package]]
 name = "cssparser"
 version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3081,15 +3090,17 @@ dependencies = [
 
 [[package]]
 name = "dndgamerolls"
-version = "0.2.16"
+version = "0.2.17"
 dependencies = [
  "base64 0.22.1",
  "bevy",
  "bevy_material_ui",
+ "bevy_mesh",
  "bevy_rapier3d",
  "bincode",
  "clap",
  "colored",
+ "csscolorparser",
  "image",
  "rand 0.8.5",
  "reqwest",

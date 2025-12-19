@@ -1,5 +1,9 @@
 ﻿# Rust build artifacts
 /target/
+
+# Blender source/backup files (runtime uses exported .glb)
+/3d/*.blend
+/3d/*.blend1
 **/*.rs.bk
 *.pdb
 *.exe

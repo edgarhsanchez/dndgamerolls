@@ -1,8 +1,8 @@
 # DnD Game Rolls
 
 <!-- Build & Quality Badges -->
-[![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
-[![Security Audit](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?event=schedule)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+[![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?branch=release/v0.2.17)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+[![Security Audit](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?branch=release/v0.2.17)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
 
 <!-- Package Badges -->
 [![Crates.io](https://img.shields.io/crates/v/dndgamerolls.svg)](https://crates.io/crates/dndgamerolls)

@@ -1401,7 +1401,8 @@ pub fn spawn_quick_roll_panel(
                                     },
                                 ));
 
-                                let abilities = [
+                                // Core abilities first (fixed order), then any custom attributes.
+                                let core_abilities = [
                                     ("STR", "strength", sheet.modifiers.strength),
                                     ("DEX", "dexterity", sheet.modifiers.dexterity),
                                     ("CON", "constitution", sheet.modifiers.constitution),
@@ -1409,8 +1410,7 @@ pub fn spawn_quick_roll_panel(
                                     ("WIS", "wisdom", sheet.modifiers.wisdom),
                                     ("CHA", "charisma", sheet.modifiers.charisma),
                                 ];
-
-                                for (abbrev, name, modifier) in abilities {
+                                for (abbrev, name, modifier) in core_abilities {
                                     let sign = if modifier >= 0 { "+" } else { "" };
                                     spawn_quick_roll_button(
                                         card,
@@ -1419,6 +1419,23 @@ pub fn spawn_quick_roll_panel(
                                         icon_font.clone(),
                                         theme,
                                     );
+                                }
+
+                                if !sheet.custom_attributes.is_empty() {
+                                    let mut custom: Vec<_> = sheet.custom_attributes.iter().collect();
+                                    custom.sort_by(|a, b| a.0.cmp(b.0));
+
+                                    for (name, score) in custom {
+                                        let modifier = Attributes::calculate_modifier(*score);
+                                        let sign = if modifier >= 0 { "+" } else { "" };
+                                        spawn_quick_roll_button(
+                                            card,
+                                            &format!("{} ({}{}) ", name, sign, modifier),
+                                            QuickRollType::AbilityCheck(name.clone()),
+                                            icon_font.clone(),
+                                            theme,
+                                        );
+                                    }
                                 }
 
                                 // Saving Throws section
@@ -1663,11 +1680,11 @@ pub fn rebuild_command_history_list(
                     ))
                     .insert(Node {
                         width: Val::Percent(100.0),
-                        height: Val::Px(26.0),
+                        min_height: Val::Px(26.0),
                         flex_direction: FlexDirection::Row,
                         justify_content: JustifyContent::FlexStart,
-                        align_items: AlignItems::Center,
-                        padding: UiRect::horizontal(Val::Px(8.0)),
+                        align_items: AlignItems::FlexStart,
+                        padding: UiRect::all(Val::Px(8.0)),
                         ..default()
                     })
                     .with_children(|btn| {
@@ -1680,7 +1697,7 @@ pub fn rebuild_command_history_list(
                             TextColor(theme.primary),
                             ButtonLabel,
                             Node {
-                                max_width: Val::Px(200.0),
+                                width: Val::Percent(100.0),
                                 ..default()
                             },
                         ));

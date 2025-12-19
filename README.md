@@ -10,7 +10,7 @@
 [![docs.rs](https://img.shields.io/docsrs/dndgamerolls)](https://docs.rs/dndgamerolls)
 
 <!-- Project Info Badges -->
-[![License](https://img.shields.io/crates/l/dndgamerolls.svg)](https://github.com/edgarhsanchez/dndgamerolls/blob/main/LICENSE)
+[![License](https://img.shields.io/crates/l/dndgamerolls.svg)](LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/edgarhsanchez/dndgamerolls)
 
@@ -60,7 +60,7 @@ The publishable CLI crate lives at `crates/dndgamerolls-cli`.
 
 ### Windows Installer (Recommended for Windows)
 
-Download the latest MSI installer from the [Releases page](https://github.com/edgarhsanchez/dndgamerolls_windows/releases):
+Download the MSI installer for **v0.2.17** from the [Releases page](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.17):
 - `dndgamerolls-installer.msi` - Full Windows installer with Start Menu shortcut and PATH integration
 
 Or download the portable ZIP:
@@ -68,10 +68,10 @@ Or download the portable ZIP:
 
 ### macOS (Recommended)
 
-Download the DMG installer from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases):
-- `DnDGameRolls-x.x.x-universal-apple-darwin.dmg` - Universal binary (Intel + Apple Silicon)
-- `DnDGameRolls-x.x.x-aarch64-apple-darwin.dmg` - Apple Silicon (M1/M2/M3)
-- `DnDGameRolls-x.x.x-x86_64-apple-darwin.dmg` - Intel Macs
+Download the DMG installer for **v0.2.17** from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.17):
+- `DnDGameRolls-0.2.17-universal-apple-darwin.dmg` - Universal binary (Intel + Apple Silicon)
+- `DnDGameRolls-0.2.17-aarch64-apple-darwin.dmg` - Apple Silicon (M1/M2/M3)
+- `DnDGameRolls-0.2.17-x86_64-apple-darwin.dmg` - Intel Macs
 
 **Installation:**
 1. Open the DMG file
@@ -80,7 +80,7 @@ Download the DMG installer from [Releases](https://github.com/edgarhsanchez/dndg
 
 ### Linux (DEB Package)
 
-Download the `.deb` package from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases) and install:
+Download the `.deb` package for **v0.2.17** from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.17) and install:
 
 ```bash
 sudo dpkg -i dndgamerolls_*.deb

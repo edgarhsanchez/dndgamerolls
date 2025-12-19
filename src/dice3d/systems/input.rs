@@ -491,16 +491,7 @@ pub fn handle_quick_roll_clicks(
                     .character_data
                     .get_ability_modifier(ability_name)
                     .unwrap_or(0);
-                let display_name = format!(
-                    "{} check",
-                    ability_name
-                        .chars()
-                        .next()
-                        .unwrap_or_default()
-                        .to_ascii_uppercase()
-                        .to_string()
-                        + &ability_name[1..]
-                );
+                let display_name = format!("{} check", capitalize_first(ability_name));
                 (mod_val, display_name)
             }
             QuickRollType::SavingThrow(ability_name) => {
@@ -508,16 +499,7 @@ pub fn handle_quick_roll_clicks(
                     .character_data
                     .get_saving_throw_modifier(ability_name)
                     .unwrap_or(0);
-                let display_name = format!(
-                    "{} save",
-                    ability_name
-                        .chars()
-                        .next()
-                        .unwrap_or_default()
-                        .to_ascii_uppercase()
-                        .to_string()
-                        + &ability_name[1..]
-                );
+                let display_name = format!("{} save", capitalize_first(ability_name));
                 (mod_val, display_name)
             }
         };
@@ -614,4 +596,12 @@ pub fn handle_quick_roll_clicks(
             );
         }
     }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    first.to_uppercase().collect::<String>() + chars.as_str()
 }

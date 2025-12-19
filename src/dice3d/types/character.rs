@@ -491,17 +491,32 @@ impl CharacterData {
 
     /// Get the modifier for an ability by name
     pub fn get_ability_modifier(&self, ability: &str) -> Option<i32> {
-        self.sheet
-            .as_ref()
-            .map(|s| match ability.to_lowercase().as_str() {
+        self.sheet.as_ref().map(|s| {
+            let key = ability.to_lowercase();
+            match key.as_str() {
                 "str" | "strength" => s.modifiers.strength,
                 "dex" | "dexterity" => s.modifiers.dexterity,
                 "con" | "constitution" => s.modifiers.constitution,
                 "int" | "intelligence" => s.modifiers.intelligence,
                 "wis" | "wisdom" => s.modifiers.wisdom,
                 "cha" | "charisma" => s.modifiers.charisma,
-                _ => 0,
-            })
+                _ => {
+                    // Custom attributes store scores; derive modifier with the standard formula.
+                    if let Some(score) = s.custom_attributes.get(ability) {
+                        return Attributes::calculate_modifier(*score);
+                    }
+                    if let Some((_, score)) = s
+                        .custom_attributes
+                        .iter()
+                        .find(|(name, _)| name.to_lowercase() == key)
+                    {
+                        return Attributes::calculate_modifier(*score);
+                    }
+
+                    0
+                }
+            }
+        })
     }
 
     /// Get the modifier for a saving throw by ability name

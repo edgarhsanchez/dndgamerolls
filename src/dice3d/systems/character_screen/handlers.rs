@@ -5,11 +5,13 @@
 
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::mouse::MouseWheel;
+use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy_material_ui::icons::MaterialIconFont;
 use bevy_material_ui::prelude::*;
 use bevy_rapier3d::prelude::Velocity;
+use pulldown_cmark::{Event as MdEvent, Parser, Tag, TagEnd};
 
 use super::*;
 use crate::dice3d::systems::dice_box_controls::start_container_shake;
@@ -1720,8 +1722,304 @@ fn parse_modifier(value: &str) -> Result<i32, std::num::ParseIntError> {
 // DnD Info Screen Setup
 // ============================================================================
 
+const DND_INFO_MARKDOWN: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/DnDInfo.md"));
+
+#[derive(Default)]
+struct MarkdownRenderState {
+    heading_level: Option<u32>,
+    in_paragraph: bool,
+    list_depth: usize,
+    in_item: bool,
+    in_code_block: bool,
+    buffer: String,
+    code_buffer: String,
+}
+
+fn flush_markdown_buffer(
+    parent: &mut ChildSpawnerCommands,
+    state: &mut MarkdownRenderState,
+    icon_font: &Handle<Font>,
+) {
+    let text = state.buffer.trim();
+    if text.is_empty() {
+        state.buffer.clear();
+        return;
+    }
+
+    // Heading
+    if let Some(level) = state.heading_level {
+        let size = match level {
+            1 => 24.0,
+            2 => 18.0,
+            3 => 16.0,
+            _ => 14.0,
+        };
+        spawn_rich_text_line(parent, text, size, MD3_ON_SURFACE, Some(icon_font.clone()));
+        state.buffer.clear();
+        return;
+    }
+
+    // List item
+    if state.in_item {
+        let indent = (state.list_depth.saturating_sub(1) as f32) * 14.0;
+        parent
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::left(Val::Px(indent)),
+                ..default()
+            })
+            .with_children(|row| {
+                spawn_rich_text_line(
+                    row,
+                    &format!("• {}", text),
+                    14.0,
+                    MD3_ON_SURFACE_VARIANT,
+                    Some(icon_font.clone()),
+                );
+            });
+        state.buffer.clear();
+        return;
+    }
+
+    // Paragraph/default
+    spawn_rich_text_line(
+        parent,
+        text,
+        14.0,
+        MD3_ON_SURFACE_VARIANT,
+        Some(icon_font.clone()),
+    );
+    state.buffer.clear();
+}
+
+fn flush_code_block(parent: &mut ChildSpawnerCommands, state: &mut MarkdownRenderState) {
+    let text = state.code_buffer.trim_end();
+    if text.is_empty() {
+        state.code_buffer.clear();
+        return;
+    }
+
+    parent.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            padding: UiRect::all(Val::Px(10.0)),
+            ..default()
+        },
+        BackgroundColor(MD3_SURFACE_CONTAINER),
+        BorderRadius::all(Val::Px(8.0)),
+    ))
+    .with_children(|code| {
+        code.spawn((
+            Text::new(text.to_string()),
+            TextFont {
+                font_size: 13.0,
+                ..default()
+            },
+            TextColor(MD3_ON_SURFACE),
+        ));
+    });
+
+    state.code_buffer.clear();
+}
+
+fn spawn_rich_text_line(
+    parent: &mut ChildSpawnerCommands,
+    text: &str,
+    font_size: f32,
+    color: Color,
+    icon_font: Option<Handle<Font>>,
+) {
+    // Inline icon syntax: :icon(name):
+    // Example: "Zoom :icon(zoom_in):"
+    if icon_font.is_none() || !text.contains(":icon(") {
+        parent.spawn((
+            Text::new(text.to_string()),
+            TextFont {
+                font_size,
+                ..default()
+            },
+            TextColor(color),
+        ));
+        return;
+    }
+
+    let icon_font = icon_font.unwrap();
+
+    parent
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: Val::Px(2.0),
+            row_gap: Val::Px(2.0),
+            ..default()
+        })
+        .with_children(|line| {
+            let mut rest = text;
+            while let Some(start) = rest.find(":icon(") {
+                let (before, after_start) = rest.split_at(start);
+                if !before.is_empty() {
+                    line.spawn((
+                        Text::new(before.to_string()),
+                        TextFont {
+                            font_size,
+                            ..default()
+                        },
+                        TextColor(color),
+                    ));
+                }
+
+                let after_start = &after_start[":icon(".len()..];
+                let Some(end) = after_start.find("):") else {
+                    // No closing token; render the remainder as text.
+                    line.spawn((
+                        Text::new(format!(":icon({}", after_start)),
+                        TextFont {
+                            font_size,
+                            ..default()
+                        },
+                        TextColor(color),
+                    ));
+                    return;
+                };
+
+                let name = &after_start[..end];
+                let icon = MaterialIcon::from_name(name)
+                    .or_else(|| MaterialIcon::from_name(name.replace('-', "_").as_str()))
+                    .unwrap_or_else(MaterialIcon::search);
+                line.spawn((
+                    Text::new(icon.as_str()),
+                    TextFont {
+                        font: icon_font.clone(),
+                        font_size,
+                        ..default()
+                    },
+                    TextColor(color),
+                ));
+
+                rest = &after_start[end + "):".len()..];
+            }
+
+            if !rest.is_empty() {
+                line.spawn((
+                    Text::new(rest.to_string()),
+                    TextFont {
+                        font_size,
+                        ..default()
+                    },
+                    TextColor(color),
+                ));
+            }
+        });
+}
+
+fn spawn_markdown(parent: &mut ChildSpawnerCommands, markdown: &str, icon_font: Handle<Font>) {
+    let mut state = MarkdownRenderState::default();
+    let parser = Parser::new(markdown);
+
+    for event in parser {
+        match event {
+            MdEvent::Start(tag) => match tag {
+                Tag::Heading { level, .. } => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.heading_level = Some(level as u32);
+                }
+                Tag::Paragraph => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.in_paragraph = true;
+                }
+                Tag::List(_) => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.list_depth += 1;
+                }
+                Tag::Item => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.in_item = true;
+                }
+                Tag::CodeBlock(_kind) => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.in_code_block = true;
+                    state.code_buffer.clear();
+                }
+                Tag::Emphasis | Tag::Strong => {
+                    // styling ignored; keep text content
+                }
+                Tag::Link { .. } => {
+                    // Links are rendered as plain text (we ignore the destination).
+                }
+                _ => {}
+            },
+            MdEvent::End(tag) => match tag {
+                TagEnd::Heading(_level) => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.heading_level = None;
+                }
+                TagEnd::Paragraph => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.in_paragraph = false;
+                }
+                TagEnd::List(_ordered) => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.list_depth = state.list_depth.saturating_sub(1);
+                }
+                TagEnd::Item => {
+                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    state.in_item = false;
+                }
+                TagEnd::CodeBlock => {
+                    flush_code_block(parent, &mut state);
+                    state.in_code_block = false;
+                }
+                _ => {}
+            },
+            MdEvent::Text(t) => {
+                if state.in_code_block {
+                    state.code_buffer.push_str(&t);
+                } else {
+                    state.buffer.push_str(&t);
+                }
+            }
+            MdEvent::Code(t) => {
+                if state.in_code_block {
+                    state.code_buffer.push_str(&t);
+                } else {
+                    state.buffer.push('`');
+                    state.buffer.push_str(&t);
+                    state.buffer.push('`');
+                }
+            }
+            MdEvent::SoftBreak | MdEvent::HardBreak => {
+                if state.in_code_block {
+                    state.code_buffer.push('\n');
+                } else {
+                    state.buffer.push('\n');
+                }
+            }
+            MdEvent::Rule => {
+                flush_markdown_buffer(parent, &mut state, &icon_font);
+            }
+            MdEvent::InlineMath(_) | MdEvent::DisplayMath(_) => {
+                // ignore
+            }
+            MdEvent::Html(_) | MdEvent::InlineHtml(_) | MdEvent::FootnoteReference(_) => {
+                // ignore
+            }
+            MdEvent::TaskListMarker(_) => {
+                // ignore
+            }
+        }
+    }
+
+    flush_markdown_buffer(parent, &mut state, &icon_font);
+}
+
 /// Setup the DnD info screen
-pub fn setup_dnd_info_screen(mut commands: Commands) {
+pub fn setup_dnd_info_screen(mut commands: Commands, icon_font: Res<MaterialIconFont>) {
+    // Best-effort runtime override:
+    // - in dev, this allows editing `DnDInfo.md` without touching Rust.
+    // - in release, you can ship a `DnDInfo.md` alongside the binary to override.
+    let markdown = std::fs::read_to_string("DnDInfo.md").unwrap_or_else(|_| DND_INFO_MARKDOWN.to_string());
+
     commands
         .spawn((
             Node {
@@ -1750,229 +2048,7 @@ pub fn setup_dnd_info_screen(mut commands: Commands) {
                     InfoScrollContent,
                 ))
                 .with_children(|content| {
-                    // Title
-                    content.spawn((
-                        Text::new("DnD Game Rolls: How Rolls Work (App Guide)"),
-                        TextFont {
-                            font_size: 24.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "This tab documents the exact roll behaviors supported by the app (GUI + CLI) and how they map to common D&D 5e mechanics.",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    // -----------------------------------------------------------------
-                    // Core Concepts
-                    // -----------------------------------------------------------------
-                    content.spawn((
-                        Text::new("Dice Roller Tab (3D)"),
-                        TextFont {
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "• Click in the dice box to throw the current dice set.\n• Press R to reset dice positions (no roll).\n• Results panel shows the final values once dice settle (and includes your modifier/label when applicable).\n• Panels like Results / Quick Rolls / Command History can be dragged (positions persist via settings).",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    content.spawn((
-                        Text::new("Command Input (GUI)"),
-                        TextFont {
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "The Command box supports a small, app-specific command format (whitespace-separated):\n• Dice: d20, 2d6, d8, 3d10, etc.\n• Options:\n  - --dice / -d <NdX> (same as writing the dice directly)\n  - --modifier / -m <number> (adds a flat bonus/penalty)\n  - --checkon <name> (pulls the modifier from your Character Sheet by skill/ability/save name)\n\nExamples you can paste:\n• d20\n• 2d6 --modifier 3\n• d20 --checkon stealth\n• d20 --checkon dex --modifier 2\n\nNotes:\n• For multi-word skills, use the Character Sheet's internal name (e.g., sleightOfHand, animalHandling).\n• The GUI command input does NOT use the shorthand '1d20+5' style. Use '--modifier 5' instead.",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    content.spawn((
-                        Text::new("Command History"),
-                        TextFont {
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "• The Command History panel shows past commands.\n• Click a history entry to select it and reroll that same command.",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    content.spawn((
-                        Text::new("Quick Rolls (Dice View)"),
-                        TextFont {
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "Quick Rolls are one-click rolls powered by your Character Sheet:\n• Skills: rolls 1 die + the skill modifier.\n• Ability Checks: rolls 1 die + the ability modifier.\n• Saving Throws: rolls 1 die + the saving throw modifier.\n\nApp-specific setting: Quick Rolls die type is configurable (Dice Settings → Quick Rolls die type). In standard D&D 5e, checks/saves/attacks are typically a d20 — if you change this, Quick Rolls will no longer match standard rules.",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    // -----------------------------------------------------------------
-                    // Ability Checks & Skill Checks
-                    // -----------------------------------------------------------------
-                    content.spawn((
-                        Text::new("D&D 5e Mechanics Refresher"),
-                        TextFont {
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "Core pattern: roll + modifier, then compare.\n• Ability / Skill check: d20 + modifier vs DC\n• Saving throw: d20 + save modifier vs save DC\n• Attack roll: d20 + attack bonus vs AC\n• Damage: roll the damage dice separately (e.g., 1d8+3)",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    // -----------------------------------------------------------------
-                    // Saving Throws
-                    // -----------------------------------------------------------------
-                    content.spawn((
-                        Text::new(
-                            "Saving throws: d20 + the relevant save modifier vs the effect DC.\n• Concentration checks are Constitution saves: DC 10 or half the damage taken (whichever is higher).\n• Spell save DC reminder (typical 5e): 8 + proficiency bonus + spellcasting ability modifier.\n• Death saves: at 0 HP, roll a d20 at the start of your turn (usually no modifiers). 10+ success, 9- failure; 3 successes stabilize; 3 failures die; natural 20 regains 1 HP; natural 1 counts as two failures.",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    // -----------------------------------------------------------------
-                    // Attack Rolls & Damage
-                    // -----------------------------------------------------------------
-                    content.spawn((
-                        Text::new(
-                            "Criticals reminder (5e core): a natural 20 on an attack roll is a critical hit (roll extra damage dice). A natural 1 on an attack roll is an automatic miss.\nFor ability checks and saving throws, special natural 20/1 outcomes depend on your table rules.",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    // -----------------------------------------------------------------
-                    // Advantage / Disadvantage
-                    // -----------------------------------------------------------------
-                    content.spawn((
-                        Text::new("Advantage & Disadvantage"),
-                        TextFont {
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "Advantage/disadvantage is a d20 rule: roll two d20s and keep the higher (adv) or lower (dis).\nApp note: the GUI dice roller does not currently have a built-in advantage toggle; roll twice manually or use the CLI mode flags.",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    // -----------------------------------------------------------------
-                    // Initiative
-                    // -----------------------------------------------------------------
-                    content.spawn((
-                        Text::new("Initiative"),
-                        TextFont {
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "Initiative is typically d20 + Dexterity modifier (plus any other initiative bonuses). In this app: roll a d20 (or use d20 --checkon dex) and then add any extra initiative bonuses manually (see Character Sheet → Combat → Initiative).",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
-
-                    // -----------------------------------------------------------------
-                    // How This App Handles Rolls
-                    // -----------------------------------------------------------------
-                    content.spawn((
-                        Text::new("CLI Mode (Optional)"),
-                        TextFont {
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE),
-                    ));
-
-                    content.spawn((
-                        Text::new(
-                            "If you run the app in CLI mode, you can use dedicated commands for common rolls (and advantage/disadvantage flags):\n• dndgamerolls --cli skill stealth\n• dndgamerolls --cli save dex\n• dndgamerolls --cli --dice 2d6 --modifier 3\n\nThe CLI is more feature-complete than the GUI command parser.",
-                        ),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(MD3_ON_SURFACE_VARIANT),
-                    ));
+                    spawn_markdown(content, &markdown, icon_font.0.clone());
                 });
         });
 }

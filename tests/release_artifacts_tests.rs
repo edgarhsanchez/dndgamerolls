@@ -1,5 +1,5 @@
-use std::fs;
 use std::collections::BTreeSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -146,7 +146,8 @@ fn docs_versions_match_cargo_version() {
         let versions = extract_versions_from_text(&text);
         for found in versions {
             assert_eq!(
-                found, expected,
+                found,
+                expected,
                 "{path} pins version v{found}, but Cargo.toml is {expected}",
                 path = md_path.display()
             );
@@ -179,11 +180,7 @@ fn collect_release_artifacts() -> (BTreeSet<String>, Vec<String>) {
         let links = extract_relative_artifact_links(&text, &exts);
         for rel in links {
             let resolved = resolve_relative(&md_path, &rel);
-            let display = format!(
-                "- {} -> {}",
-                normalize_display_path(&md_path),
-                rel
-            );
+            let display = format!("- {} -> {}", normalize_display_path(&md_path), rel);
             expected.insert(display);
             if !resolved.exists() {
                 missing.push(format!(
@@ -203,7 +200,10 @@ fn list_release_artifacts_and_report_missing() {
     let (expected, missing) = collect_release_artifacts();
 
     // This prints only if you run with `-- --nocapture`.
-    println!("Release artifacts referenced by markdown ({}):", expected.len());
+    println!(
+        "Release artifacts referenced by markdown ({}):",
+        expected.len()
+    );
     for item in &expected {
         println!("{item}");
     }

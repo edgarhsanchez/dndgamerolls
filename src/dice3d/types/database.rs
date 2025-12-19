@@ -50,8 +50,6 @@ struct CharacterDocument {
     sheet: CharacterSheet,
 }
 
-
-
 /// Resource for managing the character database.
 #[derive(Resource)]
 pub struct CharacterDatabase {
@@ -171,8 +169,7 @@ impl CharacterDatabase {
             let backup_path = data_dir.join(format!("{}.file.bak-{}", DATABASE_FOLDER, ts));
             warn!(
                 "Database path {:?} is a file; backing up to {:?} and recreating as a directory",
-                db_path,
-                backup_path
+                db_path, backup_path
             );
             std::fs::rename(&db_path, &backup_path).map_err(|e| {
                 format!(
@@ -183,8 +180,12 @@ impl CharacterDatabase {
         }
 
         // Ensure the datastore directory exists.
-        std::fs::create_dir_all(&db_path)
-            .map_err(|e| format!("Failed to create SurrealDB datastore dir {:?}: {}", db_path, e))?;
+        std::fs::create_dir_all(&db_path).map_err(|e| {
+            format!(
+                "Failed to create SurrealDB datastore dir {:?}: {}",
+                db_path, e
+            )
+        })?;
 
         let db_path_str = db_path.to_string_lossy().to_string();
         let open_err_to_string = |e: surrealdb::Error| format!("Failed to open SurrealDB: {}", e);
@@ -496,20 +497,23 @@ impl CharacterDatabase {
                 }
 
                 // Preferred schema: store settings as a JSON string under a single `value` field.
-                match db.select::<Option<SettingRecord>>(("setting", key.clone())).await {
+                match db
+                    .select::<Option<SettingRecord>>(("setting", key.clone()))
+                    .await
+                {
                     Ok(Some(record)) => {
                         let decoded: T = serde_json::from_str(&record.value).map_err(|e| {
                             format!("Failed to decode setting '{}' from JSON string: {}", key, e)
                         })?;
-                        return Ok(Some(decoded));
+                        Ok(Some(decoded))
                     }
-                    Ok(None) => return Ok(None),
+                    Ok(None) => Ok(None),
                     Err(_) => {
                         // Back-compat: older builds stored the settings directly as the record content.
-                        let legacy: Option<T> = db
-                            .select(("setting", key.clone()))
-                            .await
-                            .map_err(|e| format!("Failed to load legacy setting '{}': {}", key, e))?;
+                        let legacy: Option<T> =
+                            db.select(("setting", key.clone())).await.map_err(|e| {
+                                format!("Failed to load legacy setting '{}': {}", key, e)
+                            })?;
                         Ok(legacy)
                     }
                 }
@@ -525,7 +529,10 @@ impl CharacterDatabase {
                 // Store settings as a JSON string. This avoids SurrealDB local-engine
                 // serialization edge cases and keeps the schema stable across versions.
                 let json_string = serde_json::to_string(&value).map_err(|e| {
-                    format!("Failed to serialize setting '{}' to JSON string: {}", key, e)
+                    format!(
+                        "Failed to serialize setting '{}' to JSON string: {}",
+                        key, e
+                    )
                 })?;
 
                 #[derive(Serialize)]
@@ -591,9 +598,9 @@ impl CharacterDatabase {
 
 #[cfg(test)]
 mod tests {
-    use crate::dice3d::types::settings::{AppSettings, ColorSetting};
     use super::*;
     use crate::dice3d::types::character::{Attributes, CharacterInfo, Combat};
+    use crate::dice3d::types::settings::{AppSettings, ColorSetting};
 
     fn create_test_sheet(name: &str) -> CharacterSheet {
         CharacterSheet {
@@ -721,10 +728,22 @@ mod tests {
         db.set_setting("app_settings", settings.clone()).unwrap();
         let loaded: AppSettings = db.get_setting("app_settings").unwrap().unwrap();
 
-        assert!(approx_eq(loaded.background_color.a, settings.background_color.a));
-        assert!(approx_eq(loaded.background_color.r, settings.background_color.r));
-        assert!(approx_eq(loaded.background_color.g, settings.background_color.g));
-        assert!(approx_eq(loaded.background_color.b, settings.background_color.b));
+        assert!(approx_eq(
+            loaded.background_color.a,
+            settings.background_color.a
+        ));
+        assert!(approx_eq(
+            loaded.background_color.r,
+            settings.background_color.r
+        ));
+        assert!(approx_eq(
+            loaded.background_color.g,
+            settings.background_color.g
+        ));
+        assert!(approx_eq(
+            loaded.background_color.b,
+            settings.background_color.b
+        ));
     }
 
     #[test]

@@ -40,7 +40,7 @@ fn find_legacy_sqlite_path(db: &CharacterDatabase) -> Option<std::path::PathBuf>
 
 fn decode_legacy_character(data: &[u8]) -> Result<CharacterSheet, String> {
     match bincode::deserialize::<CharacterSheet>(data) {
-        Ok(sheet) => return Ok(sheet),
+        Ok(sheet) => Ok(sheet),
         Err(bincode_err) => {
             // Some legacy DBs stored TEXT payloads (RON or JSON) instead of bincode.
             let s = std::str::from_utf8(data).map_err(|utf8_err| {
@@ -399,7 +399,7 @@ pub fn start_sqlite_conversion_if_needed(
         .ok()
         .flatten()
         .unwrap_or(false);
-    log_once(&mut *log_state, "ignore_setting", || {
+    log_once(&mut log_state, "ignore_setting", || {
         info!(
             "Legacy SQLite conversion: ignore_legacy_sqlite = {}",
             ignore_legacy
@@ -413,7 +413,7 @@ pub fn start_sqlite_conversion_if_needed(
     let Some(sqlite_path) = find_legacy_sqlite_path(&db) else {
         // Helpful breadcrumb in case the user put the file somewhere else.
         let primary = sqlite_conversion::legacy_sqlite_path();
-        log_once(&mut *log_state, "missing_sqlite", || {
+        log_once(&mut log_state, "missing_sqlite", || {
             info!(
                 "Legacy SQLite conversion: no characters.db found (checked {:?} and {:?})",
                 primary,
@@ -423,7 +423,7 @@ pub fn start_sqlite_conversion_if_needed(
         return;
     };
 
-    log_once(&mut *log_state, "found_sqlite", || {
+    log_once(&mut log_state, "found_sqlite", || {
         info!(
             "Legacy SQLite conversion: found legacy DB at {:?}",
             sqlite_path
@@ -433,7 +433,7 @@ pub fn start_sqlite_conversion_if_needed(
     let rows = match sqlite_conversion::load_legacy_character_rows(&sqlite_path) {
         Ok(rows) => rows,
         Err(e) => {
-            log_once(&mut *log_state, "sqlite_read_failed", || {
+            log_once(&mut log_state, "sqlite_read_failed", || {
                 warn!(
                     "Legacy SQLite conversion: failed to read {:?}: {}",
                     sqlite_path, e
@@ -444,14 +444,14 @@ pub fn start_sqlite_conversion_if_needed(
     };
 
     if rows.is_empty() {
-        log_once(&mut *log_state, "sqlite_empty", || {
+        log_once(&mut log_state, "sqlite_empty", || {
             info!(
                 "Legacy SQLite conversion: {:?} contains 0 rows in 'characters' (no migration needed)",
                 sqlite_path
             );
         });
 
-        log_once(&mut *log_state, "sqlite_empty_hints", || {
+        log_once(&mut log_state, "sqlite_empty_hints", || {
             let wal = sqlite_path.with_extension("db-wal");
             let shm = sqlite_path.with_extension("db-shm");
             let wal_exists = wal.exists();
@@ -507,7 +507,7 @@ pub fn start_sqlite_conversion_if_needed(
         return;
     }
 
-    log_once(&mut *log_state, "sqlite_rows", || {
+    log_once(&mut log_state, "sqlite_rows", || {
         info!(
             "Legacy SQLite conversion: loaded {} legacy rows from {:?}",
             rows.len(),
@@ -527,7 +527,7 @@ pub fn start_sqlite_conversion_if_needed(
     }
 
     if !any_unconverted {
-        log_once(&mut *log_state, "already_converted", || {
+        log_once(&mut log_state, "already_converted", || {
             info!(
                 "Legacy SQLite conversion: all rows already exist in SurrealDB; prompting for ignore preference for {:?}",
                 sqlite_path

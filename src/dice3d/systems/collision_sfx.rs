@@ -5,10 +5,10 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use std::collections::HashMap;
 
-use crate::dice3d::embedded_assets::{
-    DICE_GLASS_CUP_SFX_PATH, DICE_WOODEN_BOX_SFX_PATH,
+use crate::dice3d::embedded_assets::{DICE_GLASS_CUP_SFX_PATH, DICE_WOODEN_BOX_SFX_PATH};
+use crate::dice3d::types::{
+    DiceContainerProceduralCollider, DiceContainerStyle, DiceContainerVoxelCollider, Die,
 };
-use crate::dice3d::types::{DiceContainerProceduralCollider, DiceContainerStyle, DiceContainerVoxelCollider, Die};
 
 #[derive(Resource, Clone)]
 pub struct DiceCollisionSfx {
@@ -44,7 +44,13 @@ pub fn play_dice_container_collision_sfx(
     mut debounce: ResMut<DiceCollisionSfxDebounce>,
     mut collision_events: MessageReader<CollisionEvent>,
     dice_query: Query<(), With<Die>>,
-    container_query: Query<(), Or<(With<DiceContainerVoxelCollider>, With<DiceContainerProceduralCollider>)>>,
+    container_query: Query<
+        (),
+        Or<(
+            With<DiceContainerVoxelCollider>,
+            With<DiceContainerProceduralCollider>,
+        )>,
+    >,
     die_velocity: Query<&Velocity, With<Die>>,
     global_transforms: Query<&GlobalTransform>,
     time: Res<Time>,
@@ -56,13 +62,14 @@ pub fn play_dice_container_collision_sfx(
             continue;
         };
 
-        let (die_entity, _container_entity) = if dice_query.get(e1).is_ok() && container_query.get(e2).is_ok() {
-            (e1, e2)
-        } else if dice_query.get(e2).is_ok() && container_query.get(e1).is_ok() {
-            (e2, e1)
-        } else {
-            continue;
-        };
+        let (die_entity, _container_entity) =
+            if dice_query.get(e1).is_ok() && container_query.get(e2).is_ok() {
+                (e1, e2)
+            } else if dice_query.get(e2).is_ok() && container_query.get(e1).is_ok() {
+                (e2, e1)
+            } else {
+                continue;
+            };
 
         // Emit from the die's world position (good approximation of the impact location).
         let Ok(die_gt) = global_transforms.get(die_entity) else {

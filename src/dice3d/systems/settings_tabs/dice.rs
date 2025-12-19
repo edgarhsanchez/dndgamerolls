@@ -39,7 +39,6 @@ pub fn build_dice_tab(
         slot.spawn_select_with(theme, builder);
     });
 
-
     parent.spawn((
         Text::new("Roll Behavior"),
         TextFont {

@@ -15,7 +15,10 @@ fn collect_descendants_with_material(
     children_query: &Query<&Children>,
     material_query: &Query<
         &MeshMaterial3d<StandardMaterial>,
-        (Without<DiceContainerVisualPart>, Without<DiceContainerColliderGuide>),
+        (
+            Without<DiceContainerVisualPart>,
+            Without<DiceContainerColliderGuide>,
+        ),
     >,
     out: &mut Vec<Entity>,
 ) {
@@ -42,13 +45,19 @@ pub fn update_dice_box_highlight(
     children_query: Query<&Children>,
     material_query: Query<
         &MeshMaterial3d<StandardMaterial>,
-        (Without<DiceContainerVisualPart>, Without<DiceContainerColliderGuide>),
+        (
+            Without<DiceContainerVisualPart>,
+            Without<DiceContainerColliderGuide>,
+        ),
     >,
-    mut part_query: Query<(
-        Entity,
-        &mut MeshMaterial3d<StandardMaterial>,
-        Option<&ContainerOriginalEmissive>,
-    ), With<DiceContainerVisualPart>>,
+    mut part_query: Query<
+        (
+            Entity,
+            &mut MeshMaterial3d<StandardMaterial>,
+            Option<&ContainerOriginalEmissive>,
+        ),
+        With<DiceContainerVisualPart>,
+    >,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if ui_state.active_tab != AppTab::DiceRoller {
@@ -91,7 +100,9 @@ pub fn update_dice_box_highlight(
             let orig = cloned.emissive;
             let new_handle = materials.add(cloned);
             *mat_handle = MeshMaterial3d(new_handle);
-            commands.entity(entity).insert(ContainerOriginalEmissive(orig));
+            commands
+                .entity(entity)
+                .insert(ContainerOriginalEmissive(orig));
             orig
         };
 

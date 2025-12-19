@@ -5,8 +5,8 @@
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -856,7 +856,9 @@ fn load_character(
     }
 
     let rt = tokio::runtime::Runtime::new()?;
-    let db = rt.block_on(async { Surreal::new::<SurrealKv>(db_path.to_string_lossy().to_string()).await })?;
+    let db = rt.block_on(async {
+        Surreal::new::<SurrealKv>(db_path.to_string_lossy().to_string()).await
+    })?;
     rt.block_on(async {
         db.use_ns(NS).use_db(DB).await?;
         Ok::<(), surrealdb::Error>(())
@@ -872,7 +874,10 @@ fn load_character(
         let raw_rows: Vec<SurrealValue> = response.take(0)?;
         let mut rows: Vec<ListRow> = Vec::with_capacity(raw_rows.len());
         for raw in raw_rows {
-            rows.push(from_surreal_value(raw).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?);
+            rows.push(
+                from_surreal_value(raw)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+            );
         }
 
         if rows.is_empty() {
@@ -903,7 +908,10 @@ fn load_character(
     let raw_record: Option<SurrealValue> =
         rt.block_on(async { db.select(("character", target_id)).await })?;
     let record: Option<Record<CharacterDoc>> = match raw_record {
-        Some(v) => Some(from_surreal_value(v).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?),
+        Some(v) => Some(
+            from_surreal_value(v)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+        ),
         None => None,
     };
     let Some(record) = record else {

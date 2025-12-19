@@ -6,11 +6,11 @@
 //!
 //! Any authored `COLLIDER_*` helper nodes are always hidden and ignored for physics.
 use bevy::log::{info, warn};
-use bevy::prelude::*;
 use bevy::prelude::Mesh3d;
+use bevy::prelude::*;
 use bevy_mesh::{Indices, VertexAttributeValues};
-use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::prelude::FillMode;
+use bevy_rapier3d::prelude::*;
 use bevy_rapier3d::rapier::prelude::SharedShape;
 
 use std::collections::HashSet;
@@ -220,8 +220,7 @@ pub fn spawn_colliders_from_gltf_guides(
                         .unwrap_or_else(|_| "<unnamed>".to_string());
                     info!(
                         "glTF voxel collider source '{}' ({:?}) mesh not loaded yet; waiting",
-                        label,
-                        mesh_entity
+                        label, mesh_entity
                     );
                 }
                 continue;
@@ -268,21 +267,23 @@ pub fn spawn_colliders_from_gltf_guides(
                 continue;
             }
 
-            let shape =
-                SharedShape::voxelized_mesh(&verts, &tris, VOXEL_SIZE, FillMode::default());
+            let shape = SharedShape::voxelized_mesh(&verts, &tris, VOXEL_SIZE, FillMode::default());
             let collider = Collider::from(shape);
 
-            commands.entity(container_root_entity).with_children(|parent| {
-                parent.spawn((
-                    Transform::from_translation(local_translation).with_rotation(local_rotation),
-                    collider,
-                    Restitution::coefficient(0.2),
-                    Friction::coefficient(0.8),
-                    DiceBoxWall,
-                    DiceContainerGeneratedCollider,
-                    DiceContainerVoxelCollider,
-                ));
-            });
+            commands
+                .entity(container_root_entity)
+                .with_children(|parent| {
+                    parent.spawn((
+                        Transform::from_translation(local_translation)
+                            .with_rotation(local_rotation),
+                        collider,
+                        Restitution::coefficient(0.2),
+                        Friction::coefficient(0.8),
+                        DiceBoxWall,
+                        DiceContainerGeneratedCollider,
+                        DiceContainerVoxelCollider,
+                    ));
+                });
 
             spawned_voxel += 1;
         }

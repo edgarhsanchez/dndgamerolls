@@ -3,9 +3,9 @@
 //! This module contains all the input handlers, scroll handlers,
 //! text editing handlers, and other event systems.
 
+use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::mouse::MouseWheel;
-use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy_material_ui::icons::MaterialIconFont;
@@ -1799,25 +1799,26 @@ fn flush_code_block(parent: &mut ChildSpawnerCommands, state: &mut MarkdownRende
         return;
     }
 
-    parent.spawn((
-        Node {
-            width: Val::Percent(100.0),
-            padding: UiRect::all(Val::Px(10.0)),
-            ..default()
-        },
-        BackgroundColor(MD3_SURFACE_CONTAINER),
-        BorderRadius::all(Val::Px(8.0)),
-    ))
-    .with_children(|code| {
-        code.spawn((
-            Text::new(text.to_string()),
-            TextFont {
-                font_size: 13.0,
+    parent
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::all(Val::Px(10.0)),
                 ..default()
             },
-            TextColor(MD3_ON_SURFACE),
-        ));
-    });
+            BackgroundColor(MD3_SURFACE_CONTAINER),
+            BorderRadius::all(Val::Px(8.0)),
+        ))
+        .with_children(|code| {
+            code.spawn((
+                Text::new(text.to_string()),
+                TextFont {
+                    font_size: 13.0,
+                    ..default()
+                },
+                TextColor(MD3_ON_SURFACE),
+            ));
+        });
 
     state.code_buffer.clear();
 }
@@ -2018,7 +2019,8 @@ pub fn setup_dnd_info_screen(mut commands: Commands, icon_font: Res<MaterialIcon
     // Best-effort runtime override:
     // - in dev, this allows editing `DnDInfo.md` without touching Rust.
     // - in release, you can ship a `DnDInfo.md` alongside the binary to override.
-    let markdown = std::fs::read_to_string("DnDInfo.md").unwrap_or_else(|_| DND_INFO_MARKDOWN.to_string());
+    let markdown =
+        std::fs::read_to_string("DnDInfo.md").unwrap_or_else(|_| DND_INFO_MARKDOWN.to_string());
 
     commands
         .spawn((

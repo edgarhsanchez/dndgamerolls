@@ -8,8 +8,8 @@ use bevy::prelude::*;
 
 use bevy_material_ui::prelude::SliderChangeEvent;
 
-use crate::dice3d::types::{ContainerShakeAnimation, SettingsState};
 use crate::dice3d::types::DiceContainerStyle;
+use crate::dice3d::types::{ContainerShakeAnimation, SettingsState};
 
 fn ray_intersects_aabb(ray_origin: Vec3, ray_dir: Vec3, aabb_min: Vec3, aabb_max: Vec3) -> bool {
     // Slab method.
@@ -108,8 +108,16 @@ pub fn update_throw_from_mouse(
             ),
         ),
         DiceContainerStyle::Cup => (
-            Vec3::new(-super::CUP_RADIUS - click_margin, BOX_FLOOR_Y, -super::CUP_RADIUS - click_margin),
-            Vec3::new(super::CUP_RADIUS + click_margin, BOX_TOP_Y, super::CUP_RADIUS + click_margin),
+            Vec3::new(
+                -super::CUP_RADIUS - click_margin,
+                BOX_FLOOR_Y,
+                -super::CUP_RADIUS - click_margin,
+            ),
+            Vec3::new(
+                super::CUP_RADIUS + click_margin,
+                BOX_TOP_Y,
+                super::CUP_RADIUS + click_margin,
+            ),
         ),
     };
     let is_over_box_volume = ray_intersects_aabb(ray.origin, ray_dir, container_min, container_max);
@@ -149,11 +157,7 @@ pub fn update_throw_from_mouse(
             let r = super::CUP_RADIUS.max(0.0001);
             let len = p.length();
             let is_in = len <= r;
-            let clamped = if len > r {
-                (p / len) * r
-            } else {
-                p
-            };
+            let clamped = if len > r { (p / len) * r } else { p };
             let tgt = Vec3::new(clamped.x, BOX_FLOOR_Y, clamped.y);
             (is_in, tgt, r)
         }
@@ -163,8 +167,8 @@ pub fn update_throw_from_mouse(
     throw_state.target_point = target;
     // Hover/click should work on the floor and the walls.
     throw_state.mouse_over_box = is_over_box_volume || is_in_footprint;
-    throw_state.throw_strength = (Vec2::new(target.x, target.z).length() / max_distance.max(0.0001))
-        .clamp(0.0, 1.0);
+    throw_state.throw_strength =
+        (Vec2::new(target.x, target.z).length() / max_distance.max(0.0001)).clamp(0.0, 1.0);
 }
 
 /// System to update the 3D arrow indicator position and rotation

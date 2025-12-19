@@ -207,7 +207,9 @@ pub fn build_colors_tab(
                     .map(|hex| SelectOption::new(hex).value(hex))
                     .collect();
 
-                let mut builder = SelectBuilder::new(options).outlined().label("Recent themes");
+                let mut builder = SelectBuilder::new(options)
+                    .outlined()
+                    .label("Recent themes");
                 if let Some(idx) = recent_theme_seeds
                     .iter()
                     .position(|s| s.eq_ignore_ascii_case(theme_seed_input_text))

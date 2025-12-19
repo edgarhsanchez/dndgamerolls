@@ -96,8 +96,7 @@ pub fn load_settings_state_from_db(
         Err(e) => {
             warn!(
                 "Failed to load settings from SurrealDB at {:?}: {}; using defaults",
-                db.db_path,
-                e
+                db.db_path, e
             );
         }
     }
@@ -707,10 +706,16 @@ pub fn handle_settings_ok_click(
                 .settings
                 .recent_theme_seeds
                 .retain(|s| !s.eq_ignore_ascii_case(&canonical));
-            settings_state.settings.recent_theme_seeds.insert(0, canonical);
+            settings_state
+                .settings
+                .recent_theme_seeds
+                .insert(0, canonical);
 
             const MAX_RECENT: usize = 10;
-            settings_state.settings.recent_theme_seeds.truncate(MAX_RECENT);
+            settings_state
+                .settings
+                .recent_theme_seeds
+                .truncate(MAX_RECENT);
         }
 
         // Ensure runtime theme matches the persisted selection.
@@ -2128,10 +2133,7 @@ pub fn update_color_ui(
         field.has_content = !field.value.is_empty();
 
         let trimmed = field.value.trim();
-        if trimmed.is_empty() {
-            field.error = false;
-            field.error_text = None;
-        } else if ColorSetting::parse(trimmed).is_some() {
+        if trimmed.is_empty() || ColorSetting::parse(trimmed).is_some() {
             field.error = false;
             field.error_text = None;
         } else {

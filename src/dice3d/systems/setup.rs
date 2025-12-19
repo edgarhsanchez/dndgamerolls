@@ -100,28 +100,30 @@ pub fn setup(
     // Floor collider only (no visible base platform). Sized to match the active container style.
     let floor_thickness = 0.30;
     let floor_half_height = floor_thickness / 2.0;
-    commands.entity(container_root).with_children(|parent| match *container_style {
-        DiceContainerStyle::Box => {
-            parent.spawn((
-                Transform::from_xyz(0.0, -floor_half_height, 0.0),
-                Collider::cuboid(BOX_HALF_EXTENT, floor_half_height, BOX_HALF_EXTENT),
-                Restitution::coefficient(0.2),
-                Friction::coefficient(0.8),
-                DiceBoxFloorCollider,
-                DiceContainerProceduralCollider,
-            ));
-        }
-        DiceContainerStyle::Cup => {
-            parent.spawn((
-                Transform::from_xyz(0.0, -floor_half_height, 0.0),
-                Collider::cylinder(floor_half_height, CUP_RADIUS),
-                Restitution::coefficient(0.2),
-                Friction::coefficient(0.8),
-                DiceBoxFloorCollider,
-                DiceContainerProceduralCollider,
-            ));
-        }
-    });
+    commands
+        .entity(container_root)
+        .with_children(|parent| match *container_style {
+            DiceContainerStyle::Box => {
+                parent.spawn((
+                    Transform::from_xyz(0.0, -floor_half_height, 0.0),
+                    Collider::cuboid(BOX_HALF_EXTENT, floor_half_height, BOX_HALF_EXTENT),
+                    Restitution::coefficient(0.2),
+                    Friction::coefficient(0.8),
+                    DiceBoxFloorCollider,
+                    DiceContainerProceduralCollider,
+                ));
+            }
+            DiceContainerStyle::Cup => {
+                parent.spawn((
+                    Transform::from_xyz(0.0, -floor_half_height, 0.0),
+                    Collider::cylinder(floor_half_height, CUP_RADIUS),
+                    Restitution::coefficient(0.2),
+                    Friction::coefficient(0.8),
+                    DiceBoxFloorCollider,
+                    DiceContainerProceduralCollider,
+                ));
+            }
+        });
 
     // Walls - taller walls for better containment
     let wall_height = BOX_WALL_HEIGHT;
@@ -143,21 +145,37 @@ pub fn setup(
         for (pos, size) in [
             (
                 Vec3::new(0.0, wall_height / 2.0, -box_size),
-                Vec3::new(2.0 * box_size + wall_thickness * 2.0, wall_height, wall_thickness),
+                Vec3::new(
+                    2.0 * box_size + wall_thickness * 2.0,
+                    wall_height,
+                    wall_thickness,
+                ),
             ),
             (
                 Vec3::new(0.0, wall_height / 2.0, box_size),
-                Vec3::new(2.0 * box_size + wall_thickness * 2.0, wall_height, wall_thickness),
+                Vec3::new(
+                    2.0 * box_size + wall_thickness * 2.0,
+                    wall_height,
+                    wall_thickness,
+                ),
             ),
             (
                 Vec3::new(-box_size, wall_height / 2.0, 0.0),
                 // Extend along Z so corners overlap with the front/back walls.
-                Vec3::new(wall_thickness, wall_height, 2.0 * box_size + wall_thickness * 2.0),
+                Vec3::new(
+                    wall_thickness,
+                    wall_height,
+                    2.0 * box_size + wall_thickness * 2.0,
+                ),
             ),
             (
                 Vec3::new(box_size, wall_height / 2.0, 0.0),
                 // Extend along Z so corners overlap with the front/back walls.
-                Vec3::new(wall_thickness, wall_height, 2.0 * box_size + wall_thickness * 2.0),
+                Vec3::new(
+                    wall_thickness,
+                    wall_height,
+                    2.0 * box_size + wall_thickness * 2.0,
+                ),
             ),
         ] {
             parent.spawn((
@@ -209,42 +227,42 @@ pub fn setup(
         }
     };
 
-    commands.entity(container_root).with_children(|parent| match *container_style {
-        DiceContainerStyle::Box => spawn_box_walls(parent),
-        DiceContainerStyle::Cup => spawn_cup_walls(parent),
-    });
+    commands
+        .entity(container_root)
+        .with_children(|parent| match *container_style {
+            DiceContainerStyle::Box => spawn_box_walls(parent),
+            DiceContainerStyle::Cup => spawn_cup_walls(parent),
+        });
 
     // Invisible ceiling collider to prevent dice from bouncing out.
     // Note: collider-only (no mesh/material), so it's completely see-through.
     let ceiling_thickness = 0.10;
     let ceiling_half_height = ceiling_thickness / 2.0;
-    commands.entity(container_root).with_children(|parent| match *container_style {
-        DiceContainerStyle::Box => {
-            let ceiling_size = 2.0 * BOX_HALF_EXTENT + wall_thickness * 2.0;
-            parent.spawn((
-                Transform::from_xyz(0.0, wall_height + ceiling_half_height, 0.0),
-                Collider::cuboid(
-                    ceiling_size / 2.0,
-                    ceiling_half_height,
-                    ceiling_size / 2.0,
-                ),
-                Restitution::coefficient(0.05),
-                Friction::coefficient(0.3),
-                DiceBoxCeiling,
-                DiceContainerProceduralCollider,
-            ));
-        }
-        DiceContainerStyle::Cup => {
-            parent.spawn((
-                Transform::from_xyz(0.0, wall_height + ceiling_half_height, 0.0),
-                Collider::cylinder(ceiling_half_height, CUP_RADIUS + wall_thickness),
-                Restitution::coefficient(0.05),
-                Friction::coefficient(0.3),
-                DiceBoxCeiling,
-                DiceContainerProceduralCollider,
-            ));
-        }
-    });
+    commands
+        .entity(container_root)
+        .with_children(|parent| match *container_style {
+            DiceContainerStyle::Box => {
+                let ceiling_size = 2.0 * BOX_HALF_EXTENT + wall_thickness * 2.0;
+                parent.spawn((
+                    Transform::from_xyz(0.0, wall_height + ceiling_half_height, 0.0),
+                    Collider::cuboid(ceiling_size / 2.0, ceiling_half_height, ceiling_size / 2.0),
+                    Restitution::coefficient(0.05),
+                    Friction::coefficient(0.3),
+                    DiceBoxCeiling,
+                    DiceContainerProceduralCollider,
+                ));
+            }
+            DiceContainerStyle::Cup => {
+                parent.spawn((
+                    Transform::from_xyz(0.0, wall_height + ceiling_half_height, 0.0),
+                    Collider::cylinder(ceiling_half_height, CUP_RADIUS + wall_thickness),
+                    Restitution::coefficient(0.05),
+                    Friction::coefficient(0.3),
+                    DiceBoxCeiling,
+                    DiceContainerProceduralCollider,
+                ));
+            }
+        });
 
     // Spawn dice based on configuration
     let dice_to_spawn = &dice_config.dice_to_roll;
@@ -1422,7 +1440,8 @@ pub fn spawn_quick_roll_panel(
                                 }
 
                                 if !sheet.custom_attributes.is_empty() {
-                                    let mut custom: Vec<_> = sheet.custom_attributes.iter().collect();
+                                    let mut custom: Vec<_> =
+                                        sheet.custom_attributes.iter().collect();
                                     custom.sort_by(|a, b| a.0.cmp(b.0));
 
                                     for (name, score) in custom {

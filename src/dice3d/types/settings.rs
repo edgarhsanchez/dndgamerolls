@@ -275,10 +275,10 @@ impl ColorSetting {
         let parsed = csscolorparser::Color::from_html(cleaned.as_str()).ok()?;
 
         Some(Self {
-            a: parsed.a as f32,
-            r: parsed.r as f32,
-            g: parsed.g as f32,
-            b: parsed.b as f32,
+            a: parsed.a,
+            r: parsed.r,
+            g: parsed.g,
+            b: parsed.b,
         })
     }
 
@@ -493,33 +493,30 @@ impl AppSettings {
     /// Load settings from SurrealDB.
     pub fn load() -> Self {
         match CharacterDatabase::open() {
-            Ok(db) => {
-                match db.get_setting::<AppSettings>(Self::SETTINGS_DB_KEY) {
-                    Ok(Some(settings)) => {
-                        info!(
-                            "Loaded settings from SurrealDB at {:?} (background={})",
-                            db.db_path,
-                            settings.background_color.to_hex()
-                        );
-                        return settings;
-                    }
-                    Ok(None) => {
-                        info!(
-                            "No persisted settings found in SurrealDB at {:?}; using defaults",
-                            db.db_path
-                        );
-                        return Self::default();
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to load settings from SurrealDB at {:?}: {}; using defaults",
-                            db.db_path,
-                            e
-                        );
-                        return Self::default();
-                    }
+            Ok(db) => match db.get_setting::<AppSettings>(Self::SETTINGS_DB_KEY) {
+                Ok(Some(settings)) => {
+                    info!(
+                        "Loaded settings from SurrealDB at {:?} (background={})",
+                        db.db_path,
+                        settings.background_color.to_hex()
+                    );
+                    return settings;
                 }
-            }
+                Ok(None) => {
+                    info!(
+                        "No persisted settings found in SurrealDB at {:?}; using defaults",
+                        db.db_path
+                    );
+                    return Self::default();
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to load settings from SurrealDB at {:?}: {}; using defaults",
+                        db.db_path, e
+                    );
+                    return Self::default();
+                }
+            },
             Err(e) => {
                 warn!(
                     "Failed to open SurrealDB for settings ({}); using defaults",

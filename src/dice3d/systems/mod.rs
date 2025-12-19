@@ -16,8 +16,8 @@
 mod avatar_loader;
 mod box_highlight;
 mod camera;
-mod collision_sfx;
 pub mod character_screen;
+mod collision_sfx;
 mod contributors_screen;
 mod dice;
 pub mod dice_box_controls;
@@ -25,9 +25,9 @@ mod gltf_colliders;
 mod gltf_spawn_points;
 mod input;
 pub mod rendering;
+mod select_theme_preview;
 mod settings;
 mod settings_tabs;
-mod select_theme_preview;
 mod setup;
 mod slider_group;
 mod theme_refresh;
@@ -38,7 +38,6 @@ pub use avatar_loader::{
 };
 pub use box_highlight::update_dice_box_highlight;
 pub use camera::{handle_zoom_slider_changes, rotate_camera};
-pub use collision_sfx::{init_collision_sounds, play_dice_container_collision_sfx, DiceCollisionSfx};
 pub use character_screen::{
     // UI fixups
     ensure_buttons_have_interaction,
@@ -111,6 +110,9 @@ pub use character_screen::{
     MD3_SURFACE,
     MD3_SURFACE_CONTAINER,
 };
+pub use collision_sfx::{
+    init_collision_sounds, play_dice_container_collision_sfx, DiceCollisionSfx,
+};
 pub use contributors_screen::{init_contributors, setup_contributors_screen};
 pub use dice::{check_dice_settled, update_results_display};
 pub use dice_box_controls::{
@@ -129,17 +131,17 @@ pub use input::{
     handle_command_history_item_clicks, handle_command_input, handle_input,
     handle_quick_roll_clicks,
 };
+pub use select_theme_preview::tint_recent_theme_dropdown_items;
 pub use settings::{
     apply_initial_settings, apply_initial_shake_config, autosave_and_apply_shake_config,
     drag_shake_curve_bezier_handle, drag_shake_curve_point, handle_color_slider_changes,
     handle_color_text_input, handle_default_roll_uses_shake_switch_change,
-    handle_quick_roll_die_type_select_change, handle_theme_seed_select_change,
-    handle_settings_button_click,
+    handle_quick_roll_die_type_select_change, handle_settings_button_click,
     handle_settings_cancel_click, handle_settings_ok_click, handle_settings_reset_layout_click,
     handle_shake_curve_bezier_handle_press, handle_shake_curve_chip_clicks,
     handle_shake_curve_graph_click_to_add_point, handle_shake_curve_point_press,
-    handle_shake_duration_text_input, manage_settings_modal, persist_settings_to_db,
-    load_settings_state_from_db, spawn_settings_button, sync_shake_curve_chip_ui,
+    handle_shake_duration_text_input, handle_theme_seed_select_change, load_settings_state_from_db,
+    manage_settings_modal, persist_settings_to_db, spawn_settings_button, sync_shake_curve_chip_ui,
     sync_shake_curve_graph_ui, update_color_ui,
 };
 pub use setup::{
@@ -147,5 +149,4 @@ pub use setup::{
     spawn_die,
 };
 pub use slider_group::handle_slider_group_drag;
-pub use select_theme_preview::tint_recent_theme_dropdown_items;
 pub use theme_refresh::refresh_scrollbar_colors_on_theme_change;

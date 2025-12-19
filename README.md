@@ -42,6 +42,18 @@ The publishable CLI crate lives at `crates/dndgamerolls-cli`.
 |:-------------:|:---------------:|
 | ![Command Input](screenshots/dice3d/dice3d-command-input.png) | ![Command History](screenshots/dice3d/dice3d-history.png) |
 
+### UI
+
+| Dice Roller Tab | Character Setup |
+|:--------------:|:---------------:|
+| ![Dice Roller Tab](screenshots/diceroller_tab.png) | ![Character Setup](screenshots/character_setup_character.png) |
+
+| Cup Container | Fine Control Settings |
+|:------------:|:---------------------:|
+| ![Dice Roller Cup](screenshots/dice_roller_cup.png) | ![Fine Control Settings](screenshots/dice_roller_settings_fine_control.png) |
+
+![No Limit on Dice](screenshots/no_limit_on_dice.png)
+
 ---
 
 ## Installation

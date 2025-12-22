@@ -54,6 +54,7 @@ pulldown-cmark = "0.12"
 # HTTP and Image Loading (for profile avatars)
 reqwest = { version = "0.12", features = ["blocking"] }
 image = "0.25"
+rfd = "0.15"
 
 # Database
 surrealdb = { version = "2.4.0", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
@@ -71,6 +72,12 @@ bevy_material_ui = { git = "https://github.com/edgarhsanchez/bevy_material_ui.gi
 
 # Winit for window icon setting (must match Bevy's winit version)
 winit = "0.30"
+
+[dev-dependencies]
+gltf = { version = "1.4", features = ["utils"] }
+
+[build-dependencies]
+gltf = { version = "1.4", features = ["utils"] }
 
 # Build dependencies for embedding Windows resources
 [target.'cfg(windows)'.build-dependencies]

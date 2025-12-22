@@ -13,15 +13,22 @@ use rand::Rng;
 
 use dndgamerolls::dice3d::{
     animate_container_shake,
+    apply_dice_scale_settings_to_existing_dice,
+    apply_editing_dice_scales_to_existing_dice_while_open,
     apply_crystal_material_to_container_models,
     apply_initial_settings,
     apply_initial_shake_config,
     apply_spawn_points_to_dice_when_ready,
+    center_container_models_in_view,
     autosave_and_apply_shake_config,
+    cache_dice_box_lid_animation_player,
     check_dice_settled,
     collect_dice_spawn_points_from_gltf,
     drag_shake_curve_bezier_handle,
     drag_shake_curve_point,
+    drag_dice_fx_curve_bezier_handle,
+    drag_dice_fx_curve_point,
+    ensure_dice_box_lid_animation_assets,
     ensure_buttons_have_interaction,
     // Legacy SQLite -> SurrealDB conversion (character screen)
     finalize_sqlite_conversion_if_done,
@@ -32,6 +39,21 @@ use dndgamerolls::dice3d::{
     handle_character_sheet_settings_save_click,
     handle_color_slider_changes,
     handle_color_text_input,
+    handle_dice_scale_slider_changes,
+    handle_dice_fx_curve_bezier_handle_press,
+    handle_dice_fx_curve_chip_clicks,
+    handle_dice_fx_curve_graph_click_to_add_point,
+    handle_dice_fx_curve_point_press,
+    handle_dice_fx_duration_text_input,
+    handle_dice_fx_preview_time_slider_changes,
+    handle_dice_fx_trigger_select_change,
+    handle_dice_fx_trigger_value_text_input,
+    handle_dice_fx_upload_image_click,
+    sync_dice_fx_preview_images,
+    fix_dice_scale_slider_thumb_hitbox,
+    init_dice_scale_preview_render_target,
+    init_settings_ui_images,
+    manage_dice_scale_preview_scene,
     handle_command_history_item_clicks,
     handle_command_input,
     handle_default_roll_uses_shake_switch_change,
@@ -84,7 +106,9 @@ use dndgamerolls::dice3d::{
     manage_settings_modal,
     persist_settings_to_db,
     play_dice_container_collision_sfx,
+    open_lid_on_roll_completed,
     process_avatar_loads,
+    process_pending_roll_with_lid,
     rebuild_character_list_on_change,
     rebuild_character_panel_on_change,
     rebuild_command_history_panel,
@@ -105,12 +129,16 @@ use dndgamerolls::dice3d::{
     sync_character_screen_roll_result_texts,
     sync_dice_container_mode_text,
     sync_dice_container_toggle_icon,
+    sync_dice_fx_curve_chip_ui,
+    sync_dice_fx_curve_graph_ui,
     sync_shake_curve_chip_ui,
     sync_shake_curve_graph_ui,
     tint_recent_theme_dropdown_items,
     update_avatar_images,
     update_character_list_modified_indicator,
     update_color_ui,
+    update_dice_scale_ui,
+    sync_dice_scale_preview_dice,
     update_dice_box_highlight,
     update_editing_display,
     update_new_entry_input_display,
@@ -132,6 +160,7 @@ use dndgamerolls::dice3d::{
     ContainerShakeConfig,
     Dice3dEmbeddedAssetsPlugin,
     DiceBoxHighlightMaterial,
+    DiceBoxLidAnimationController,
     DiceConfig,
     DiceContainerStyle,
     DiceResults,
@@ -144,6 +173,7 @@ use dndgamerolls::dice3d::{
     ShakeState,
     ThrowControlState,
     UiState,
+    DiceFxPlugin,
     ZoomState,
 };
 
@@ -480,6 +510,7 @@ fn run_3d_mode(cli: Cli) {
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(MaterialUiPlugin)
         .add_plugins(Dice3dEmbeddedAssetsPlugin)
+        .add_plugins(DiceFxPlugin)
         // Ensure UI Buttons spawned without ButtonBundle still receive click events
         .add_systems(PreUpdate, ensure_buttons_have_interaction)
         .insert_resource(dice_config)
@@ -502,6 +533,7 @@ fn run_3d_mode(cli: Cli) {
         .insert_resource(DiceSpawnPoints::default())
         .insert_resource(DiceSpawnPointsApplied::default())
         .insert_resource(AvatarLoader::default())
+        .insert_resource(DiceBoxLidAnimationController::default())
         .add_systems(
             Startup,
             (
@@ -509,6 +541,8 @@ fn run_3d_mode(cli: Cli) {
                 load_icons,
                 init_character_manager,
                 load_settings_state_from_db,
+                init_dice_scale_preview_render_target,
+                init_settings_ui_images,
                 init_contributors,
                 apply_initial_shake_config,
                 init_collision_sounds,
@@ -548,7 +582,31 @@ fn run_3d_mode(cli: Cli) {
                 update_throw_arrow,
             ),
         )
+        .add_systems(Update, ensure_dice_box_lid_animation_assets)
+        .add_systems(
+            Update,
+            cache_dice_box_lid_animation_player.after(ensure_dice_box_lid_animation_assets),
+        )
+        .add_systems(
+            Update,
+            process_pending_roll_with_lid
+                .after(handle_input)
+                .after(handle_quick_roll_clicks),
+        )
+        .add_systems(
+            Update,
+            open_lid_on_roll_completed.after(check_dice_settled),
+        )
         .add_systems(Update, play_dice_container_collision_sfx)
+        .add_systems(
+            Update,
+            center_container_models_in_view
+                .before(spawn_colliders_from_gltf_guides)
+                .before(apply_crystal_material_to_container_models)
+                .before(collect_dice_spawn_points_from_gltf)
+                .before(apply_spawn_points_to_dice_when_ready)
+                .before(update_dice_box_highlight),
+        )
         // Separate to avoid Bevy's tuple-size limit, and ensure it runs before highlight tagging.
         .add_systems(
             Update,
@@ -653,30 +711,58 @@ fn run_3d_mode(cli: Cli) {
             (
                 (
                     // Settings systems
-                    handle_settings_button_click,
-                    manage_settings_modal,
-                    handle_settings_ok_click,
-                    handle_settings_cancel_click,
-                    handle_settings_reset_layout_click,
-                    handle_quick_roll_die_type_select_change,
-                    handle_theme_seed_select_change,
-                    handle_default_roll_uses_shake_switch_change,
-                    handle_color_slider_changes,
-                    handle_color_text_input,
-                    handle_shake_duration_text_input,
-                    handle_shake_curve_chip_clicks,
                     (
-                        handle_shake_curve_point_press,
-                        handle_shake_curve_bezier_handle_press,
-                        handle_shake_curve_graph_click_to_add_point,
-                        drag_shake_curve_bezier_handle,
-                        drag_shake_curve_point,
-                        sync_shake_curve_graph_ui,
-                    )
-                        .chain(),
-                    sync_shake_curve_chip_ui,
-                    update_color_ui,
-                    autosave_and_apply_shake_config.after(sync_shake_curve_graph_ui),
+                        handle_settings_button_click,
+                        manage_settings_modal,
+                        manage_dice_scale_preview_scene,
+                        fix_dice_scale_slider_thumb_hitbox.after(manage_settings_modal),
+                        handle_settings_ok_click,
+                        handle_settings_cancel_click,
+                        handle_settings_reset_layout_click,
+                    ),
+                    (
+                        handle_quick_roll_die_type_select_change,
+                        handle_theme_seed_select_change,
+                        handle_default_roll_uses_shake_switch_change,
+                        handle_color_slider_changes,
+                        handle_dice_scale_slider_changes,
+                        handle_color_text_input,
+                        handle_shake_duration_text_input,
+                        handle_dice_fx_upload_image_click,
+                        sync_dice_fx_preview_images,
+                        handle_dice_fx_preview_time_slider_changes,
+                        handle_dice_fx_trigger_select_change,
+                        handle_dice_fx_trigger_value_text_input,
+                        handle_dice_fx_duration_text_input,
+                        handle_shake_curve_chip_clicks,
+                        handle_dice_fx_curve_chip_clicks,
+                        (
+                            handle_shake_curve_point_press,
+                            handle_shake_curve_bezier_handle_press,
+                            handle_shake_curve_graph_click_to_add_point,
+                            drag_shake_curve_bezier_handle,
+                            drag_shake_curve_point,
+                            sync_shake_curve_graph_ui,
+                        )
+                            .chain(),
+                        sync_shake_curve_chip_ui,
+                        (
+                            handle_dice_fx_curve_point_press,
+                            handle_dice_fx_curve_bezier_handle_press,
+                            handle_dice_fx_curve_graph_click_to_add_point,
+                            drag_dice_fx_curve_bezier_handle,
+                            drag_dice_fx_curve_point,
+                            sync_dice_fx_curve_graph_ui,
+                        )
+                            .chain(),
+                        sync_dice_fx_curve_chip_ui,
+                    ),
+                    (
+                        update_color_ui,
+                        update_dice_scale_ui,
+                        sync_dice_scale_preview_dice,
+                        autosave_and_apply_shake_config.after(sync_shake_curve_graph_ui),
+                    ),
                 ),
                 (
                     // Character sheet dice settings modal
@@ -687,6 +773,15 @@ fn run_3d_mode(cli: Cli) {
                     handle_character_sheet_settings_cancel_click,
                 ),
             ),
+        )
+        .add_systems(
+            Update,
+            apply_editing_dice_scales_to_existing_dice_while_open
+                .after(handle_dice_scale_slider_changes),
+        )
+        .add_systems(
+            Update,
+            apply_dice_scale_settings_to_existing_dice.after(handle_settings_ok_click),
         )
         .add_systems(
             Update,

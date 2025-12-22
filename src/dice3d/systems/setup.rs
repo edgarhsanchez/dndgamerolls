@@ -139,6 +139,7 @@ pub fn setup(
             Transform::from_xyz(0.0, wall_height / 2.0, 0.0).with_scale(Vec3::splat(scale)),
             DiceBoxWall,
             DiceContainerVisualRoot,
+            DiceBoxVisualSceneRoot,
         ));
 
         // Invisible collider walls (keep physics stable / predictable).
@@ -280,11 +281,13 @@ pub fn setup(
                 Vec3::new(x, 1.25, z)
             }
         };
+        let die_scale = settings_state.settings.dice_scales.scale_for(*die_type);
         let _die_entity = spawn_die(
             &mut commands,
             &mut meshes,
             &mut materials,
             *die_type,
+            die_scale,
             position,
         );
     }
@@ -1166,6 +1169,7 @@ pub fn spawn_die(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     die_type: DiceType,
+    die_scale: f32,
     position: Vec3,
 ) -> Entity {
     use crate::dice3d::meshes::get_d4_number_positions;
@@ -1214,7 +1218,7 @@ pub fn spawn_die(
     // Get die-specific density for realistic physics
     // Larger dice are heavier and roll differently
     let die_density = die_type.density();
-    let die_scale = die_type.scale();
+    let corrected_scale = die_scale * die_type.uniform_size_scale_factor();
 
     let mut entity_commands = commands.spawn((
         Mesh3d(meshes.add(mesh)),
@@ -1226,7 +1230,7 @@ pub fn spawn_die(
                 rng.gen_range(0.0..std::f32::consts::TAU),
                 rng.gen_range(0.0..std::f32::consts::TAU),
             ))
-            .with_scale(Vec3::splat(die_scale)),
+            .with_scale(Vec3::splat(corrected_scale)),
         RigidBody::Dynamic,
         // Prevent fast dice from tunneling through the walls/ceiling.
         Ccd::enabled(),

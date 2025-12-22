@@ -14,6 +14,178 @@ use super::ui::{
 };
 
 // ============================================================================
+// Custom Dice FX Settings
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CustomDiceFxTriggerKind {
+    /// Fire when the sum of all dice values is >= `trigger_value`.
+    #[serde(rename = "total_at_least")]
+    TotalAtLeast,
+
+    /// Fire when every die in the roll is at its maximum face value.
+    #[serde(rename = "all_max")]
+    AllMax,
+
+    /// Fire when any die equals `trigger_value`.
+    #[serde(rename = "any_die_equals")]
+    AnyDieEquals,
+}
+
+impl Default for CustomDiceFxTriggerKind {
+    fn default() -> Self {
+        Self::TotalAtLeast
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FxCurvePointSetting {
+    pub id: u64,
+    /// Curve domain in [0..1] (input).
+    pub t: f32,
+    /// Curve range in [0..1] (output).
+    pub value: f32,
+
+    #[serde(default)]
+    pub in_handle: Option<[f32; 2]>,
+    #[serde(default)]
+    pub out_handle: Option<[f32; 2]>,
+}
+
+impl FxCurvePointSetting {
+    pub fn from_runtime(p: &super::ui::FxCurvePoint) -> Self {
+        Self {
+            id: p.id,
+            t: p.t,
+            value: p.value,
+            in_handle: p.in_handle.map(|v| [v.x, v.y]),
+            out_handle: p.out_handle.map(|v| [v.x, v.y]),
+        }
+    }
+
+    pub fn to_runtime(&self) -> super::ui::FxCurvePoint {
+        super::ui::FxCurvePoint {
+            id: self.id,
+            t: self.t,
+            value: self.value,
+            in_handle: self.in_handle.map(|a| Vec2::new(a[0], a[1])),
+            out_handle: self.out_handle.map(|a| Vec2::new(a[0], a[1])),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CustomDiceFxSetting {
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Source image copied into app data dir (absolute path).
+    #[serde(default)]
+    pub source_image_path: Option<String>,
+
+    /// Generated textures copied into app data dir (absolute paths).
+    #[serde(default)]
+    pub noise_image_path: Option<String>,
+    #[serde(default)]
+    pub ramp_image_path: Option<String>,
+    #[serde(default)]
+    pub mask_image_path: Option<String>,
+
+    #[serde(default)]
+    pub trigger_kind: CustomDiceFxTriggerKind,
+
+    /// Used by TotalAtLeast and AnyDieEquals.
+    #[serde(default = "default_custom_dice_fx_trigger_value")]
+    pub trigger_value: u32,
+
+    #[serde(default = "default_custom_dice_fx_duration_seconds")]
+    pub duration_seconds: f32,
+
+    /// Curves remap input->output for generated textures.
+    #[serde(default)]
+    pub curve_points_mask: Vec<FxCurvePointSetting>,
+    #[serde(default)]
+    pub curve_points_noise: Vec<FxCurvePointSetting>,
+    #[serde(default)]
+    pub curve_points_ramp: Vec<FxCurvePointSetting>,
+
+    #[serde(default)]
+    pub next_curve_point_id: u64,
+}
+
+fn default_custom_dice_fx_trigger_value() -> u32 {
+    20
+}
+
+fn default_custom_dice_fx_duration_seconds() -> f32 {
+    2.0
+}
+
+impl Default for CustomDiceFxSetting {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            source_image_path: None,
+            noise_image_path: None,
+            ramp_image_path: None,
+            mask_image_path: None,
+            trigger_kind: CustomDiceFxTriggerKind::default(),
+            trigger_value: default_custom_dice_fx_trigger_value(),
+            duration_seconds: default_custom_dice_fx_duration_seconds(),
+            curve_points_mask: vec![
+                FxCurvePointSetting {
+                    id: 1,
+                    t: 0.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                FxCurvePointSetting {
+                    id: 2,
+                    t: 1.0,
+                    value: 1.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+            ],
+            curve_points_noise: vec![
+                FxCurvePointSetting {
+                    id: 3,
+                    t: 0.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                FxCurvePointSetting {
+                    id: 4,
+                    t: 1.0,
+                    value: 1.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+            ],
+            curve_points_ramp: vec![
+                FxCurvePointSetting {
+                    id: 5,
+                    t: 0.0,
+                    value: 0.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+                FxCurvePointSetting {
+                    id: 6,
+                    t: 1.0,
+                    value: 1.0,
+                    in_handle: None,
+                    out_handle: None,
+                },
+            ],
+            next_curve_point_id: 7,
+        }
+    }
+}
+
+// ============================================================================
 // Persistent Shake Curve Settings
 // ============================================================================
 
@@ -421,6 +593,114 @@ pub struct AppSettings {
     /// Recently used theme seeds (canonical hex strings like "#FFAABBCC").
     #[serde(default)]
     pub recent_theme_seeds: Vec<String>,
+
+    /// Per-die visual/physics scale overrides.
+    ///
+    /// Defaults match the built-in dice scale values so the current sizing behavior remains
+    /// unchanged unless the user adjusts sliders.
+    #[serde(default)]
+    pub dice_scales: DiceScaleSettings,
+
+    /// Optional user-defined dice effect (runtime-loadable textures; no rebuild required).
+    #[serde(default)]
+    pub custom_dice_fx: Option<CustomDiceFxSetting>,
+}
+
+/// Per-die scale settings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DiceScaleSettings {
+    #[serde(default = "default_d4_scale")]
+    pub d4: f32,
+    #[serde(default = "default_d6_scale")]
+    pub d6: f32,
+    #[serde(default = "default_d8_scale")]
+    pub d8: f32,
+    #[serde(default = "default_d10_scale")]
+    pub d10: f32,
+    #[serde(default = "default_d12_scale")]
+    pub d12: f32,
+    #[serde(default = "default_d20_scale")]
+    pub d20: f32,
+}
+
+fn default_d4_scale() -> f32 {
+    DiceType::D4.scale()
+}
+fn default_d6_scale() -> f32 {
+    DiceType::D6.scale()
+}
+fn default_d8_scale() -> f32 {
+    DiceType::D8.scale()
+}
+fn default_d10_scale() -> f32 {
+    DiceType::D10.scale()
+}
+fn default_d12_scale() -> f32 {
+    DiceType::D12.scale()
+}
+fn default_d20_scale() -> f32 {
+    DiceType::D20.scale()
+}
+
+impl Default for DiceScaleSettings {
+    fn default() -> Self {
+        Self {
+            d4: default_d4_scale(),
+            d6: default_d6_scale(),
+            d8: default_d8_scale(),
+            d10: default_d10_scale(),
+            d12: default_d12_scale(),
+            d20: default_d20_scale(),
+        }
+    }
+}
+
+impl DiceScaleSettings {
+    /// Global min/max for the slider values.
+    ///
+    /// These values are absolute world scales applied to each die type.
+    /// This ensures every die type shares the same slider range and can reach the same sizes.
+    pub const MIN_SCALE: f32 = 0.50;
+    pub const MAX_SCALE: f32 = 2.00;
+
+    /// Returns the stored world scale for a die type.
+    pub fn scale_for(&self, die_type: DiceType) -> f32 {
+        match die_type {
+            DiceType::D4 => self.d4,
+            DiceType::D6 => self.d6,
+            DiceType::D8 => self.d8,
+            DiceType::D10 => self.d10,
+            DiceType::D12 => self.d12,
+            DiceType::D20 => self.d20,
+        }
+        .clamp(Self::MIN_SCALE, Self::MAX_SCALE)
+    }
+
+    /// Sets the stored world scale for a die type.
+    pub fn set_scale_for(&mut self, die_type: DiceType, value: f32) {
+        let value = value.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        match die_type {
+            DiceType::D4 => self.d4 = value,
+            DiceType::D6 => self.d6 = value,
+            DiceType::D8 => self.d8 = value,
+            DiceType::D10 => self.d10 = value,
+            DiceType::D12 => self.d12 = value,
+            DiceType::D20 => self.d20 = value,
+        }
+    }
+
+    /// Enforce the invariant that D4 is the smallest die and D20 is the largest.
+    ///
+    /// Other dice are clamped into the inclusive range [d4..d20].
+    pub fn normalize(&mut self) {
+        // Keep values clamped to the global slider range.
+        self.d4 = self.d4.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d6 = self.d6.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d8 = self.d8.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d10 = self.d10.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d12 = self.d12.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d20 = self.d20.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+    }
 }
 
 /// Serializable UI position (logical pixels, top-left origin).
@@ -483,6 +763,9 @@ impl Default for AppSettings {
             shake_config: ShakeConfigSetting::default(),
             theme_seed_hex: None,
             recent_theme_seeds: Vec::new(),
+            dice_scales: DiceScaleSettings::default(),
+
+            custom_dice_fx: None,
         }
     }
 }
@@ -612,6 +895,52 @@ pub struct SettingsState {
 
     /// Snapshot of the last saved shake config (used to avoid saving every frame).
     pub last_saved_shake_config: ShakeConfigSetting,
+
+    /// Temporary per-die scales being edited in the modal.
+    pub editing_dice_scales: DiceScaleSettings,
+
+    /// Editing value for custom dice FX (applied on OK).
+    pub editing_custom_dice_fx: CustomDiceFxSetting,
+
+    /// Dice FX curve editor state (selected point, dragging, mode).
+    pub selected_dice_fx_curve_point_id: Option<u64>,
+    pub dragging_dice_fx_curve_point_id: Option<u64>,
+    pub dragging_dice_fx_curve_bezier: Option<(u64, ShakeCurveBezierHandleKind)>,
+    pub dice_fx_curve_edit_mode: ShakeCurveEditMode,
+
+    /// Which curves are enabled for Add/select (Mask/Noise/Ramp).
+    pub dice_fx_curve_add_mask: bool,
+    pub dice_fx_curve_add_noise: bool,
+    pub dice_fx_curve_add_ramp: bool,
+
+    /// Text buffers for custom FX fields.
+    pub dice_fx_trigger_value_input_text: String,
+    pub dice_fx_duration_input_text: String,
+
+    /// Display-only: where generated custom FX images are stored.
+    pub dice_fx_saved_dir_display_text: String,
+
+    /// Cached preview image handles for the Dice Effects UI.
+    pub dice_fx_preview_source: Option<Handle<Image>>,
+    pub dice_fx_preview_noise: Option<Handle<Image>>,
+    pub dice_fx_preview_mask: Option<Handle<Image>>,
+    pub dice_fx_preview_ramp: Option<Handle<Image>>,
+
+    /// Base (unmodified) preview images used to generate time-varying previews.
+    pub dice_fx_preview_base_source: Option<Handle<Image>>,
+    pub dice_fx_preview_base_noise: Option<Handle<Image>>,
+    pub dice_fx_preview_base_mask: Option<Handle<Image>>,
+    pub dice_fx_preview_base_ramp: Option<Handle<Image>>,
+
+    /// Preview time scrubber value in [0..1].
+    pub dice_fx_preview_time_t: f32,
+    pub dice_fx_preview_last_time_t: f32,
+
+    /// Cached preview paths (to detect changes and reload from disk).
+    pub dice_fx_preview_source_path: Option<String>,
+    pub dice_fx_preview_noise_path: Option<String>,
+    pub dice_fx_preview_mask_path: Option<String>,
+    pub dice_fx_preview_ramp_path: Option<String>,
 }
 
 impl Default for SettingsState {
@@ -626,6 +955,12 @@ impl Default for SettingsState {
         let editing_highlight_color = settings.dice_box_highlight_color.clone();
         let editing_shake_config = settings.shake_config.to_runtime();
         let last_saved_shake_config = settings.shake_config.clone();
+        let editing_dice_scales = settings.dice_scales.clone();
+
+        let editing_custom_dice_fx = settings
+            .custom_dice_fx
+            .clone()
+            .unwrap_or_else(CustomDiceFxSetting::default);
 
         Self {
             settings,
@@ -651,6 +986,34 @@ impl Default for SettingsState {
             shake_curve_add_z: false,
             shake_duration_input_text: "1.0".to_string(),
             last_saved_shake_config,
+            editing_dice_scales,
+
+            editing_custom_dice_fx,
+            selected_dice_fx_curve_point_id: None,
+            dragging_dice_fx_curve_point_id: None,
+            dragging_dice_fx_curve_bezier: None,
+            dice_fx_curve_edit_mode: ShakeCurveEditMode::None,
+            dice_fx_curve_add_mask: true,
+            dice_fx_curve_add_noise: false,
+            dice_fx_curve_add_ramp: false,
+            dice_fx_trigger_value_input_text: "20".to_string(),
+            dice_fx_duration_input_text: "2.0".to_string(),
+
+            dice_fx_saved_dir_display_text: String::new(),
+            dice_fx_preview_source: None,
+            dice_fx_preview_noise: None,
+            dice_fx_preview_mask: None,
+            dice_fx_preview_ramp: None,
+            dice_fx_preview_base_source: None,
+            dice_fx_preview_base_noise: None,
+            dice_fx_preview_base_mask: None,
+            dice_fx_preview_base_ramp: None,
+            dice_fx_preview_time_t: 0.0,
+            dice_fx_preview_last_time_t: -1.0,
+            dice_fx_preview_source_path: None,
+            dice_fx_preview_noise_path: None,
+            dice_fx_preview_mask_path: None,
+            dice_fx_preview_ramp_path: None,
         }
     }
 }
@@ -721,6 +1084,18 @@ pub struct SettingsCancelButton;
 /// Marker for the switch that controls "default roll uses shake" in the Dice tab.
 #[derive(Component)]
 pub struct DefaultRollUsesShakeSwitch;
+
+/// Marker for dice scale slider.
+#[derive(Component, Clone, Copy)]
+pub struct DiceScaleSlider {
+    pub die_type: DiceType,
+}
+
+/// Marker for dice scale value labels.
+#[derive(Component, Clone, Copy)]
+pub struct DiceScaleValueLabel {
+    pub die_type: DiceType,
+}
 
 /// Marker for settings Reset Layout button
 #[derive(Component)]

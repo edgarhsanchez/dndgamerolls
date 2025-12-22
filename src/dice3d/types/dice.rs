@@ -32,6 +32,13 @@ pub struct DiceBoxCeiling;
 #[derive(Component)]
 pub struct DiceContainerVisualRoot;
 
+/// Marker component indicating a container visual root has been auto-centered.
+///
+/// This is used to ensure other systems (spawn points, colliders) only run once
+/// the visual model has been moved into its final position.
+#[derive(Component)]
+pub struct DiceContainerCentered;
+
 /// Marker component for any mesh/material entity that is part of the container visual.
 #[derive(Component)]
 pub struct DiceContainerVisualPart;
@@ -163,6 +170,38 @@ impl DiceType {
             DiceType::D20 => 1.2,  // Largest
         }
     }
+
+    /// Approximate base mesh radius (distance from origin to the furthest vertex)
+    /// for each die mesh at `Transform::scale = 1.0`.
+    ///
+    /// This is used to normalize sizes so that equal user scale values produce
+    /// equal visual sizes across different dice shapes.
+    pub fn mesh_base_radius(&self) -> f32 {
+        match self {
+            // d4.rs uses edge length a=0.5, giving radius ~= 0.306186.
+            DiceType::D4 => 0.306_186,
+            // d6.rs uses Cuboid::new(0.6,0.6,0.6) => vertex radius = sqrt(3)*(0.6/2).
+            DiceType::D6 => 0.519_615,
+            // d8.rs uses vertices at ±0.5 on axes.
+            DiceType::D8 => 0.5,
+            // d10.rs top is at y=0.45.
+            DiceType::D10 => 0.45,
+            // d12.rs uses s=0.175; cube vertices are length sqrt(3)*s.
+            DiceType::D12 => 0.303_108,
+            // d20.rs uses s=0.175; vertices are length sqrt(1+phi^2)*s.
+            DiceType::D20 => 0.332_870,
+        }
+    }
+
+    /// Scale correction to normalize mesh sizes to a common reference.
+    ///
+    /// With this applied, two dice with the same user scale should appear
+    /// roughly the same overall size.
+    pub fn uniform_size_scale_factor(&self) -> f32 {
+        // Most meshes use a `size = 0.5` convention; use that as the reference.
+        const REFERENCE_RADIUS: f32 = 0.5;
+        REFERENCE_RADIUS / self.mesh_base_radius()
+    }
 }
 
 /// Resource storing the results of dice rolls
@@ -181,7 +220,7 @@ pub struct RollState {
 }
 
 /// Configuration for which dice to spawn
-#[derive(Resource, Clone)]
+#[derive(Resource, Clone, Debug)]
 pub struct DiceConfig {
     pub dice_to_roll: Vec<DiceType>,
     pub modifier: i32,

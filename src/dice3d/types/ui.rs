@@ -7,6 +7,10 @@ use bevy::prelude::*;
 
 use std::collections::HashMap;
 
+use super::dice::{DiceConfig, DiceType};
+
+use bevy::animation::prelude::{AnimationGraph, AnimationNodeIndex};
+
 // ============================================================================
 // Tab Navigation
 // ============================================================================
@@ -612,6 +616,198 @@ pub struct ContainerShakeAnimation {
     pub duration: f32,
     pub amplitude: f32,
     pub base_positions: HashMap<Entity, Vec3>,
+}
+
+// ============================================================================
+// Custom Dice FX (Settings Modal)
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DiceFxPreviewImageKind {
+    Source,
+    Noise,
+    Mask,
+    Ramp,
+}
+
+/// Marker for the Upload Image button in the Dice FX settings tab.
+#[derive(Component)]
+pub struct DiceFxUploadImageButton;
+
+/// Marker for the Material slider controlling preview time in the Dice FX tab.
+#[derive(Component)]
+pub struct DiceFxPreviewTimeSlider;
+
+/// Marker for the label that displays the current preview time.
+#[derive(Component)]
+pub struct DiceFxPreviewTimeLabel;
+
+/// Identifies the ImageNode entity to update for each Dice FX preview.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct DiceFxPreviewImageNode {
+    pub kind: DiceFxPreviewImageKind,
+}
+
+/// Trigger value text input in the Dice FX tab.
+#[derive(Component)]
+pub struct DiceFxTriggerValueTextInput;
+
+/// Duration text input in the Dice FX tab.
+#[derive(Component)]
+pub struct DiceFxDurationTextInput;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DiceFxCurveChannel {
+    Mask,
+    Noise,
+    Ramp,
+}
+
+/// Marker for the Dice FX curve graph container.
+#[derive(Component)]
+pub struct DiceFxCurveGraphRoot;
+
+/// Marker for the inner plot area of the Dice FX curve graph.
+#[derive(Component)]
+pub struct DiceFxCurveGraphPlotRoot;
+
+/// Sampled curve dot (for rendering the curve line).
+#[derive(Component)]
+pub struct DiceFxCurveGraphDot {
+    pub channel: DiceFxCurveChannel,
+    pub index: usize,
+}
+
+/// Draggable point handle in the Dice FX curve editor.
+#[derive(Component)]
+pub struct DiceFxCurvePointHandle {
+    pub id: u64,
+}
+
+/// Draggable Bezier handle for the currently-selected Dice FX curve point.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct DiceFxCurveBezierHandle {
+    pub point_id: u64,
+    pub kind: ShakeCurveBezierHandleKind,
+}
+
+/// Chip to toggle add/delete edit modes for the Dice FX curve editor.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct DiceFxCurveEditModeChip {
+    pub mode: ShakeCurveEditMode,
+}
+
+/// Chip to enable/disable adding points to a Dice FX curve channel.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct DiceFxCurveChannelChip {
+    pub channel: DiceFxCurveChannel,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FxCurvePoint {
+    pub id: u64,
+    pub t: f32,
+    pub value: f32,
+    pub in_handle: Option<Vec2>,
+    pub out_handle: Option<Vec2>,
+}
+
+// ============================================================================
+// Dice Box Lid Animations (glTF clips)
+// ============================================================================
+
+/// Marker on the spawned box glTF scene root entity.
+///
+/// Used to find an `AnimationPlayer` to drive lid animations.
+#[derive(Component)]
+pub struct DiceBoxVisualSceneRoot;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiceBoxLidState {
+    Closed,
+    Open,
+    Closing,
+    Opening,
+}
+
+impl Default for DiceBoxLidState {
+    fn default() -> Self {
+        Self::Open
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum PendingRollRequest {
+    /// Re-roll the currently spawned dice in place (left-click in box).
+    RerollExisting,
+    /// Quick-roll uses a single die and updates modifier display.
+    QuickRollSingleDie {
+        die_type: DiceType,
+        modifier: i32,
+        modifier_name: String,
+    },
+    /// Start a fresh roll by applying the provided config and spawning dice.
+    ///
+    /// Used by command submit/history and character sheet rolls when the container is a Box.
+    StartNewRoll { config: DiceConfig },
+}
+
+#[derive(Resource, Default)]
+pub struct DiceBoxLidAnimationController {
+    pub gltf_handle: Option<Handle<bevy::gltf::Gltf>>,
+
+    pub opening_clip: Option<Handle<AnimationClip>>,
+    pub closing_clip: Option<Handle<AnimationClip>>,
+    pub idle_opened_clip: Option<Handle<AnimationClip>>,
+    pub idle_closed_clip: Option<Handle<AnimationClip>>,
+
+    pub animation_graph: Option<Handle<AnimationGraph>>,
+    pub opening_node: Option<AnimationNodeIndex>,
+    pub closing_node: Option<AnimationNodeIndex>,
+    pub idle_opened_node: Option<AnimationNodeIndex>,
+    pub idle_closed_node: Option<AnimationNodeIndex>,
+
+    pub open_duration: f32,
+    pub close_duration: f32,
+    pub idle_opened_duration: f32,
+    pub idle_closed_duration: f32,
+
+    pub animator_entity: Option<Entity>,
+
+    /// Which idle node we most recently started looping.
+    ///
+    /// Used to avoid re-starting idle every frame (which can cause visible flicker
+    /// if a looping clip wraps frequently).
+    pub active_idle_node: Option<AnimationNodeIndex>,
+
+    pub lid_state: DiceBoxLidState,
+    /// Remaining seconds in the current open/close animation.
+    pub state_timer: f32,
+
+    /// When set, a roll is waiting for the lid to close.
+    pub pending_roll: Option<PendingRollRequest>,
+
+    /// When set, the next time we are able we should play LidOpening.
+    ///
+    /// This is queued by the roll-completed event so that if the event fires
+    /// before animation assets/nodes are ready, the opening still plays once
+    /// the assets load.
+    pub pending_open_after_roll: bool,
+
+    #[cfg(debug_assertions)]
+    pub debug_last_idle_node: Option<AnimationNodeIndex>,
+
+    #[cfg(debug_assertions)]
+    pub debug_last_lid_state: Option<DiceBoxLidState>,
+
+    #[cfg(debug_assertions)]
+    pub debug_last_pending_roll_some: Option<bool>,
+
+    #[cfg(debug_assertions)]
+    pub debug_last_pending_open_after_roll: Option<bool>,
+
+    #[cfg(debug_assertions)]
+    pub debug_logged_player_scan: bool,
 }
 
 /// Marker for the dice roller view root (to show/hide)

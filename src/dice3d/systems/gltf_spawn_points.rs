@@ -55,7 +55,13 @@ fn collect_spawn_point_nodes(
 /// Intended for Blender empties exported in the glTF scene.
 pub fn collect_dice_spawn_points_from_gltf(
     mut commands: Commands,
-    container_roots: Query<Entity, With<crate::dice3d::types::DiceContainerVisualRoot>>,
+    container_roots: Query<
+        Entity,
+        (
+            With<crate::dice3d::types::DiceContainerVisualRoot>,
+            With<crate::dice3d::types::DiceContainerCentered>,
+        ),
+    >,
     children_query: Query<&Children>,
     name_query: Query<&Name>,
     global_query: Query<&GlobalTransform>,

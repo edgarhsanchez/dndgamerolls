@@ -1,13 +1,13 @@
-//! Character sheet layout module
+//! Character sheet tabs module
 //!
-//! This module renders the character sheet as a wrapping grid of group cards.
+//! This module contains the tabbed interface for the character sheet,
+//! using Material Design 3 tabs for navigation between different sections.
 
 use bevy::prelude::*;
-use bevy_material_ui::icons::MaterialIconFont;
 use bevy_material_ui::prelude::*;
 
-use super::*;
 use crate::dice3d::types::*;
+use super::*;
 
 // Submodules for each tab
 mod attributes;
@@ -35,11 +35,10 @@ pub fn setup_character_screen(
     edit_state: Res<GroupEditState>,
     adding_state: Res<AddingEntryState>,
     icon_assets: Res<IconAssets>,
-    icon_font: Res<MaterialIconFont>,
+    icon_font: Res<bevy_material_ui::prelude::MaterialIconFont>,
     theme: Option<Res<MaterialTheme>>,
 ) {
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
-    let icon_font = icon_font.0.clone();
 
     // Root container (hidden by default, shown when tab is active)
     commands
@@ -64,7 +63,7 @@ pub fn setup_character_screen(
                 &character_manager,
                 &character_data,
                 &icon_assets,
-                icon_font.clone(),
+                icon_font.0.clone(),
                 &theme,
             );
 
@@ -72,24 +71,22 @@ pub fn setup_character_screen(
             spawn_tabbed_content_panel(
                 parent,
                 &character_data,
-                &character_manager,
                 &edit_state,
                 &adding_state,
                 &icon_assets,
-                icon_font.clone(),
+                icon_font.0.clone(),
                 &theme,
             );
         });
+    
+    // Initialize selected tab resource
+    commands.insert_resource(SelectedCharacterSheetTab::default());
 }
 
-/// Spawn the right panel with the character sheet content.
-///
-/// This is public so the UI can be rebuilt when `CharacterData` changes
-/// (e.g., after clicking Create New Character).
-pub fn spawn_tabbed_content_panel(
+/// Spawn the right panel with Material Design tabs
+pub(crate) fn spawn_tabbed_content_panel(
     parent: &mut ChildSpawnerCommands,
     character_data: &CharacterData,
-    character_manager: &CharacterManager,
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
@@ -106,11 +103,13 @@ pub fn spawn_tabbed_content_panel(
             CharacterStatsPanel,
         ))
         .with_children(|container| {
-            // Single scrollable area that shows all group cards at once (wrapping grid)
-            spawn_all_groups_area(
+            // Material Tabs bar
+            spawn_character_sheet_tabs(container, theme);
+
+            // Tab content area
+            spawn_tab_content_area(
                 container,
                 character_data,
-                character_manager,
                 edit_state,
                 adding_state,
                 icon_assets,
@@ -120,11 +119,78 @@ pub fn spawn_tabbed_content_panel(
         });
 }
 
-/// Spawn the scrollable content area showing all group cards at once (wrapping grid)
-fn spawn_all_groups_area(
+/// Spawn the Material Design tabs bar for character sheet sections
+fn spawn_character_sheet_tabs(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme) {
+    parent
+        .spawn((
+            MaterialTabs::new()
+                .with_variant(TabVariant::Secondary)
+                .selected(0),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(TAB_HEIGHT_SECONDARY),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::FlexStart,
+                align_items: AlignItems::Stretch,
+                border: UiRect::bottom(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(MD3_SURFACE_CONTAINER),
+            BorderColor::from(MD3_OUTLINE_VARIANT),
+            CharacterSheetTabBar, // Marker component
+        ))
+        .with_children(|tabs| {
+            for (index, tab) in CharacterSheetTab::all().iter().enumerate() {
+                spawn_sheet_tab_button(tabs, *tab, index, index == 0, theme);
+            }
+        });
+}
+
+/// Spawn a single tab button using bevy_material_ui MaterialTab
+fn spawn_sheet_tab_button(
+    parent: &mut ChildSpawnerCommands,
+    tab: CharacterSheetTab,
+    index: usize,
+    is_selected: bool,
+    theme: &MaterialTheme,
+) {
+    parent
+        .spawn((
+            MaterialTab::new(index, tab.label()).selected(is_selected),
+            Button,
+            Node {
+                flex_grow: 1.0,
+                max_width: Val::Px(120.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(Val::Px(16.0), Val::Px(12.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            CharacterSheetTabButton { tab },
+        ))
+        .with_children(|button| {
+            button.spawn((
+                Text::new(tab.label()),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(if is_selected {
+                    theme.primary
+                } else {
+                    theme.on_surface_variant
+                }),
+                CharacterSheetTabText,
+            ));
+        });
+}
+
+/// Spawn the scrollable content area for tab content
+fn spawn_tab_content_area(
     parent: &mut ChildSpawnerCommands,
     character_data: &CharacterData,
-    character_manager: &CharacterManager,
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
@@ -133,101 +199,43 @@ fn spawn_all_groups_area(
 ) {
     parent
         .spawn((
-            ScrollContainer::both(),
-            ScrollPosition::default(),
             Node {
                 flex_grow: 1.0,
                 flex_direction: FlexDirection::Column,
-                // Allow both vertical and horizontal scrolling when space is constrained.
-                overflow: Overflow {
-                    x: OverflowAxis::Scroll,
-                    y: OverflowAxis::Scroll,
-                },
-                // Important for scroll containers inside flex columns.
-                min_height: Val::Px(0.0),
+                overflow: Overflow::clip_y(),
                 ..default()
             },
         ))
         .with_children(|container| {
+            // Scrollable inner content
             container
-                .spawn((Node {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(16.0),
-                    padding: UiRect::all(Val::Px(16.0)),
-                    ..default()
-                },))
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(16.0),
+                        padding: UiRect::all(Val::Px(16.0)),
+                        ..default()
+                    },
+                    ScrollableContent,
+                ))
                 .with_children(|content| {
                     if let Some(sheet) = &character_data.sheet {
-                        spawn_header_row(
+                        // Spawn header with save button
+                        spawn_header_row(content, sheet, character_data.is_modified, icon_assets);
+
+                        // Spawn all tab contents (visibility controlled by selected tab)
+                        spawn_all_tab_contents(
                             content,
                             sheet,
-                            character_data.is_modified,
+                            edit_state,
+                            adding_state,
                             icon_assets,
-                            icon_font.clone(),
+                            icon_font,
                             theme,
                         );
-
-                        content
-                            .spawn(Node {
-                                width: Val::Percent(100.0),
-                                flex_direction: FlexDirection::Row,
-                                flex_wrap: FlexWrap::Wrap,
-                                column_gap: Val::Px(16.0),
-                                row_gap: Val::Px(16.0),
-                                align_items: AlignItems::FlexStart,
-                                justify_content: JustifyContent::FlexStart,
-                                ..default()
-                            })
-                            .with_children(|grid| {
-                                spawn_basic_info_content(
-                                    grid,
-                                    sheet,
-                                    edit_state,
-                                    adding_state,
-                                    icon_assets,
-                                    icon_font.clone(),
-                                    theme,
-                                );
-                                spawn_attributes_content(
-                                    grid,
-                                    sheet,
-                                    edit_state,
-                                    adding_state,
-                                    icon_assets,
-                                    icon_font.clone(),
-                                    theme,
-                                );
-                                spawn_combat_content(
-                                    grid,
-                                    sheet,
-                                    edit_state,
-                                    adding_state,
-                                    icon_assets,
-                                    icon_font.clone(),
-                                    theme,
-                                );
-                                spawn_saving_throws_content(
-                                    grid,
-                                    sheet,
-                                    edit_state,
-                                    adding_state,
-                                    icon_assets,
-                                    icon_font.clone(),
-                                    theme,
-                                );
-                                spawn_skills_content(
-                                    grid,
-                                    sheet,
-                                    edit_state,
-                                    adding_state,
-                                    icon_assets,
-                                    icon_font.clone(),
-                                    theme,
-                                );
-                            });
                     } else {
-                        let has_any_characters = !character_manager.characters.is_empty();
-                        spawn_no_character_message(content, theme, has_any_characters);
+                        // No character loaded - show create button
+                        spawn_no_character_message(content);
                     }
                 });
         });
@@ -239,10 +247,8 @@ fn spawn_header_row(
     sheet: &CharacterSheet,
     is_modified: bool,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
-    theme: &MaterialTheme,
 ) {
-    let _ = icon_assets;
+    let save_icon = icon_assets.icons.get(&IconType::Save).cloned();
 
     parent
         .spawn((
@@ -269,71 +275,185 @@ fn spawn_header_row(
                 TextColor(MD3_ON_SURFACE),
             ));
 
-            // Header actions: settings + save
+            // Save button
             header
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(10.0),
-                    ..default()
-                })
-                .with_children(|actions| {
-                    // Character sheet dice settings (gear icon)
-                    actions
-                        .spawn((
-                            IconButtonBuilder::new("settings").standard().build(theme),
-                            CharacterSheetSettingsButton,
-                        ))
-                        .insert(Node {
-                            width: Val::Px(36.0),
-                            height: Val::Px(36.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
+                .spawn((
+                    Button,
+                    Node {
+                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BackgroundColor(if is_modified {
+                        MD3_PRIMARY
+                    } else {
+                        MD3_SURFACE_CONTAINER
+                    }),
+                    BorderColor::from(if is_modified {
+                        MD3_PRIMARY
+                    } else {
+                        MD3_OUTLINE
+                    }),
+                    BorderRadius::all(Val::Px(8.0)),
+                    SaveButton,
+                ))
+                .with_children(|btn| {
+                    if let Some(handle) = save_icon {
+                        btn.spawn((
+                            ImageNode::new(handle),
+                            Node {
+                                width: Val::Px(18.0),
+                                height: Val::Px(18.0),
+                                ..default()
+                            },
+                        ));
+                    }
+                    btn.spawn((
+                        Text::new("Save"),
+                        TextFont {
+                            font_size: 14.0,
                             ..default()
-                        })
-                        .with_children(|button| {
-                            button.spawn((
-                                Text::new(MaterialIcon::settings().as_str()),
-                                TextFont {
-                                    font: icon_font.clone(),
-                                    font_size: 20.0,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
-                        });
-
-                    // Save button (MD3 Material button)
-                    actions
-                        .spawn((
-                            MaterialButtonBuilder::new("Save")
-                                .filled()
-                                .disabled(!is_modified)
-                                .build(theme),
-                            SaveButton,
-                        ))
-                        .with_children(|btn| {
-                            btn.spawn((
-                                ButtonLabel,
-                                Text::new("Save"),
-                                TextFont {
-                                    font_size: 14.0,
-                                    ..default()
-                                },
-                                // Will be kept in sync by bevy_material_ui style systems.
-                                TextColor(theme.on_primary),
-                            ));
-                        });
+                        },
+                        TextColor(if is_modified {
+                            MD3_ON_PRIMARY
+                        } else {
+                            MD3_ON_SURFACE_VARIANT
+                        }),
+                    ));
                 });
         });
 }
 
-/// Spawn the "no character" message with create button
-fn spawn_no_character_message(
+/// Spawn all tab content containers (visibility toggled based on selected tab)
+fn spawn_all_tab_contents(
     parent: &mut ChildSpawnerCommands,
+    sheet: &CharacterSheet,
+    edit_state: &GroupEditState,
+    adding_state: &AddingEntryState,
+    icon_assets: &IconAssets,
+    icon_font: Handle<Font>,
     theme: &MaterialTheme,
-    has_any_characters: bool,
 ) {
+    // Basic Info tab content
+    parent
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: Val::Percent(100.0),
+                ..default()
+            },
+            CharacterSheetTabContent { tab: CharacterSheetTab::BasicInfo },
+        ))
+        .with_children(|content| {
+            spawn_basic_info_content(
+                content,
+                sheet,
+                edit_state,
+                adding_state,
+                icon_assets,
+                icon_font.clone(),
+                theme,
+            );
+        });
+
+    // Attributes tab content
+    parent
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: Val::Percent(100.0),
+                display: Display::None, // Hidden by default
+                ..default()
+            },
+            CharacterSheetTabContent { tab: CharacterSheetTab::Attributes },
+        ))
+        .with_children(|content| {
+            spawn_attributes_content(
+                content,
+                sheet,
+                edit_state,
+                adding_state,
+                icon_assets,
+                icon_font.clone(),
+                theme,
+            );
+        });
+
+    // Combat tab content
+    parent
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: Val::Percent(100.0),
+                display: Display::None,
+                ..default()
+            },
+            CharacterSheetTabContent { tab: CharacterSheetTab::Combat },
+        ))
+        .with_children(|content| {
+            spawn_combat_content(
+                content,
+                sheet,
+                edit_state,
+                adding_state,
+                icon_assets,
+                icon_font.clone(),
+                theme,
+            );
+        });
+
+    // Saving Throws tab content
+    parent
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: Val::Percent(100.0),
+                display: Display::None,
+                ..default()
+            },
+            CharacterSheetTabContent { tab: CharacterSheetTab::SavingThrows },
+        ))
+        .with_children(|content| {
+            spawn_saving_throws_content(
+                content,
+                sheet,
+                edit_state,
+                adding_state,
+                icon_assets,
+                icon_font.clone(),
+                theme,
+            );
+        });
+
+    // Skills tab content
+    parent
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: Val::Percent(100.0),
+                display: Display::None,
+                ..default()
+            },
+            CharacterSheetTabContent { tab: CharacterSheetTab::Skills },
+        ))
+        .with_children(|content| {
+            spawn_skills_content(
+                content,
+                sheet,
+                edit_state,
+                adding_state,
+                icon_assets,
+                icon_font.clone(),
+                theme,
+            );
+        });
+}
+
+/// Spawn the "no character" message with create button
+fn spawn_no_character_message(parent: &mut ChildSpawnerCommands) {
     parent
         .spawn(Node {
             flex_grow: 1.0,
@@ -346,11 +466,7 @@ fn spawn_no_character_message(
         .with_children(|center| {
             // Message
             center.spawn((
-                Text::new(if has_any_characters {
-                    "Select a character from the list"
-                } else {
-                    "No character loaded"
-                }),
+                Text::new("No character loaded"),
                 TextFont {
                     font_size: 18.0,
                     ..default()
@@ -362,35 +478,99 @@ fn spawn_no_character_message(
                 },
             ));
 
-            if !has_any_characters {
-                // Create button
-                center.spawn(Node::default()).with_children(|wrapper| {
-                    wrapper
-                        .spawn((
-                            MaterialButtonBuilder::new("+ Create First Character")
-                                .filled()
-                                .build(theme),
-                            NewCharacterButton,
-                        ))
-                        .insert(Node {
-                            padding: UiRect::axes(Val::Px(24.0), Val::Px(16.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
+            // Create button
+            center
+                .spawn((
+                    Button,
+                    Node {
+                        padding: UiRect::axes(Val::Px(24.0), Val::Px(16.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(MD3_PRIMARY),
+                    BorderRadius::all(Val::Px(12.0)),
+                    NewCharacterButton,
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        Text::new("+ Create First Character"),
+                        TextFont {
+                            font_size: 16.0,
                             ..default()
-                        })
-                        .with_children(|btn| {
-                            // Ensure label size matches the previous design.
-                            btn.spawn((
-                                ButtonLabel,
-                                Text::new("+ Create First Character"),
-                                TextFont {
-                                    font_size: 16.0,
-                                    ..default()
-                                },
-                                TextColor(theme.on_primary),
-                            ));
-                        });
+                        },
+                        TextColor(MD3_ON_PRIMARY),
+                    ));
                 });
-            }
         });
+}
+
+// ============================================================================
+// Tab Switching Handlers
+// ============================================================================
+
+/// Handle tab change events from bevy_material_ui for character sheet tabs
+pub fn handle_sheet_tab_clicks(
+    mut tab_events: MessageReader<TabChangeEvent>,
+    mut selected_tab: ResMut<SelectedCharacterSheetTab>,
+    sheet_tab_query: Query<&CharacterSheetTabButton>,
+) {
+    for event in tab_events.read() {
+        // Check if this is a character sheet tab by looking up the entity
+        if let Ok(sheet_tab) = sheet_tab_query.get(event.tab_entity) {
+            selected_tab.current = sheet_tab.tab;
+        }
+    }
+}
+
+/// Update tab button visuals based on selection (syncs with bevy_material_ui)
+pub fn update_sheet_tab_styles(
+    selected_tab: Res<SelectedCharacterSheetTab>,
+    mut tabs_query: Query<&mut MaterialTabs, With<CharacterSheetTabBar>>,
+    mut tab_query: Query<(&CharacterSheetTabButton, &mut MaterialTab)>,
+    mut text_query: Query<&mut TextColor, With<CharacterSheetTabText>>,
+    theme: Option<Res<MaterialTheme>>,
+) {
+    if !selected_tab.is_changed() {
+        return;
+    }
+
+    let theme = theme.map(|t| t.clone()).unwrap_or_default();
+    let selected_index = CharacterSheetTab::all()
+        .iter()
+        .position(|&t| t == selected_tab.current)
+        .unwrap_or(0);
+
+    // Update the MaterialTabs selected index
+    for mut tabs in tabs_query.iter_mut() {
+        tabs.selected = selected_index;
+    }
+
+    // Update individual tab selected states
+    for (sheet_tab, mut material_tab) in tab_query.iter_mut() {
+        material_tab.selected = sheet_tab.tab == selected_tab.current;
+    }
+
+    // Update text colors - simplified approach
+    for mut text_color in text_query.iter_mut() {
+        text_color.0 = theme.on_surface_variant;
+    }
+}
+
+/// Update tab content visibility based on selected tab
+pub fn update_sheet_tab_visibility(
+    selected_tab: Res<SelectedCharacterSheetTab>,
+    mut content_query: Query<(&CharacterSheetTabContent, &mut Node)>,
+) {
+    if !selected_tab.is_changed() {
+        return;
+    }
+
+    for (content, mut node) in content_query.iter_mut() {
+        node.display = if content.tab == selected_tab.current {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
 }

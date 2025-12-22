@@ -18,7 +18,7 @@ use std::collections::HashSet;
 use crate::dice3d::types::{
     DiceBox, DiceBoxWall, DiceContainerColliderGuide, DiceContainerCrystalMaterialApplied,
     DiceContainerGeneratedCollider, DiceContainerMaterials, DiceContainerProceduralCollider,
-    DiceContainerVisualRoot, DiceContainerVoxelCollider,
+    DiceContainerCentered, DiceContainerVisualRoot, DiceContainerVoxelCollider,
 };
 
 fn abs_vec3(v: Vec3) -> Vec3 {
@@ -91,7 +91,7 @@ pub struct ColliderGuideDebugState {
 pub fn spawn_colliders_from_gltf_guides(
     mut commands: Commands,
     container_root: Query<(Entity, &GlobalTransform), With<DiceBox>>,
-    roots: Query<Entity, With<DiceContainerVisualRoot>>,
+    roots: Query<Entity, (With<DiceContainerVisualRoot>, With<DiceContainerCentered>)>,
     children_query: Query<&Children>,
     name_query: Query<&Name>,
     global_query: Query<&GlobalTransform>,
@@ -331,7 +331,7 @@ fn collect_descendants_with_material(
 /// and mutate per-mesh materials afterward.
 pub fn apply_crystal_material_to_container_models(
     mut commands: Commands,
-    roots: Query<Entity, With<DiceContainerVisualRoot>>,
+    roots: Query<Entity, (With<DiceContainerVisualRoot>, With<DiceContainerCentered>)>,
     children_query: Query<&Children>,
     material_query: Query<
         &MeshMaterial3d<StandardMaterial>,

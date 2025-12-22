@@ -618,6 +618,7 @@ pub fn handle_dice_box_toggle_container_click(
                     Transform::from_xyz(0.0, wall_height / 2.0, 0.0).with_scale(Vec3::splat(scale)),
                     DiceBoxWall,
                     DiceContainerVisualRoot,
+                    DiceBoxVisualSceneRoot,
                 ));
 
                 for (pos, size) in [

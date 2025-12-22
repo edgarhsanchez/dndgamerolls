@@ -763,6 +763,9 @@ pub struct CharacterSheetRollParams<'w, 's> {
     pub dice_query: Query<'w, 's, Entity, With<Die>>,
     pub settings_state: Res<'w, SettingsState>,
 
+    pub container_style: Res<'w, DiceContainerStyle>,
+    pub lid_ctrl: ResMut<'w, DiceBoxLidAnimationController>,
+
     pub shake_state: Res<'w, ShakeState>,
     pub shake_config: Res<'w, ContainerShakeConfig>,
     pub shake_anim: ResMut<'w, ContainerShakeAnimation>,
@@ -813,6 +816,8 @@ pub fn handle_roll_attribute_click(
                 .character_sheet_default_die
                 .to_dice_type();
 
+            let die_scale = params.settings_state.settings.dice_scales.scale_for(die_type);
+
             let use_shake = params.settings_state.settings.default_roll_uses_shake;
 
             start_character_sheet_roll(
@@ -826,12 +831,15 @@ pub fn handle_roll_attribute_click(
                 &mut params.bridge,
                 &params.character_manager,
                 &params.dice_query,
+                &params.container_style,
+                &mut params.lid_ctrl,
                 &params.shake_state,
                 &params.shake_config,
                 &mut params.shake_anim,
                 &params.container_query,
                 use_shake,
                 die_type,
+                die_scale,
                 modifier,
                 format!("{} Check", button.attribute),
                 CharacterScreenRollTarget::Attribute(button.attribute.clone()),
@@ -878,6 +886,8 @@ pub fn handle_roll_skill_click(
             .character_sheet_default_die
             .to_dice_type();
 
+        let die_scale = params.settings_state.settings.dice_scales.scale_for(die_type);
+
         let use_shake = params.settings_state.settings.default_roll_uses_shake;
 
         start_character_sheet_roll(
@@ -891,12 +901,15 @@ pub fn handle_roll_skill_click(
             &mut params.bridge,
             &params.character_manager,
             &params.dice_query,
+            &params.container_style,
+            &mut params.lid_ctrl,
             &params.shake_state,
             &params.shake_config,
             &mut params.shake_anim,
             &params.container_query,
             use_shake,
             die_type,
+            die_scale,
             modifier,
             format!("{} Skill", button.skill),
             CharacterScreenRollTarget::Skill(button.skill.clone()),
@@ -919,16 +932,47 @@ fn start_character_sheet_roll(
     bridge: &mut ResMut<CharacterScreenRollBridge>,
     character_manager: &CharacterManager,
     dice_query: &Query<Entity, With<Die>>,
+    container_style: &DiceContainerStyle,
+    lid_ctrl: &mut DiceBoxLidAnimationController,
     shake_state: &ShakeState,
     shake_config: &ContainerShakeConfig,
     shake_anim: &mut ResMut<ContainerShakeAnimation>,
     container_query: &Query<(Entity, &Transform), With<DiceBox>>,
     use_shake: bool,
     die_type: DiceType,
+    die_scale: f32,
     modifier: i32,
     modifier_name: String,
     target: CharacterScreenRollTarget,
 ) {
+    // Bridge: remember what to write back (do this even if the roll is gated behind the lid).
+    bridge.pending = Some(target);
+    bridge.last_character_id = character_manager.current_character_id;
+
+    // Switch to dice roller so the user can see the roll.
+    ui_state.active_tab = AppTab::DiceRoller;
+
+    // Box style: queue the roll and let the lid controller close first.
+    if *container_style == DiceContainerStyle::Box {
+        if lid_ctrl.pending_roll.is_none() {
+            lid_ctrl.pending_roll = Some(PendingRollRequest::StartNewRoll {
+                config: DiceConfig {
+                    dice_to_roll: vec![die_type],
+                    modifier,
+                    modifier_name,
+                },
+            });
+
+            #[cfg(debug_assertions)]
+            info!(
+                "Queued pending_roll: StartNewRoll(die={:?}, mod={}) (character sheet)",
+                die_type,
+                modifier
+            );
+        }
+        return;
+    }
+
     // Remove old dice
     for entity in dice_query.iter() {
         commands.entity(entity).despawn();
@@ -943,7 +987,8 @@ fn start_character_sheet_roll(
 
     // Spawn new dice
     let position = super::super::calculate_dice_position(0, 1);
-    let die_entity = super::super::spawn_die(commands, meshes, materials, die_type, position);
+    let die_entity =
+        super::super::spawn_die(commands, meshes, materials, die_type, die_scale, position);
 
     if use_shake {
         // No initial impulse; the shake animation will provide motion.
@@ -958,13 +1003,6 @@ fn start_character_sheet_roll(
 
     // Mark as rolling
     roll_state.rolling = true;
-
-    // Bridge: remember what to write back
-    bridge.pending = Some(target);
-    bridge.last_character_id = character_manager.current_character_id;
-
-    // Switch to dice roller so the user can see the roll.
-    ui_state.active_tab = AppTab::DiceRoller;
 }
 
 /// When a dice roll finishes, record the final total for any pending character-screen roll.
@@ -1479,7 +1517,6 @@ pub fn rebuild_character_panel_on_change(
         crate::dice3d::systems::character_screen::tabs::spawn_tabbed_content_panel(
             parent,
             &character_data,
-            &character_manager,
             &edit_state,
             &adding_state,
             &icon_assets,

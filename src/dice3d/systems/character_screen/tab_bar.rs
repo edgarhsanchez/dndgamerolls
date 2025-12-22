@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
-use super::*;
 use crate::dice3d::types::*;
+use super::*;
 
 // ============================================================================
 // Tab Bar Setup
@@ -64,45 +64,13 @@ pub fn setup_tab_bar(
         ))
         .with_children(|parent| {
             // Dice Roller Tab
-            spawn_app_tab(
-                parent,
-                &icon_assets,
-                &theme,
-                "Dice Roller",
-                IconType::Dice,
-                0,
-                true,
-            );
+            spawn_app_tab(parent, &icon_assets, &theme, "Dice Roller", IconType::Dice, 0, true);
             // Character Sheet Tab
-            spawn_app_tab(
-                parent,
-                &icon_assets,
-                &theme,
-                "Character",
-                IconType::Character,
-                1,
-                false,
-            );
+            spawn_app_tab(parent, &icon_assets, &theme, "Character", IconType::Character, 1, false);
             // DnD Info Tab
-            spawn_app_tab(
-                parent,
-                &icon_assets,
-                &theme,
-                "DnD Info",
-                IconType::Info,
-                2,
-                false,
-            );
+            spawn_app_tab(parent, &icon_assets, &theme, "DnD Info", IconType::Info, 2, false);
             // Contributors Tab
-            spawn_app_tab(
-                parent,
-                &icon_assets,
-                &theme,
-                "Contributors",
-                IconType::Character,
-                3,
-                false,
-            );
+            spawn_app_tab(parent, &icon_assets, &theme, "Contributors", IconType::Character, 3, false);
         });
 }
 
@@ -171,12 +139,7 @@ pub fn handle_tab_clicks(
     mut tab_events: MessageReader<TabChangeEvent>,
     mut ui_state: ResMut<UiState>,
     app_tab_query: Query<&AppTabButton>,
-    settings_state: Res<SettingsState>,
 ) {
-    if settings_state.show_modal {
-        return;
-    }
-
     for event in tab_events.read() {
         // Check if this is an app-level tab by looking up the entity
         if let Ok(app_tab) = app_tab_query.get(event.tab_entity) {

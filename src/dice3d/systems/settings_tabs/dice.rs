@@ -28,9 +28,157 @@ pub fn build_dice_tab(
         TextColor(theme.on_surface_variant),
     ));
 
+    // Dice scale sliders
+    parent.spawn(Node {
+        height: Val::Px(10.0),
+        ..default()
+    });
+    for die_type in [
+        DiceType::D4,
+        DiceType::D6,
+        DiceType::D8,
+        DiceType::D10,
+        DiceType::D12,
+        DiceType::D20,
+    ] {
+        let value = dice_scales.scale_for(die_type);
+        spawn_dice_scale_slider(
+            parent,
+            die_type,
+            &format!("{} scale", die_type.name()),
+            value,
+            theme,
+        );
+    }
+
     // ---------------------------------------------------------------------
-    // Global Dice FX visuals
+    // Non-FX option: shake toggle
     // ---------------------------------------------------------------------
+    parent.spawn(Node {
+        height: Val::Px(18.0),
+        ..default()
+    });
+
+    // Manual switch spawn so the SwitchChangeEvent entity can be tagged.
+    let mut sw = MaterialSwitch::new();
+    sw.selected = default_roll_uses_shake;
+    sw.animation_progress = if default_roll_uses_shake { 1.0 } else { 0.0 };
+    let bg_color = sw.track_color(theme);
+    let border_color = sw.track_outline_color(theme);
+    let handle_color = sw.handle_color(theme);
+    let handle_size = sw.handle_size();
+    let has_border = !sw.selected;
+    let justify = if sw.selected {
+        JustifyContent::FlexEnd
+    } else {
+        JustifyContent::FlexStart
+    };
+
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(12.0),
+            ..default()
+        })
+        .with_children(|switch_row| {
+            switch_row
+                .spawn((
+                    sw,
+                    Button,
+                    Interaction::None,
+                    RippleHost::new(),
+                    Node {
+                        width: Val::Px(52.0),
+                        height: Val::Px(32.0),
+                        justify_content: justify,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::horizontal(Val::Px(2.0)),
+                        border: UiRect::all(Val::Px(if has_border { 2.0 } else { 0.0 })),
+                        ..default()
+                    },
+                    BackgroundColor(bg_color),
+                    BorderColor::all(border_color),
+                    BorderRadius::all(Val::Px(16.0)),
+                    DefaultRollUsesShakeSwitch,
+                ))
+                .with_children(|track| {
+                    track.spawn((
+                        SwitchHandle,
+                        Node {
+                            width: Val::Px(handle_size),
+                            height: Val::Px(handle_size),
+                            ..default()
+                        },
+                        BackgroundColor(handle_color),
+                        BorderRadius::all(Val::Px(handle_size / 2.0)),
+                    ));
+                });
+
+            switch_row.spawn((
+                Text::new("Use container shake"),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(theme.on_surface),
+            ));
+        });
+
+    // ---------------------------------------------------------------------
+    // Separator between general dice options and FX-related options
+    // ---------------------------------------------------------------------
+    parent.spawn(Node {
+        height: Val::Px(18.0),
+        ..default()
+    });
+
+    parent.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Px(1.0),
+            ..default()
+        },
+        BackgroundColor(theme.outline_variant.with_alpha(0.35)),
+    ));
+
+    parent.spawn(Node {
+        height: Val::Px(18.0),
+        ..default()
+    });
+
+    // ---------------------------------------------------------------------
+    // Global Dice FX visuals (placed next to Effects)
+    // ---------------------------------------------------------------------
+    parent.spawn((
+        Text::new("Effects visuals"),
+        TextFont {
+            font_size: 18.0,
+            ..default()
+        },
+        TextColor(theme.on_surface_variant),
+    ));
+
+    // Die selection for the effects mapping lives in the Effects area.
+    parent.spawn(Node {
+        height: Val::Px(10.0),
+        ..default()
+    });
+
+    parent
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            ..default()
+        })
+        .with_children(|slot| {
+            let builder = SelectBuilder::new(select_options)
+                .outlined()
+                .label("Effects die")
+                .selected(selected_index)
+                .width(Val::Percent(100.0));
+            slot.spawn_select_with(theme, builder);
+        });
+
     parent
         .spawn(Node {
             flex_direction: FlexDirection::Column,
@@ -130,126 +278,6 @@ pub fn build_dice_tab(
                 240.0,
             );
         });
-
-    // ---------------------------------------------------------------------
-    // Quick roll die select + shake switch
-    // ---------------------------------------------------------------------
-    parent.spawn(Node {
-        height: Val::Px(10.0),
-        ..default()
-    });
-
-    parent
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(12.0),
-            width: Val::Percent(100.0),
-            ..default()
-        })
-        .with_children(|row| {
-            row.spawn(Node {
-                flex_grow: 1.0,
-                min_width: Val::Px(0.0),
-                ..default()
-            })
-            .with_children(|slot| {
-                let builder = SelectBuilder::new(select_options)
-                    .outlined()
-                    .label("Quick roll die")
-                    .selected(selected_index)
-                    .width(Val::Percent(100.0));
-                slot.spawn_select_with(theme, builder);
-            });
-
-            // Manual switch spawn so the SwitchChangeEvent entity can be tagged.
-            let mut sw = MaterialSwitch::new();
-            sw.selected = default_roll_uses_shake;
-            sw.animation_progress = if default_roll_uses_shake { 1.0 } else { 0.0 };
-            let bg_color = sw.track_color(theme);
-            let border_color = sw.track_outline_color(theme);
-            let handle_color = sw.handle_color(theme);
-            let handle_size = sw.handle_size();
-            let has_border = !sw.selected;
-            let justify = if sw.selected {
-                JustifyContent::FlexEnd
-            } else {
-                JustifyContent::FlexStart
-            };
-
-            row.spawn(Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(12.0),
-                ..default()
-            })
-            .with_children(|switch_row| {
-                switch_row
-                    .spawn((
-                        sw,
-                        Button,
-                        Interaction::None,
-                        RippleHost::new(),
-                        Node {
-                            width: Val::Px(52.0),
-                            height: Val::Px(32.0),
-                            justify_content: justify,
-                            align_items: AlignItems::Center,
-                            padding: UiRect::horizontal(Val::Px(2.0)),
-                            border: UiRect::all(Val::Px(if has_border { 2.0 } else { 0.0 })),
-                            ..default()
-                        },
-                        BackgroundColor(bg_color),
-                        BorderColor::all(border_color),
-                        BorderRadius::all(Val::Px(16.0)),
-                        DefaultRollUsesShakeSwitch,
-                    ))
-                    .with_children(|track| {
-                        track.spawn((
-                            SwitchHandle,
-                            Node {
-                                width: Val::Px(handle_size),
-                                height: Val::Px(handle_size),
-                                ..default()
-                            },
-                            BackgroundColor(handle_color),
-                            BorderRadius::all(Val::Px(handle_size / 2.0)),
-                        ));
-                    });
-
-                switch_row.spawn((
-                    Text::new("Use container shake"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface),
-                ));
-            });
-        });
-
-    // Dice scale sliders
-    parent.spawn(Node {
-        height: Val::Px(10.0),
-        ..default()
-    });
-    for die_type in [
-        DiceType::D4,
-        DiceType::D6,
-        DiceType::D8,
-        DiceType::D10,
-        DiceType::D12,
-        DiceType::D20,
-    ] {
-        let value = dice_scales.scale_for(die_type);
-        spawn_dice_scale_slider(
-            parent,
-            die_type,
-            &format!("{} scale", die_type.name()),
-            value,
-            theme,
-        );
-    }
 
     // ---------------------------------------------------------------------
     // Dice Roll Effects (built-in mapping)

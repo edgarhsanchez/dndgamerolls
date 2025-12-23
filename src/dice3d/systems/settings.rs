@@ -585,6 +585,8 @@ fn spawn_settings_modal(
                     Node {
                         width: Val::Percent(100.0),
                         height: Val::Px(TAB_HEIGHT_SECONDARY),
+                        min_height: Val::Px(TAB_HEIGHT_SECONDARY),
+                        max_height: Val::Px(TAB_HEIGHT_SECONDARY),
                         flex_direction: FlexDirection::Row,
                         align_items: AlignItems::Stretch,
                         ..default()
@@ -613,6 +615,8 @@ fn spawn_settings_modal(
                         Button,
                         Node {
                             flex_grow: 1.0,
+                            height: Val::Percent(100.0),
+                            min_height: Val::Px(TAB_HEIGHT_SECONDARY),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             ..default()
@@ -626,6 +630,8 @@ fn spawn_settings_modal(
                         Button,
                         Node {
                             flex_grow: 1.0,
+                            height: Val::Percent(100.0),
+                            min_height: Val::Px(TAB_HEIGHT_SECONDARY),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             ..default()
@@ -639,6 +645,8 @@ fn spawn_settings_modal(
                         Button,
                         Node {
                             flex_grow: 1.0,
+                            height: Val::Percent(100.0),
+                            min_height: Val::Px(TAB_HEIGHT_SECONDARY),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             ..default()
@@ -652,6 +660,8 @@ fn spawn_settings_modal(
                         Button,
                         Node {
                             flex_grow: 1.0,
+                            height: Val::Percent(100.0),
+                            min_height: Val::Px(TAB_HEIGHT_SECONDARY),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             ..default()
@@ -1528,9 +1538,11 @@ pub fn handle_default_roll_uses_shake_switch_change(
 
 /// Handle selection changes in the dice roller settings modal (Quick Rolls die).
 pub fn handle_quick_roll_die_type_select_change(
+    mut commands: Commands,
     mut events: MessageReader<SelectChangeEvent>,
     mut settings_state: ResMut<SettingsState>,
     selects: Query<&MaterialSelect>,
+    modal_query: Query<Entity, With<SettingsModalOverlay>>,
 ) {
     if !(settings_state.show_modal
         && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
@@ -1550,13 +1562,24 @@ pub fn handle_quick_roll_die_type_select_change(
     for event in events.read() {
         // Ignore selects not related to Quick Rolls.
         if let Ok(select) = selects.get(event.entity) {
-            if select.label.as_deref() != Some("Quick roll die") {
+            if select.label.as_deref() != Some("Effects die") {
                 continue;
             }
         }
 
         if let Some(setting) = options.get(event.index).copied() {
+            if settings_state.quick_roll_editing_die == setting {
+                continue;
+            }
+
             settings_state.quick_roll_editing_die = setting;
+
+            // The dice tab contains a per-face effects mapping section whose widgets are built
+            // based on the selected die type. Rebuild the modal so the correct controls show
+            // immediately without requiring OK + reopening.
+            for entity in modal_query.iter() {
+                commands.entity(entity).despawn();
+            }
         }
     }
 }

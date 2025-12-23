@@ -11,6 +11,9 @@ use bevy_material_ui::prelude::*;
 use bevy_rapier3d::prelude::*;
 use rand::Rng;
 
+use bevy::post_process::bloom::Bloom;
+use bevy::render::view::Hdr;
+
 use crate::dice3d::embedded_assets::{BOX_MODEL_SCENE_PATH, CUP_MODEL_SCENE_PATH};
 use crate::dice3d::meshes::create_die_mesh_and_collider;
 use crate::dice3d::throw_control::{
@@ -47,6 +50,12 @@ pub fn setup(
         Camera3d::default(),
         Transform::from_xyz(0.0, camera_height, camera_distance * 0.7)
             .looking_at(Vec3::ZERO, Vec3::Y),
+        // Effects look much more realistic with HDR + bloom (see bevy_hanabi examples).
+        Hdr,
+        Bloom {
+            intensity: 0.35,
+            ..default()
+        },
         SpatialListener::default(),
         MainCamera,
     ));

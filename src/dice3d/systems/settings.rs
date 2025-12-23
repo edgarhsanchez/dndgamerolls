@@ -353,16 +353,8 @@ pub fn load_settings_state_from_db(
             settings_state.editing_shake_config = loaded.shake_config.to_runtime();
             settings_state.last_saved_shake_config = loaded.shake_config.clone();
 
-            settings_state.editing_custom_dice_fx = loaded
-                .custom_dice_fx
-                .clone()
-                .unwrap_or_else(CustomDiceFxSetting::default);
-            settings_state.dice_fx_trigger_value_input_text =
-                settings_state.editing_custom_dice_fx.trigger_value.to_string();
-            settings_state.dice_fx_duration_input_text = format!(
-                "{:.3}",
-                settings_state.editing_custom_dice_fx.duration_seconds.max(0.0)
-            );
+            // Stage custom dice FX + library into editable state.
+            init_custom_dice_fx_editing_from_settings(&mut settings_state);
 
             settings_state.color_input_text.clear();
             settings_state.highlight_input_text.clear();
@@ -383,6 +375,49 @@ pub fn load_settings_state_from_db(
             );
         }
     }
+}
+
+fn init_custom_dice_fx_editing_from_settings(settings_state: &mut SettingsState) {
+    // Start from persisted library.
+    settings_state.editing_custom_dice_fx_library = settings_state.settings.custom_dice_fx_library.clone();
+    if settings_state.editing_custom_dice_fx_library.is_empty() {
+        settings_state
+            .editing_custom_dice_fx_library
+            .push(CustomDiceFxSetting::default());
+    }
+
+    // Choose the active/selected entry.
+    if let Some(active) = settings_state.settings.custom_dice_fx.clone() {
+        let idx = active
+            .source_image_path
+            .as_deref()
+            .and_then(|p| {
+                settings_state
+                    .editing_custom_dice_fx_library
+                    .iter()
+                    .position(|e| e.source_image_path.as_deref() == Some(p))
+            })
+            .or_else(|| {
+                settings_state
+                    .editing_custom_dice_fx_library
+                    .iter()
+                    .position(|e| e == &active)
+            })
+            .unwrap_or_else(|| {
+                settings_state.editing_custom_dice_fx_library.push(active.clone());
+                settings_state.editing_custom_dice_fx_library.len() - 1
+            });
+
+        settings_state.selected_custom_dice_fx_library_index = Some(idx);
+        settings_state.editing_custom_dice_fx = active;
+    } else {
+        settings_state.selected_custom_dice_fx_library_index = Some(0);
+        settings_state.editing_custom_dice_fx = settings_state.editing_custom_dice_fx_library[0].clone();
+    }
+
+    settings_state.dice_fx_trigger_value_input_text = settings_state.editing_custom_dice_fx.trigger_value.to_string();
+    settings_state.dice_fx_duration_input_text =
+        format!("{:.3}", settings_state.editing_custom_dice_fx.duration_seconds.max(0.0));
 }
 
 fn apply_theme_override(settings: &AppSettings, theme: &mut MaterialTheme) {
@@ -904,16 +939,14 @@ pub fn handle_settings_button_click(
 
         settings_state.editing_dice_scales = settings_state.settings.dice_scales.clone();
 
+        settings_state.editing_dice_fx_surface_opacity = settings_state.settings.dice_fx_surface_opacity;
+        settings_state.editing_dice_fx_plume_height_multiplier =
+            settings_state.settings.dice_fx_plume_height_multiplier;
+        settings_state.editing_dice_fx_plume_radius_multiplier =
+            settings_state.settings.dice_fx_plume_radius_multiplier;
+
         // Custom dice FX staging.
-        settings_state.editing_custom_dice_fx = settings_state
-            .settings
-            .custom_dice_fx
-            .clone()
-            .unwrap_or_else(CustomDiceFxSetting::default);
-        settings_state.dice_fx_trigger_value_input_text =
-            settings_state.editing_custom_dice_fx.trigger_value.to_string();
-        settings_state.dice_fx_duration_input_text =
-            format!("{:.3}", settings_state.editing_custom_dice_fx.duration_seconds.max(0.0));
+        init_custom_dice_fx_editing_from_settings(&mut settings_state);
 
         settings_state.selected_dice_fx_curve_point_id = None;
         settings_state.dragging_dice_fx_curve_point_id = None;
@@ -922,6 +955,9 @@ pub fn handle_settings_button_click(
         settings_state.dice_fx_curve_add_mask = true;
         settings_state.dice_fx_curve_add_noise = false;
         settings_state.dice_fx_curve_add_ramp = false;
+        settings_state.dice_fx_curve_add_opacity = false;
+        settings_state.dice_fx_curve_add_plume_height = false;
+        settings_state.dice_fx_curve_add_plume_radius = false;
 
         settings_state.dice_fx_saved_dir_display_text = custom_fx_out_dir(db.as_deref())
             .map(|p| p.to_string_lossy().to_string())
@@ -1068,8 +1104,31 @@ pub fn handle_settings_ok_click(
         // Apply per-die scale overrides.
         settings_state.settings.dice_scales = settings_state.editing_dice_scales.clone();
 
+        // Apply Dice FX visual parameters.
+        settings_state.settings.dice_fx_surface_opacity =
+            settings_state.editing_dice_fx_surface_opacity.clamp(0.0, 1.0);
+        settings_state.settings.dice_fx_plume_height_multiplier =
+            settings_state.editing_dice_fx_plume_height_multiplier.clamp(0.25, 3.0);
+        settings_state.settings.dice_fx_plume_radius_multiplier =
+            settings_state.editing_dice_fx_plume_radius_multiplier.clamp(0.25, 3.0);
+
+        // Apply roll->effect mapping.
+        settings_state.settings.dice_fx_roll_effects = settings_state.editing_dice_fx_roll_effects.clone();
+
         settings_state.settings.default_roll_uses_shake =
             settings_state.default_roll_uses_shake_editing;
+
+        // Persist the currently edited FX back into the selected library slot.
+        if let Some(i) = settings_state.selected_custom_dice_fx_library_index {
+            if i < settings_state.editing_custom_dice_fx_library.len() {
+                settings_state.editing_custom_dice_fx_library[i] =
+                    settings_state.editing_custom_dice_fx.clone();
+            }
+        }
+
+        // Persist library.
+        settings_state.settings.custom_dice_fx_library =
+            settings_state.editing_custom_dice_fx_library.clone();
 
         // Apply custom dice FX settings (store as Some when enabled, None when disabled).
         settings_state.settings.custom_dice_fx = if settings_state.editing_custom_dice_fx.enabled {
@@ -1138,6 +1197,80 @@ pub fn handle_settings_ok_click(
     }
 }
 
+pub fn handle_dice_fx_saved_effect_select_change(
+    mut commands: Commands,
+    mut events: MessageReader<SelectChangeEvent>,
+    mut settings_state: ResMut<SettingsState>,
+    selects: Query<&MaterialSelect>,
+    modal_query: Query<Entity, With<SettingsModalOverlay>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for ev in events.read() {
+        // Filter to our dropdown.
+        if let Ok(select) = selects.get(ev.entity) {
+            if select.label.as_deref() != Some("Saved dice effects") {
+                continue;
+            }
+        }
+
+        let Some(value) = ev.option.value.clone() else {
+            continue;
+        };
+        let Ok(new_idx) = value.parse::<usize>() else {
+            continue;
+        };
+
+        // Save current edits into the previously selected entry so switching doesn't lose changes.
+        if let Some(prev) = settings_state.selected_custom_dice_fx_library_index {
+            if prev < settings_state.editing_custom_dice_fx_library.len() {
+                settings_state.editing_custom_dice_fx_library[prev] =
+                    settings_state.editing_custom_dice_fx.clone();
+            }
+        }
+
+        if new_idx >= settings_state.editing_custom_dice_fx_library.len() {
+            continue;
+        }
+
+        settings_state.selected_custom_dice_fx_library_index = Some(new_idx);
+        settings_state.editing_custom_dice_fx =
+            settings_state.editing_custom_dice_fx_library[new_idx].clone();
+
+        settings_state.dice_fx_trigger_value_input_text =
+            settings_state.editing_custom_dice_fx.trigger_value.to_string();
+        settings_state.dice_fx_duration_input_text =
+            format!("{:.3}", settings_state.editing_custom_dice_fx.duration_seconds.max(0.0));
+
+        // Reset curve editor selection/drag state when switching effects.
+        settings_state.selected_dice_fx_curve_point_id = None;
+        settings_state.dragging_dice_fx_curve_point_id = None;
+        settings_state.dragging_dice_fx_curve_bezier = None;
+
+        // Refresh preview base images from disk for the newly selected effect.
+        settings_state.dice_fx_preview_source = None;
+        settings_state.dice_fx_preview_noise = None;
+        settings_state.dice_fx_preview_mask = None;
+        settings_state.dice_fx_preview_ramp = None;
+        settings_state.dice_fx_preview_last_time_t = -1.0;
+        settings_state.dice_fx_preview_source_path = None;
+        settings_state.dice_fx_preview_noise_path = None;
+        settings_state.dice_fx_preview_mask_path = None;
+        settings_state.dice_fx_preview_ramp_path = None;
+        refresh_dice_fx_preview_handles_from_paths(&mut settings_state, &mut images);
+
+        // Force a modal rebuild so all widgets (selects/text fields) reflect the new effect.
+        for entity in modal_query.iter() {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
 /// Handle per-die scale slider changes in the settings modal.
 pub fn handle_dice_scale_slider_changes(
     mut events: MessageReader<SliderChangeEvent>,
@@ -1163,6 +1296,37 @@ pub fn handle_dice_scale_slider_changes(
         settings_state
             .editing_dice_scales
             .set_scale_for(slider.die_type, value);
+    }
+}
+
+/// Handle Dice FX parameter slider changes in the settings modal.
+pub fn handle_dice_fx_param_slider_changes(
+    mut events: MessageReader<SliderChangeEvent>,
+    slider_query: Query<&DiceFxParamSlider>,
+    mut settings_state: ResMut<SettingsState>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        let Ok(slider) = slider_query.get(event.entity) else {
+            continue;
+        };
+
+        match slider.kind {
+            DiceFxParamKind::SurfaceOpacity => {
+                settings_state.editing_dice_fx_surface_opacity = event.value.clamp(0.0, 1.0);
+            }
+            DiceFxParamKind::PlumeHeight => {
+                settings_state.editing_dice_fx_plume_height_multiplier = event.value.clamp(0.25, 3.0);
+            }
+            DiceFxParamKind::PlumeRadius => {
+                settings_state.editing_dice_fx_plume_radius_multiplier = event.value.clamp(0.25, 3.0);
+            }
+        }
     }
 }
 
@@ -1212,6 +1376,40 @@ pub fn update_dice_scale_ui(
         let v = settings_state
             .editing_dice_scales
             .scale_for(label.die_type);
+        *text = Text::new(format!("{:.2}", v));
+    }
+}
+
+/// Sync Dice FX parameter sliders + value labels from the current editing state.
+pub fn update_dice_fx_param_ui(
+    settings_state: Res<SettingsState>,
+    mut slider_query: Query<(&DiceFxParamSlider, &mut MaterialSlider)>,
+    mut label_query: Query<(&DiceFxParamValueLabel, &mut Text)>,
+) {
+    if !settings_state.is_changed() {
+        return;
+    }
+
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for (slider, mut material_slider) in slider_query.iter_mut() {
+        material_slider.value = match slider.kind {
+            DiceFxParamKind::SurfaceOpacity => settings_state.editing_dice_fx_surface_opacity.clamp(0.0, 1.0),
+            DiceFxParamKind::PlumeHeight => settings_state.editing_dice_fx_plume_height_multiplier.clamp(0.25, 3.0),
+            DiceFxParamKind::PlumeRadius => settings_state.editing_dice_fx_plume_radius_multiplier.clamp(0.25, 3.0),
+        };
+    }
+
+    for (label, mut text) in label_query.iter_mut() {
+        let v = match label.kind {
+            DiceFxParamKind::SurfaceOpacity => settings_state.editing_dice_fx_surface_opacity,
+            DiceFxParamKind::PlumeHeight => settings_state.editing_dice_fx_plume_height_multiplier,
+            DiceFxParamKind::PlumeRadius => settings_state.editing_dice_fx_plume_radius_multiplier,
+        };
         *text = Text::new(format!("{:.2}", v));
     }
 }
@@ -1360,6 +1558,57 @@ pub fn handle_quick_roll_die_type_select_change(
         if let Some(setting) = options.get(event.index).copied() {
             settings_state.quick_roll_editing_die = setting;
         }
+    }
+}
+
+/// Handle selection changes in the dice roller settings modal (Dice Roll Effects per-face mapping).
+pub fn handle_dice_fx_roll_effect_select_change(
+    mut events: MessageReader<SelectChangeEvent>,
+    mut settings_state: ResMut<SettingsState>,
+    selects: Query<&MaterialSelect>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        let Ok(select) = selects.get(event.entity) else {
+            continue;
+        };
+
+        // Only handle our per-face mapping dropdowns.
+        let Some(label) = select.label.as_deref() else {
+            continue;
+        };
+        let Some(value_str) = label.strip_prefix("Effect for ") else {
+            continue;
+        };
+        let Ok(value) = value_str.parse::<u32>() else {
+            continue;
+        };
+
+        let die_type = settings_state.quick_roll_editing_die.to_dice_type();
+
+        let kind = match event.option.value.as_deref() {
+            Some("fire") => crate::dice3d::types::DiceFxEffectKind::Fire,
+            Some("lightning") => crate::dice3d::types::DiceFxEffectKind::Lightning,
+            Some("firework") => crate::dice3d::types::DiceFxEffectKind::Firework,
+            Some("explosion") => crate::dice3d::types::DiceFxEffectKind::Explosion,
+            _ => crate::dice3d::types::DiceFxEffectKind::None,
+        };
+
+        bevy::log::info!(
+            "Dice FX mapping set: die={:?} value={} -> {:?}",
+            die_type,
+            value,
+            kind
+        );
+
+        settings_state
+            .editing_dice_fx_roll_effects
+            .set_effect_for(die_type, value, kind);
     }
 }
 
@@ -1636,11 +1885,13 @@ fn apply_preview_effects(
 }
 
 pub fn handle_dice_fx_upload_image_click(
+    mut commands: Commands,
     mut click_events: MessageReader<ButtonClickEvent>,
     upload_query: Query<(), With<DiceFxUploadImageButton>>,
     mut settings_state: ResMut<SettingsState>,
     db: Option<Res<CharacterDatabase>>,
     mut images: ResMut<Assets<Image>>,
+    modal_query: Query<Entity, With<SettingsModalOverlay>>,
 ) {
     if !(settings_state.show_modal
         && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
@@ -1709,6 +1960,29 @@ pub fn handle_dice_fx_upload_image_click(
                     settings_state.editing_custom_dice_fx.ramp_image_path.clone();
                 settings_state.dice_fx_preview_mask_path =
                     settings_state.editing_custom_dice_fx.mask_image_path.clone();
+
+                // Add/update this effect in the editing library and select it.
+                let fx = settings_state.editing_custom_dice_fx.clone();
+                let idx = fx
+                    .source_image_path
+                    .as_deref()
+                    .and_then(|p| {
+                        settings_state
+                            .editing_custom_dice_fx_library
+                            .iter()
+                            .position(|e| e.source_image_path.as_deref() == Some(p))
+                    })
+                    .unwrap_or_else(|| {
+                        settings_state.editing_custom_dice_fx_library.push(fx.clone());
+                        settings_state.editing_custom_dice_fx_library.len() - 1
+                    });
+                settings_state.editing_custom_dice_fx_library[idx] = fx;
+                settings_state.selected_custom_dice_fx_library_index = Some(idx);
+
+                // Force a rebuild so the Saved effects dropdown includes the new entry.
+                for entity in modal_query.iter() {
+                    commands.entity(entity).despawn();
+                }
             }
             Err(e) => {
                 warn!("Failed to generate custom dice FX textures: {e}");
@@ -3072,6 +3346,9 @@ fn dice_fx_channel_enabled(settings_state: &SettingsState, channel: DiceFxCurveC
         DiceFxCurveChannel::Mask => settings_state.dice_fx_curve_add_mask,
         DiceFxCurveChannel::Noise => settings_state.dice_fx_curve_add_noise,
         DiceFxCurveChannel::Ramp => settings_state.dice_fx_curve_add_ramp,
+        DiceFxCurveChannel::Opacity => settings_state.dice_fx_curve_add_opacity,
+        DiceFxCurveChannel::PlumeHeight => settings_state.dice_fx_curve_add_plume_height,
+        DiceFxCurveChannel::PlumeRadius => settings_state.dice_fx_curve_add_plume_radius,
     }
 }
 
@@ -3080,6 +3357,9 @@ fn dice_fx_curve_points(cfg: &CustomDiceFxSetting, channel: DiceFxCurveChannel) 
         DiceFxCurveChannel::Mask => cfg.curve_points_mask.as_slice(),
         DiceFxCurveChannel::Noise => cfg.curve_points_noise.as_slice(),
         DiceFxCurveChannel::Ramp => cfg.curve_points_ramp.as_slice(),
+        DiceFxCurveChannel::Opacity => cfg.curve_points_opacity.as_slice(),
+        DiceFxCurveChannel::PlumeHeight => cfg.curve_points_plume_height.as_slice(),
+        DiceFxCurveChannel::PlumeRadius => cfg.curve_points_plume_radius.as_slice(),
     }
 }
 
@@ -3091,6 +3371,9 @@ fn dice_fx_curve_points_mut(
         DiceFxCurveChannel::Mask => &mut cfg.curve_points_mask,
         DiceFxCurveChannel::Noise => &mut cfg.curve_points_noise,
         DiceFxCurveChannel::Ramp => &mut cfg.curve_points_ramp,
+        DiceFxCurveChannel::Opacity => &mut cfg.curve_points_opacity,
+        DiceFxCurveChannel::PlumeHeight => &mut cfg.curve_points_plume_height,
+        DiceFxCurveChannel::PlumeRadius => &mut cfg.curve_points_plume_radius,
     }
 }
 
@@ -3103,6 +3386,9 @@ fn find_fx_curve_point_channel(cfg: &CustomDiceFxSetting, id: u64) -> Option<Dic
         DiceFxCurveChannel::Mask,
         DiceFxCurveChannel::Noise,
         DiceFxCurveChannel::Ramp,
+        DiceFxCurveChannel::Opacity,
+        DiceFxCurveChannel::PlumeHeight,
+        DiceFxCurveChannel::PlumeRadius,
     ] {
         if dice_fx_curve_points(cfg, ch).iter().any(|p| p.id == id) {
             return Some(ch);
@@ -3121,6 +3407,9 @@ fn remove_fx_curve_point_by_id(cfg: &mut CustomDiceFxSetting, id: u64) -> bool {
         DiceFxCurveChannel::Mask,
         DiceFxCurveChannel::Noise,
         DiceFxCurveChannel::Ramp,
+        DiceFxCurveChannel::Opacity,
+        DiceFxCurveChannel::PlumeHeight,
+        DiceFxCurveChannel::PlumeRadius,
     ] {
         let pts = dice_fx_curve_points_mut(cfg, ch);
         let before = pts.len();
@@ -3162,12 +3451,18 @@ fn find_nearest_fx_curve_point_id(
         DiceFxCurveChannel::Mask => 0u8,
         DiceFxCurveChannel::Noise => 1u8,
         DiceFxCurveChannel::Ramp => 2u8,
+        DiceFxCurveChannel::Opacity => 3u8,
+        DiceFxCurveChannel::PlumeHeight => 4u8,
+        DiceFxCurveChannel::PlumeRadius => 5u8,
     };
 
     for ch in [
         DiceFxCurveChannel::Mask,
         DiceFxCurveChannel::Noise,
         DiceFxCurveChannel::Ramp,
+        DiceFxCurveChannel::Opacity,
+        DiceFxCurveChannel::PlumeHeight,
+        DiceFxCurveChannel::PlumeRadius,
     ] {
         if !dice_fx_channel_enabled(settings_state, ch) {
             continue;
@@ -3299,17 +3594,39 @@ pub fn handle_dice_fx_curve_chip_clicks(
                 DiceFxCurveChannel::Ramp => {
                     settings_state.dice_fx_curve_add_ramp = !settings_state.dice_fx_curve_add_ramp
                 }
+                DiceFxCurveChannel::Opacity => {
+                    settings_state.dice_fx_curve_add_opacity =
+                        !settings_state.dice_fx_curve_add_opacity
+                }
+                DiceFxCurveChannel::PlumeHeight => {
+                    settings_state.dice_fx_curve_add_plume_height =
+                        !settings_state.dice_fx_curve_add_plume_height
+                }
+                DiceFxCurveChannel::PlumeRadius => {
+                    settings_state.dice_fx_curve_add_plume_radius =
+                        !settings_state.dice_fx_curve_add_plume_radius
+                }
             }
 
             // Never allow all channels disabled.
             if !settings_state.dice_fx_curve_add_mask
                 && !settings_state.dice_fx_curve_add_noise
                 && !settings_state.dice_fx_curve_add_ramp
+                && !settings_state.dice_fx_curve_add_opacity
+                && !settings_state.dice_fx_curve_add_plume_height
+                && !settings_state.dice_fx_curve_add_plume_radius
             {
                 match channel {
                     DiceFxCurveChannel::Mask => settings_state.dice_fx_curve_add_mask = true,
                     DiceFxCurveChannel::Noise => settings_state.dice_fx_curve_add_noise = true,
                     DiceFxCurveChannel::Ramp => settings_state.dice_fx_curve_add_ramp = true,
+                    DiceFxCurveChannel::Opacity => settings_state.dice_fx_curve_add_opacity = true,
+                    DiceFxCurveChannel::PlumeHeight => {
+                        settings_state.dice_fx_curve_add_plume_height = true
+                    }
+                    DiceFxCurveChannel::PlumeRadius => {
+                        settings_state.dice_fx_curve_add_plume_radius = true
+                    }
                 }
             }
 
@@ -3357,6 +3674,9 @@ pub fn sync_dice_fx_curve_chip_ui(
             DiceFxCurveChannel::Mask => settings_state.dice_fx_curve_add_mask,
             DiceFxCurveChannel::Noise => settings_state.dice_fx_curve_add_noise,
             DiceFxCurveChannel::Ramp => settings_state.dice_fx_curve_add_ramp,
+            DiceFxCurveChannel::Opacity => settings_state.dice_fx_curve_add_opacity,
+            DiceFxCurveChannel::PlumeHeight => settings_state.dice_fx_curve_add_plume_height,
+            DiceFxCurveChannel::PlumeRadius => settings_state.dice_fx_curve_add_plume_radius,
         };
     }
 }
@@ -3429,6 +3749,9 @@ pub fn handle_dice_fx_curve_graph_click_to_add_point(
     let add_mask = settings_state.dice_fx_curve_add_mask;
     let add_noise = settings_state.dice_fx_curve_add_noise;
     let add_ramp = settings_state.dice_fx_curve_add_ramp;
+    let add_opacity = settings_state.dice_fx_curve_add_opacity;
+    let add_plume_height = settings_state.dice_fx_curve_add_plume_height;
+    let add_plume_radius = settings_state.dice_fx_curve_add_plume_radius;
 
     match mode {
         ShakeCurveEditMode::Add => {
@@ -3456,6 +3779,26 @@ pub fn handle_dice_fx_curve_graph_click_to_add_point(
                 if add_ramp {
                     new_selected = Some(add_fx_curve_point(cfg, DiceFxCurveChannel::Ramp, t, v));
                 }
+                if add_opacity {
+                    new_selected =
+                        Some(add_fx_curve_point(cfg, DiceFxCurveChannel::Opacity, t, v));
+                }
+                if add_plume_height {
+                    new_selected = Some(add_fx_curve_point(
+                        cfg,
+                        DiceFxCurveChannel::PlumeHeight,
+                        t,
+                        v,
+                    ));
+                }
+                if add_plume_radius {
+                    new_selected = Some(add_fx_curve_point(
+                        cfg,
+                        DiceFxCurveChannel::PlumeRadius,
+                        t,
+                        v,
+                    ));
+                }
                 new_selected
             };
 
@@ -3479,11 +3822,17 @@ pub fn handle_dice_fx_curve_graph_click_to_add_point(
                     DiceFxCurveChannel::Mask,
                     DiceFxCurveChannel::Noise,
                     DiceFxCurveChannel::Ramp,
+                    DiceFxCurveChannel::Opacity,
+                    DiceFxCurveChannel::PlumeHeight,
+                    DiceFxCurveChannel::PlumeRadius,
                 ] {
                     let on = match ch {
                         DiceFxCurveChannel::Mask => add_mask,
                         DiceFxCurveChannel::Noise => add_noise,
                         DiceFxCurveChannel::Ramp => add_ramp,
+                        DiceFxCurveChannel::Opacity => add_opacity,
+                        DiceFxCurveChannel::PlumeHeight => add_plume_height,
+                        DiceFxCurveChannel::PlumeRadius => add_plume_radius,
                     };
                     if !on {
                         continue;
@@ -3849,6 +4198,9 @@ pub fn sync_dice_fx_curve_graph_ui(
         DiceFxCurveChannel::Mask,
         DiceFxCurveChannel::Noise,
         DiceFxCurveChannel::Ramp,
+        DiceFxCurveChannel::Opacity,
+        DiceFxCurveChannel::PlumeHeight,
+        DiceFxCurveChannel::PlumeRadius,
     ] {
         for p in dice_fx_curve_points(cfg, ch) {
             desired_ids.insert(p.id);
@@ -3887,12 +4239,20 @@ pub fn sync_dice_fx_curve_graph_ui(
         let Some(ch) = find_fx_curve_point_channel(cfg, h.id) else {
             continue;
         };
+        if !dice_fx_channel_enabled(&settings_state, ch) {
+            node.display = Display::None;
+            continue;
+        }
+
         node.display = Display::Flex;
 
         let ch_color = match ch {
             DiceFxCurveChannel::Mask => theme.primary,
             DiceFxCurveChannel::Noise => theme.secondary,
             DiceFxCurveChannel::Ramp => theme.tertiary,
+            DiceFxCurveChannel::Opacity => theme.primary,
+            DiceFxCurveChannel::PlumeHeight => theme.secondary,
+            DiceFxCurveChannel::PlumeRadius => theme.tertiary,
         };
         *border = BorderColor::all(ch_color);
 
@@ -3923,6 +4283,7 @@ pub fn sync_dice_fx_curve_graph_ui(
         let mut desired: HashSet<(u64, ShakeCurveBezierHandleKind)> = HashSet::new();
         if let Some(sel_id) = selected {
             if let Some(ch) = find_fx_curve_point_channel(cfg, sel_id) {
+                if dice_fx_channel_enabled(&settings_state, ch) {
                 let pts = dice_fx_curve_points(cfg, ch);
                 if let Some(i) = pts.iter().position(|p| p.id == sel_id) {
                     if i > 0 {
@@ -3936,6 +4297,9 @@ pub fn sync_dice_fx_curve_graph_ui(
                         DiceFxCurveChannel::Mask => theme.primary,
                         DiceFxCurveChannel::Noise => theme.secondary,
                         DiceFxCurveChannel::Ramp => theme.tertiary,
+                        DiceFxCurveChannel::Opacity => theme.primary,
+                        DiceFxCurveChannel::PlumeHeight => theme.secondary,
+                        DiceFxCurveChannel::PlumeRadius => theme.tertiary,
                     };
 
                     for (pid, kind) in desired.iter().copied() {
@@ -3965,6 +4329,7 @@ pub fn sync_dice_fx_curve_graph_ui(
                         });
                     }
                 }
+                }
             }
         }
 
@@ -3976,6 +4341,10 @@ pub fn sync_dice_fx_curve_graph_ui(
 
         if let Some(sel_id) = selected {
             if let Some(ch) = find_fx_curve_point_channel(cfg, sel_id) {
+                if !dice_fx_channel_enabled(&settings_state, ch) {
+                    // Selected point isn't currently being edited/shown.
+                    return;
+                }
                 let pts = dice_fx_curve_points(cfg, ch);
                 if let Some(i) = pts.iter().position(|p| p.id == sel_id) {
                     let p = &pts[i];
@@ -3986,6 +4355,9 @@ pub fn sync_dice_fx_curve_graph_ui(
                         DiceFxCurveChannel::Mask => theme.primary,
                         DiceFxCurveChannel::Noise => theme.secondary,
                         DiceFxCurveChannel::Ramp => theme.tertiary,
+                        DiceFxCurveChannel::Opacity => theme.primary,
+                        DiceFxCurveChannel::PlumeHeight => theme.secondary,
+                        DiceFxCurveChannel::PlumeRadius => theme.tertiary,
                     };
 
                     let default_in = prev.map(|a| {
@@ -4032,6 +4404,11 @@ pub fn sync_dice_fx_curve_graph_ui(
 
     // Update dot positions.
     for (dot, mut node) in dots.iter_mut() {
+        if !dice_fx_channel_enabled(&settings_state, dot.channel) {
+            node.display = Display::None;
+            continue;
+        }
+
         node.display = Display::Flex;
         node.width = Val::Px(4.0);
         node.height = Val::Px(4.0);

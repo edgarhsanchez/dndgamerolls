@@ -622,6 +622,13 @@ pub struct ContainerShakeAnimation {
 // Custom Dice FX (Settings Modal)
 // ============================================================================
 
+/// Dropdown for selecting the built-in effect for a given die face value.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct DiceFxRollEffectSelect {
+    pub die_type: DiceType,
+    pub value: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DiceFxPreviewImageKind {
     Source,
@@ -633,6 +640,10 @@ pub enum DiceFxPreviewImageKind {
 /// Marker for the Upload Image button in the Dice FX settings tab.
 #[derive(Component)]
 pub struct DiceFxUploadImageButton;
+
+/// Marker for the dropdown that selects a saved Dice FX effect.
+#[derive(Component)]
+pub struct DiceFxSavedEffectSelect;
 
 /// Marker for the Material slider controlling preview time in the Dice FX tab.
 #[derive(Component)]
@@ -661,6 +672,9 @@ pub enum DiceFxCurveChannel {
     Mask,
     Noise,
     Ramp,
+    Opacity,
+    PlumeHeight,
+    PlumeRadius,
 }
 
 /// Marker for the Dice FX curve graph container.

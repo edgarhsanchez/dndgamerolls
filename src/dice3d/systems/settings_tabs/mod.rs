@@ -65,7 +65,10 @@ pub fn spawn_scrollable_tab_content(
                             left: Val::Px(2.0),
                             right: Val::Px(18.0),
                             top: Val::Px(2.0),
-                            bottom: Val::Px(2.0),
+                            // Give the bottom of long tabs room so final controls
+                            // (like the Dice FX curve editor graph) aren't hidden
+                            // behind the modal button row.
+                            bottom: Val::Px(72.0),
                         },
                         ..default()
                     })

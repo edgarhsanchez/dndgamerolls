@@ -68,9 +68,7 @@ bevy_rapier3d = { version = "0.32", features = ["simd-stable"] }
 bevy_mesh = "0.17.3"
 
 # GPU particle effects
-# This workspace uses a local checkout of bevy_hanabi pinned to tag v0.17.0.
-# Verify with: `git -C ../bevy_hanabi describe --tags --exact-match`.
-bevy_hanabi = { path = "../bevy_hanabi", default-features = false, features = ["3d"] }
+bevy_hanabi = { version = "0.17.0", default-features = false, features = ["3d"] }
 
 # Material Design 3 UI Components
 bevy_material_ui = { git = "https://github.com/edgarhsanchez/bevy_material_ui.git", tag = "v0.2.1", features = ["clipboard"] }

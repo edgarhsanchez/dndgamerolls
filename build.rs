@@ -5,8 +5,8 @@ fn main() {
     // Check required assets
     check_assets();
 
-    // Ensure our local bevy_hanabi checkout stays pinned to v0.17.0
-    enforce_bevy_hanabi_v017_tag();
+    // Ensure our bevy_hanabi dependency stays pinned to v0.17.0
+    enforce_bevy_hanabi_v017_locked();
 
     // Only compile resources for Windows builds
     // Use CARGO_CFG_TARGET_OS to check the target (not host) platform
@@ -17,88 +17,77 @@ fn main() {
     }
 }
 
-fn enforce_bevy_hanabi_v017_tag() {
+fn enforce_bevy_hanabi_v017_locked() {
     use std::path::Path;
-    use std::process::Command;
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let hanabi_dir = Path::new(&manifest_dir).join("..").join("bevy_hanabi");
+    let lock_path = Path::new(&manifest_dir).join("Cargo.lock");
 
-    // If the folder doesn't exist, cargo will fail anyway, but keep a crisp error.
-    if !hanabi_dir.exists() {
-        panic!(
-            "Expected local bevy_hanabi at {:?} (path dependency), but it does not exist",
-            hanabi_dir
-        );
+    // Re-run build script if dependency resolution changes.
+    println!("cargo:rerun-if-changed={}", lock_path.display());
+    println!("cargo:rerun-if-changed=Cargo.toml");
+
+    let lock = std::fs::read_to_string(&lock_path)
+        .unwrap_or_else(|e| panic!("Failed to read {:?}: {e}", lock_path));
+
+    // Minimal Cargo.lock parser: find [[package]] blocks and locate bevy_hanabi.
+    let mut in_pkg = false;
+    let mut pkg_name: Option<String> = None;
+    let mut pkg_version: Option<String> = None;
+
+    for line in lock.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[[package]]" {
+            // Finish previous block.
+            if let (Some(name), Some(version)) = (&pkg_name, &pkg_version) {
+                if name == "bevy_hanabi" {
+                    if version != "0.17.0" {
+                        panic!(
+                            "bevy_hanabi resolved to version {}, expected 0.17.0 (check Cargo.toml/Cargo.lock)",
+                            version
+                        );
+                    }
+                    return;
+                }
+            }
+
+            in_pkg = true;
+            pkg_name = None;
+            pkg_version = None;
+            continue;
+        }
+
+        if !in_pkg {
+            continue;
+        }
+
+        if let Some(rest) = trimmed.strip_prefix("name = ") {
+            pkg_name = Some(rest.trim_matches('"').to_string());
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("version = ") {
+            pkg_version = Some(rest.trim_matches('"').to_string());
+            continue;
+        }
     }
 
-    // Re-run build script if the hanabi version/tag changes.
-    println!(
-        "cargo:rerun-if-changed={}",
-        hanabi_dir.join("Cargo.toml").display()
+    // Final block (EOF).
+    if let (Some(name), Some(version)) = (&pkg_name, &pkg_version) {
+        if name == "bevy_hanabi" {
+            if version != "0.17.0" {
+                panic!(
+                    "bevy_hanabi resolved to version {}, expected 0.17.0 (check Cargo.toml/Cargo.lock)",
+                    version
+                );
+            }
+            return;
+        }
+    }
+
+    panic!(
+        "bevy_hanabi not found in {:?}. Run `cargo update -p bevy_hanabi --precise 0.17.0`",
+        lock_path
     );
-    println!(
-        "cargo:rerun-if-changed={}",
-        hanabi_dir.join(".git").join("HEAD").display()
-    );
-
-    // 1) Always verify the crate declares version 0.17.0.
-    // (This works even when git metadata isn't available.)
-    let cargo_toml_path = hanabi_dir.join("Cargo.toml");
-    let cargo_toml = std::fs::read_to_string(&cargo_toml_path).unwrap_or_else(|e| {
-        panic!("Failed to read {:?}: {e}", cargo_toml_path);
-    });
-    let declared_version_ok = cargo_toml
-        .lines()
-        .any(|l| l.trim() == "version = \"0.17.0\"");
-    if !declared_version_ok {
-        panic!(
-            "bevy_hanabi at {:?} is not version 0.17.0 (expected v0.17.0 tag checkout)",
-            hanabi_dir
-        );
-    }
-
-    // 2) If git metadata exists and git is available, enforce exact tag match.
-    // This ensures we don't accidentally drift to main while still declaring 0.17.0.
-    let git_dir = hanabi_dir.join(".git");
-    if !git_dir.exists() {
-        // Vendored / exported source without git metadata; can't verify tag.
-        println!(
-            "cargo:warning=bevy_hanabi git metadata not found at {:?}; only verified Cargo.toml version 0.17.0",
-            git_dir
-        );
-        return;
-    }
-
-    let output = Command::new("git")
-        .args(["describe", "--tags", "--exact-match"])
-        .current_dir(&hanabi_dir)
-        .output();
-
-    let Ok(output) = output else {
-        println!(
-            "cargo:warning=git not available; only verified bevy_hanabi Cargo.toml version 0.17.0"
-        );
-        return;
-    };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!(
-            "bevy_hanabi checkout at {:?} is not pinned to an exact tag. Expected v0.17.0. git describe failed: {}",
-            hanabi_dir,
-            stderr.trim()
-        );
-    }
-
-    let tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if tag != "v0.17.0" {
-        panic!(
-            "bevy_hanabi checkout at {:?} is pinned to tag '{}', expected 'v0.17.0'. Run: git -C ../bevy_hanabi checkout v0.17.0",
-            hanabi_dir,
-            tag
-        );
-    }
 }
 
 fn check_assets() {

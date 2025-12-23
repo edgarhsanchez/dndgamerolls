@@ -16,9 +16,9 @@ use bevy_rapier3d::rapier::prelude::SharedShape;
 use std::collections::HashSet;
 
 use crate::dice3d::types::{
-    DiceBox, DiceBoxWall, DiceContainerColliderGuide, DiceContainerCrystalMaterialApplied,
-    DiceContainerGeneratedCollider, DiceContainerMaterials, DiceContainerProceduralCollider,
-    DiceContainerCentered, DiceContainerVisualRoot, DiceContainerVoxelCollider,
+    DiceBox, DiceBoxWall, DiceContainerCentered, DiceContainerColliderGuide,
+    DiceContainerCrystalMaterialApplied, DiceContainerGeneratedCollider, DiceContainerMaterials,
+    DiceContainerProceduralCollider, DiceContainerVisualRoot, DiceContainerVoxelCollider,
 };
 
 fn abs_vec3(v: Vec3) -> Vec3 {

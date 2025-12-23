@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
 
+use crate::dice3d::systems::dice_fx::tick_delayed_fx_bursts;
 use crate::dice3d::systems::dice_fx::{
     apply_dice_fx_from_roll_complete, clear_dice_fx_on_roll_start, init_dice_fx_sounds,
     sync_dice_fx_visuals, tick_delayed_sfx,
 };
-use crate::dice3d::systems::dice_fx::tick_delayed_fx_bursts;
 
 #[derive(Resource, Clone)]
 pub struct DiceFxEffectAssets {
@@ -51,9 +51,7 @@ fn create_fire_effect() -> EffectAsset {
     // Bias heavily toward the center so the hot core reads clearly.
     let core_t = core.clone() * core.clone();
 
-    let base_size = writer
-        .lit(0.06)
-        .mix(writer.lit(0.15), core_t.clone());
+    let base_size = writer.lit(0.06).mix(writer.lit(0.15), core_t.clone());
     let init_base_size = SetAttributeModifier::new(Attribute::F32_0, base_size.expr());
 
     // Base color is LDR (packed). We use it to differentiate center/edge, then
@@ -61,13 +59,9 @@ fn create_fire_effect() -> EffectAsset {
     let base_edge = writer.lit(Vec3::new(1.0, 0.18, 0.06));
     let base_core = writer.lit(Vec3::new(1.0, 1.0, 1.0));
     let hue = base_edge.mix(base_core, core_t.clone());
-    let intensity = writer
-        .lit(0.35)
-        .mix(writer.lit(1.0), core_t.clone());
+    let intensity = writer.lit(0.35).mix(writer.lit(1.0), core_t.clone());
     let base_rgb = hue * intensity;
-    let base_col = base_rgb
-        .vec4_xyz_w(writer.lit(1.0))
-        .pack4x8unorm();
+    let base_col = base_rgb.vec4_xyz_w(writer.lit(1.0)).pack4x8unorm();
     let init_color = SetAttributeModifier::new(Attribute::COLOR, base_col.expr());
 
     // Upward-biased velocity with reduced lateral spread.
@@ -78,10 +72,13 @@ fn create_fire_effect() -> EffectAsset {
     let init_vel = SetAttributeModifier::new(Attribute::VELOCITY, v);
 
     let init_age = SetAttributeModifier::new(Attribute::AGE, writer.lit(0.0).expr());
-    let init_lifetime =
-        SetAttributeModifier::new(Attribute::LIFETIME, (writer.lit(1.6) * writer.prop(p_lifetime_mul)).expr());
+    let init_lifetime = SetAttributeModifier::new(
+        Attribute::LIFETIME,
+        (writer.lit(1.6) * writer.prop(p_lifetime_mul)).expr(),
+    );
 
-    let update_accel = AccelModifier::new((writer.lit(Vec3::Y * 6.5) * writer.prop(p_accel_mul)).expr());
+    let update_accel =
+        AccelModifier::new((writer.lit(Vec3::Y * 6.5) * writer.prop(p_accel_mul)).expr());
     let update_drag = LinearDragModifier::new((writer.lit(2.0) * writer.prop(p_drag_mul)).expr());
 
     // Use an HDR color/alpha gradient (as recommended by Hanabi demos) so fire
@@ -169,8 +166,10 @@ fn create_lightning_effect() -> EffectAsset {
     };
 
     let init_age = SetAttributeModifier::new(Attribute::AGE, writer.lit(0.0).expr());
-    let init_lifetime =
-        SetAttributeModifier::new(Attribute::LIFETIME, (writer.lit(0.34) * writer.prop(p_lifetime_mul)).expr());
+    let init_lifetime = SetAttributeModifier::new(
+        Attribute::LIFETIME,
+        (writer.lit(0.34) * writer.prop(p_lifetime_mul)).expr(),
+    );
 
     // Keep streaks energetic; too much drag turns it into floating sparks.
     let update_drag = LinearDragModifier::new((writer.lit(2.2) * writer.prop(p_drag_mul)).expr());
@@ -247,7 +246,8 @@ fn create_firework_effect() -> EffectAsset {
     };
 
     // Random bright color per particle (packed u32).
-    let rgb = writer.rand(VectorType::VEC3F) * writer.lit(Vec3::splat(0.6)) + writer.lit(Vec3::splat(0.4));
+    let rgb = writer.rand(VectorType::VEC3F) * writer.lit(Vec3::splat(0.6))
+        + writer.lit(Vec3::splat(0.4));
     let col = rgb.vec4_xyz_w(writer.lit(1.0)).pack4x8unorm();
     let init_color = SetAttributeModifier::new(Attribute::COLOR, col.expr());
 
@@ -445,8 +445,10 @@ fn create_custom_effect() -> EffectAsset {
     };
 
     let init_age = SetAttributeModifier::new(Attribute::AGE, writer.lit(0.0).expr());
-    let init_lifetime =
-        SetAttributeModifier::new(Attribute::LIFETIME, (writer.lit(0.9) * writer.prop(p_lifetime_mul)).expr());
+    let init_lifetime = SetAttributeModifier::new(
+        Attribute::LIFETIME,
+        (writer.lit(0.9) * writer.prop(p_lifetime_mul)).expr(),
+    );
 
     let update_drag = LinearDragModifier::new((writer.lit(2.0) * writer.prop(p_drag_mul)).expr());
     let _ = p_accel_mul;
@@ -560,10 +562,7 @@ impl Plugin for DiceFxPlugin {
                 Update,
                 sync_dice_fx_visuals.after(apply_dice_fx_from_roll_complete),
             )
-            .add_systems(
-                Update,
-                tick_delayed_fx_bursts.after(sync_dice_fx_visuals),
-            )
+            .add_systems(Update, tick_delayed_fx_bursts.after(sync_dice_fx_visuals))
             .add_systems(Update, tick_delayed_sfx.after(sync_dice_fx_visuals));
     }
 }

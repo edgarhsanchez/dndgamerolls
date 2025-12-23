@@ -106,8 +106,8 @@ fn check_assets() {
 
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let path = std::path::Path::new(&manifest_dir).join("3d/box.glb");
-    
-    // If the file doesn't exist, we might be in a clean checkout or something, 
+
+    // If the file doesn't exist, we might be in a clean checkout or something,
     // but for this project structure it should be there.
     // We'll panic if it's missing because the app depends on it.
     let (doc, buffers, _images) = gltf::import(&path)
@@ -132,8 +132,13 @@ fn check_assets() {
     // The spec says the authored frame range is 1..=10. In glTF, key times are seconds,
     // so we infer a likely FPS from common values.
     for anim in required_animations {
-        let (min_t, max_t) = animation_time_range_seconds(&doc, &buffers, anim)
-            .unwrap_or_else(|| panic!("Animation '{}' exists but has no input keyframe times", anim));
+        let (min_t, max_t) =
+            animation_time_range_seconds(&doc, &buffers, anim).unwrap_or_else(|| {
+                panic!(
+                    "Animation '{}' exists but has no input keyframe times",
+                    anim
+                )
+            });
 
         // Single-key clips are OK (no time range).
         let duration = (max_t - min_t).max(0.0);
@@ -199,7 +204,8 @@ fn animation_time_range_seconds(
                 if off + 4 > data.len() {
                     break;
                 }
-                let t = f32::from_le_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
+                let t =
+                    f32::from_le_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
                 min_time = min_time.min(t);
                 max_time = max_time.max(t);
             }

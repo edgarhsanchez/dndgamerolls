@@ -717,12 +717,14 @@ mod tests {
 
         let db = CharacterDatabase::open_in_memory().unwrap();
 
-        let mut settings = AppSettings::default();
-        settings.background_color = ColorSetting {
-            a: 0.75,
-            r: 0.12,
-            g: 0.34,
-            b: 0.56,
+        let settings = AppSettings {
+            background_color: ColorSetting {
+                a: 0.75,
+                r: 0.12,
+                g: 0.34,
+                b: 0.56,
+            },
+            ..Default::default()
         };
 
         db.set_setting("app_settings", settings.clone()).unwrap();
@@ -758,12 +760,14 @@ mod tests {
         // First run: save.
         {
             let db = CharacterDatabase::open_at(path.clone()).unwrap();
-            let mut settings = AppSettings::default();
-            settings.background_color = ColorSetting {
-                a: 0.5,
-                r: 0.1,
-                g: 0.2,
-                b: 0.3,
+            let settings = AppSettings {
+                background_color: ColorSetting {
+                    a: 0.5,
+                    r: 0.1,
+                    g: 0.2,
+                    b: 0.3,
+                },
+                ..Default::default()
             };
             db.set_setting("app_settings", settings.clone()).unwrap();
         }

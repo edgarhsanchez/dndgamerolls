@@ -252,9 +252,8 @@ pub fn handle_command_input(
                 params.dice_results.results.clear();
 
                 if params.lid_ctrl.pending_roll.is_none() {
-                    params.lid_ctrl.pending_roll = Some(PendingRollRequest::StartNewRoll {
-                        config: new_config,
-                    });
+                    params.lid_ctrl.pending_roll =
+                        Some(PendingRollRequest::StartNewRoll { config: new_config });
                 }
             } else {
                 // Remove old dice
@@ -271,7 +270,8 @@ pub fn handle_command_input(
                 // Spawn new dice
                 let mut spawned: Vec<Entity> = Vec::new();
                 for (i, die_type) in params.dice_config.dice_to_roll.iter().enumerate() {
-                    let position = calculate_dice_position(i, params.dice_config.dice_to_roll.len());
+                    let position =
+                        calculate_dice_position(i, params.dice_config.dice_to_roll.len());
                     let die_scale = params
                         .settings_state
                         .settings
@@ -354,9 +354,8 @@ pub fn handle_command_history_item_clicks(
                 params.dice_results.results.clear();
 
                 if params.lid_ctrl.pending_roll.is_none() {
-                    params.lid_ctrl.pending_roll = Some(PendingRollRequest::StartNewRoll {
-                        config: new_config,
-                    });
+                    params.lid_ctrl.pending_roll =
+                        Some(PendingRollRequest::StartNewRoll { config: new_config });
                 }
                 continue;
             }
@@ -578,9 +577,7 @@ pub fn handle_quick_roll_clicks(
                 #[cfg(debug_assertions)]
                 info!(
                     "Queued pending_roll: QuickRollSingleDie(die={:?}, mod={}, name={})",
-                    die_type,
-                    modifier,
-                    modifier_name
+                    die_type, modifier, modifier_name
                 );
             }
             continue;

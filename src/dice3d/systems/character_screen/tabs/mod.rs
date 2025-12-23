@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
-use crate::dice3d::types::*;
 use super::*;
+use crate::dice3d::types::*;
 
 // Submodules for each tab
 mod attributes;
@@ -78,7 +78,7 @@ pub fn setup_character_screen(
                 &theme,
             );
         });
-    
+
     // Initialize selected tab resource
     commands.insert_resource(SelectedCharacterSheetTab::default());
 }
@@ -198,14 +198,12 @@ fn spawn_tab_content_area(
     theme: &MaterialTheme,
 ) {
     parent
-        .spawn((
-            Node {
-                flex_grow: 1.0,
-                flex_direction: FlexDirection::Column,
-                overflow: Overflow::clip_y(),
-                ..default()
-            },
-        ))
+        .spawn((Node {
+            flex_grow: 1.0,
+            flex_direction: FlexDirection::Column,
+            overflow: Overflow::clip_y(),
+            ..default()
+        },))
         .with_children(|container| {
             // Scrollable inner content
             container
@@ -345,7 +343,9 @@ fn spawn_all_tab_contents(
                 width: Val::Percent(100.0),
                 ..default()
             },
-            CharacterSheetTabContent { tab: CharacterSheetTab::BasicInfo },
+            CharacterSheetTabContent {
+                tab: CharacterSheetTab::BasicInfo,
+            },
         ))
         .with_children(|content| {
             spawn_basic_info_content(
@@ -368,7 +368,9 @@ fn spawn_all_tab_contents(
                 display: Display::None, // Hidden by default
                 ..default()
             },
-            CharacterSheetTabContent { tab: CharacterSheetTab::Attributes },
+            CharacterSheetTabContent {
+                tab: CharacterSheetTab::Attributes,
+            },
         ))
         .with_children(|content| {
             spawn_attributes_content(
@@ -391,7 +393,9 @@ fn spawn_all_tab_contents(
                 display: Display::None,
                 ..default()
             },
-            CharacterSheetTabContent { tab: CharacterSheetTab::Combat },
+            CharacterSheetTabContent {
+                tab: CharacterSheetTab::Combat,
+            },
         ))
         .with_children(|content| {
             spawn_combat_content(
@@ -414,7 +418,9 @@ fn spawn_all_tab_contents(
                 display: Display::None,
                 ..default()
             },
-            CharacterSheetTabContent { tab: CharacterSheetTab::SavingThrows },
+            CharacterSheetTabContent {
+                tab: CharacterSheetTab::SavingThrows,
+            },
         ))
         .with_children(|content| {
             spawn_saving_throws_content(
@@ -437,7 +443,9 @@ fn spawn_all_tab_contents(
                 display: Display::None,
                 ..default()
             },
-            CharacterSheetTabContent { tab: CharacterSheetTab::Skills },
+            CharacterSheetTabContent {
+                tab: CharacterSheetTab::Skills,
+            },
         ))
         .with_children(|content| {
             spawn_skills_content(

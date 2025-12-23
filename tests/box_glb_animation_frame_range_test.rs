@@ -38,7 +38,8 @@ fn animation_time_range_seconds(
                 if off + 4 > data.len() {
                     break;
                 }
-                let t = f32::from_le_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
+                let t =
+                    f32::from_le_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
                 min_time = min_time.min(t);
                 max_time = max_time.max(t);
             }

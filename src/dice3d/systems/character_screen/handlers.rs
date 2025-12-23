@@ -816,7 +816,11 @@ pub fn handle_roll_attribute_click(
                 .character_sheet_default_die
                 .to_dice_type();
 
-            let die_scale = params.settings_state.settings.dice_scales.scale_for(die_type);
+            let die_scale = params
+                .settings_state
+                .settings
+                .dice_scales
+                .scale_for(die_type);
 
             let use_shake = params.settings_state.settings.default_roll_uses_shake;
 
@@ -886,7 +890,11 @@ pub fn handle_roll_skill_click(
             .character_sheet_default_die
             .to_dice_type();
 
-        let die_scale = params.settings_state.settings.dice_scales.scale_for(die_type);
+        let die_scale = params
+            .settings_state
+            .settings
+            .dice_scales
+            .scale_for(die_type);
 
         let use_shake = params.settings_state.settings.default_roll_uses_shake;
 
@@ -966,8 +974,7 @@ fn start_character_sheet_roll(
             #[cfg(debug_assertions)]
             info!(
                 "Queued pending_roll: StartNewRoll(die={:?}, mod={}) (character sheet)",
-                die_type,
-                modifier
+                die_type, modifier
             );
         }
         return;

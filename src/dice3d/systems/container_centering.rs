@@ -49,7 +49,11 @@ fn collect_mesh_descendants(
     }
 }
 
-fn world_min_max_for_local_min_max(local_min: Vec3, local_max: Vec3, world_from_local: Mat4) -> (Vec3, Vec3) {
+fn world_min_max_for_local_min_max(
+    local_min: Vec3,
+    local_max: Vec3,
+    world_from_local: Mat4,
+) -> (Vec3, Vec3) {
     let corners = [
         Vec3::new(local_min.x, local_min.y, local_min.z),
         Vec3::new(local_min.x, local_min.y, local_max.z),
@@ -82,7 +86,10 @@ pub fn center_container_models_in_view(
     container_root_query: Query<(Entity, &GlobalTransform), With<DiceBox>>,
     mut visual_roots: Query<
         (Entity, &mut Transform),
-        (With<DiceContainerVisualRoot>, Without<DiceContainerCentered>),
+        (
+            With<DiceContainerVisualRoot>,
+            Without<DiceContainerCentered>,
+        ),
     >,
     children_query: Query<&Children>,
     name_query: Query<&Name>,
@@ -154,8 +161,11 @@ pub fn center_container_models_in_view(
 
             let (world_scale, world_rotation, world_translation) =
                 mesh_global.to_scale_rotation_translation();
-            let world_from_local =
-                Mat4::from_scale_rotation_translation(world_scale, world_rotation, world_translation);
+            let world_from_local = Mat4::from_scale_rotation_translation(
+                world_scale,
+                world_rotation,
+                world_translation,
+            );
             let (mesh_min, mesh_max) =
                 world_min_max_for_local_min_max(local_min, local_max, world_from_local);
 

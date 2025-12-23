@@ -156,12 +156,8 @@ pub fn generate_custom_fx_textures(
     let src = dyn_img.to_rgba8();
 
     // UI preview: keep a modest 256x256 copy so large user images don't bloat GPU memory.
-    let preview_img = image::imageops::resize(
-        &src,
-        256,
-        256,
-        image::imageops::FilterType::Triangle,
-    );
+    let preview_img =
+        image::imageops::resize(&src, 256, 256, image::imageops::FilterType::Triangle);
     let source_image = bevy_image_from_rgba8(256, 256, preview_img.into_raw());
 
     // Copy source into app data as a canonical PNG so we don't depend on the original file.
@@ -173,9 +169,7 @@ pub fn generate_custom_fx_textures(
     // Seed noise from source pixels (deterministic for this image).
     let mut seed: u32 = 0x1234_5678;
     for p in src.pixels().take(2048) {
-        seed = seed
-            .wrapping_mul(1664525)
-            .wrapping_add(1013904223)
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223)
             ^ (p.0[0] as u32)
             ^ ((p.0[1] as u32) << 8)
             ^ ((p.0[2] as u32) << 16);
@@ -201,12 +195,7 @@ pub fn generate_custom_fx_textures(
     }
 
     // Mask: derived from source luminance (resized to 256x256)
-    let mask_img = image::imageops::resize(
-        &src,
-        256,
-        256,
-        image::imageops::FilterType::Triangle,
-    );
+    let mask_img = image::imageops::resize(&src, 256, 256, image::imageops::FilterType::Triangle);
     let mut mask_rgba = vec![0u8; (256 * 256 * 4) as usize];
     for (i, p) in mask_img.pixels().enumerate() {
         let r = p.0[0] as f32 / 255.0;

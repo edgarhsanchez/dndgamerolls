@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
+use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
 
 use crate::dice3d::dice_fx::{DiceFxEffectAssets, DiceFxRollingTracker};
@@ -100,7 +100,8 @@ pub fn tick_delayed_fx_bursts(
 }
 
 fn effective_roll_effects_setting(settings_state: &SettingsState) -> &DiceFxRollEffectsSetting {
-    if settings_state.show_modal && settings_state.modal_kind == ActiveModalKind::DiceRollerSettings {
+    if settings_state.show_modal && settings_state.modal_kind == ActiveModalKind::DiceRollerSettings
+    {
         &settings_state.editing_dice_fx_roll_effects
     } else {
         &settings_state.settings.dice_fx_roll_effects
@@ -108,7 +109,8 @@ fn effective_roll_effects_setting(settings_state: &SettingsState) -> &DiceFxRoll
 }
 
 fn effective_dice_fx_surface_opacity(settings_state: &SettingsState) -> f32 {
-    if settings_state.show_modal && settings_state.modal_kind == ActiveModalKind::DiceRollerSettings {
+    if settings_state.show_modal && settings_state.modal_kind == ActiveModalKind::DiceRollerSettings
+    {
         settings_state.editing_dice_fx_surface_opacity
     } else {
         settings_state.settings.dice_fx_surface_opacity
@@ -117,7 +119,8 @@ fn effective_dice_fx_surface_opacity(settings_state: &SettingsState) -> f32 {
 }
 
 fn effective_dice_fx_plume_height_multiplier(settings_state: &SettingsState) -> f32 {
-    if settings_state.show_modal && settings_state.modal_kind == ActiveModalKind::DiceRollerSettings {
+    if settings_state.show_modal && settings_state.modal_kind == ActiveModalKind::DiceRollerSettings
+    {
         settings_state.editing_dice_fx_plume_height_multiplier
     } else {
         settings_state.settings.dice_fx_plume_height_multiplier
@@ -126,7 +129,8 @@ fn effective_dice_fx_plume_height_multiplier(settings_state: &SettingsState) -> 
 }
 
 fn effective_dice_fx_plume_radius_multiplier(settings_state: &SettingsState) -> f32 {
-    if settings_state.show_modal && settings_state.modal_kind == ActiveModalKind::DiceRollerSettings {
+    if settings_state.show_modal && settings_state.modal_kind == ActiveModalKind::DiceRollerSettings
+    {
         settings_state.editing_dice_fx_plume_radius_multiplier
     } else {
         settings_state.settings.dice_fx_plume_radius_multiplier
@@ -224,7 +228,9 @@ pub fn apply_dice_fx_from_roll_complete(
                     effect
                 );
             }
-            commands.entity(r.entity).insert(DieLastRoll { value: r.value });
+            commands
+                .entity(r.entity)
+                .insert(DieLastRoll { value: r.value });
             commands.entity(r.entity).insert(DiceFxState { effect });
         }
 
@@ -335,9 +341,12 @@ pub fn sync_dice_fx_visuals(
                 let transform = Transform::from_translation(Vec3::ZERO)
                     .with_scale(Vec3::new(radius, height, radius));
 
-                let noise = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_NOISE_PATH);
-                let ramp = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_RAMP_PATH);
-                let mask = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_MASK_PATH);
+                let noise =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_NOISE_PATH);
+                let ramp =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_RAMP_PATH);
+                let mask =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_MASK_PATH);
 
                 commands.entity(die_entity).with_children(|parent| {
                     parent.spawn((
@@ -357,9 +366,12 @@ pub fn sync_dice_fx_visuals(
                 let r = 1.05 * die_scale;
                 let visible = Visibility::Visible;
 
-                let noise = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_ELECTRIC_NOISE_PATH);
-                let ramp = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_ELECTRIC_RAMP_PATH);
-                let mask = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_ELECTRIC_MASK_PATH);
+                let noise =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_ELECTRIC_NOISE_PATH);
+                let ramp =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_ELECTRIC_RAMP_PATH);
+                let mask =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_ELECTRIC_MASK_PATH);
 
                 // Spawn multiple rotated instances to get "Faraday cage"-like
                 // arcs in several planes instead of a single ring.
@@ -380,7 +392,7 @@ pub fn sync_dice_fx_visuals(
 
                         parent.spawn((
                             ParticleEffect::new(fx_effects.lightning.clone()),
-                            spawner.clone(),
+                            spawner,
                             mat.clone(),
                             EffectProperties::default(),
                             transform,
@@ -409,9 +421,12 @@ pub fn sync_dice_fx_visuals(
                 // Three staggered bursts with varied size and sound.
 
                 // Firework needs a strong opacity mask; the "fire" set works better here.
-                let noise = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_NOISE_PATH);
-                let ramp = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_RAMP_PATH);
-                let mask = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_MASK_PATH);
+                let noise =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_NOISE_PATH);
+                let ramp =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_RAMP_PATH);
+                let mask =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_MASK_PATH);
 
                 let seed = (die_entity.to_bits() as u32) ^ 0xA53C_19E7;
                 let r01 = |s: u32| {
@@ -484,9 +499,12 @@ pub fn sync_dice_fx_visuals(
             DiceFxEffectKind::Explosion => {
                 let r = 2.80 * die_scale;
 
-                let noise = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_NOISE_PATH);
-                let ramp = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_RAMP_PATH);
-                let mask = asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_MASK_PATH);
+                let noise =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_NOISE_PATH);
+                let ramp =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_RAMP_PATH);
+                let mask =
+                    asset_server.load(crate::dice3d::embedded_assets::DICE_FX_FIRE_MASK_PATH);
 
                 commands.entity(die_entity).with_children(|parent| {
                     // Three staged bursts (different sizes) fired one after the other.

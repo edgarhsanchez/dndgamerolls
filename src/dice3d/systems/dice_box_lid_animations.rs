@@ -1,7 +1,7 @@
-use bevy::gltf::Gltf;
-use bevy::prelude::*;
 use bevy::animation::prelude::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex};
+use bevy::gltf::Gltf;
 use bevy::prelude::MessageReader;
+use bevy::prelude::*;
 use bevy_rapier3d::prelude::Velocity;
 use rand::Rng;
 
@@ -15,7 +15,12 @@ use crate::dice3d::types::*;
 pub struct PendingRollExecutionParams<'w, 's> {
     pub roll_state: ResMut<'w, RollState>,
     pub dice_results: ResMut<'w, DiceResults>,
-    pub dice_query: Query<'w, 's, (&'static mut Transform, &'static mut Velocity), (With<Die>, Without<DiceBox>)>,
+    pub dice_query: Query<
+        'w,
+        's,
+        (&'static mut Transform, &'static mut Velocity),
+        (With<Die>, Without<DiceBox>),
+    >,
     pub dice_config: ResMut<'w, DiceConfig>,
     pub db: Res<'w, CharacterDatabase>,
     pub command_history: ResMut<'w, CommandHistory>,
@@ -134,7 +139,10 @@ fn play_once(
     ctrl.state_timer = duration_seconds.max(0.01);
 }
 
-fn ensure_idle_looping(ctrl: &mut DiceBoxLidAnimationController, players: &mut Query<&mut AnimationPlayer>) {
+fn ensure_idle_looping(
+    ctrl: &mut DiceBoxLidAnimationController,
+    players: &mut Query<&mut AnimationPlayer>,
+) {
     let Some(e) = ctrl.animator_entity else {
         return;
     };
@@ -155,10 +163,7 @@ fn ensure_idle_looping(ctrl: &mut DiceBoxLidAnimationController, players: &mut Q
         #[cfg(debug_assertions)]
         {
             if ctrl.debug_last_idle_node.take().is_some() {
-                info!(
-                    "Lid idle stopped (lid_state={:?})",
-                    ctrl.lid_state
-                );
+                info!("Lid idle stopped (lid_state={:?})", ctrl.lid_state);
             }
         }
 
@@ -195,11 +200,7 @@ fn ensure_idle_looping(ctrl: &mut DiceBoxLidAnimationController, players: &mut Q
             } else {
                 "(unknown idle)"
             };
-            info!(
-                "Lid idle -> {} (lid_state={:?})",
-                which,
-                ctrl.lid_state
-            );
+            info!("Lid idle -> {} (lid_state={:?})", which, ctrl.lid_state);
             ctrl.debug_last_idle_node = Some(desired_idle);
         }
     }
@@ -320,17 +321,18 @@ pub fn cache_dice_box_lid_animation_player(
     // This avoids accidentally picking a different player in the same scene tree.
     if ctrl.animator_entity.is_none() {
         let all_players = find_all_animation_players_under(root, &children, &players);
-        let preferred = ctrl
-            .animation_graph
-            .clone()
-            .and_then(|graph| {
-                all_players
-                    .iter()
-                    .copied()
-                    .find(|e| player_graphs.get(*e).ok().flatten().is_some_and(|h| h.0 == graph))
-            });
+        let preferred = ctrl.animation_graph.clone().and_then(|graph| {
+            all_players.iter().copied().find(|e| {
+                player_graphs
+                    .get(*e)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|h| h.0 == graph)
+            })
+        });
 
-        ctrl.animator_entity = preferred.or_else(|| find_first_animation_player_under(root, &children, &players));
+        ctrl.animator_entity =
+            preferred.or_else(|| find_first_animation_player_under(root, &children, &players));
 
         #[cfg(debug_assertions)]
         {
@@ -359,7 +361,9 @@ pub fn cache_dice_box_lid_animation_player(
         };
 
         if needs_insert {
-            commands.entity(animator).insert(AnimationGraphHandle(graph));
+            commands
+                .entity(animator)
+                .insert(AnimationGraphHandle(graph));
         }
     }
 }
@@ -413,7 +417,13 @@ pub fn process_pending_roll_with_lid(
                         #[cfg(debug_assertions)]
                         info!("Lid: play opening (duration={:.3})", duration);
 
-                        play_once(&mut ctrl, &mut players, node, duration, DiceBoxLidState::Opening);
+                        play_once(
+                            &mut ctrl,
+                            &mut players,
+                            node,
+                            duration,
+                            DiceBoxLidState::Opening,
+                        );
                         ctrl.pending_open_after_roll = false;
                     }
                     // If the node isn't ready yet, keep the request queued.
@@ -430,19 +440,23 @@ pub fn process_pending_roll_with_lid(
         // Don't interrupt an in-progress opening animation.
         // Wait until it's fully open, then close.
         if ctrl.lid_state == DiceBoxLidState::Open {
-            if ctrl.lid_state != DiceBoxLidState::Closing {
-                if let Some(node) = ctrl.closing_node {
-                    let duration = ctrl.close_duration;
+            if let Some(node) = ctrl.closing_node {
+                let duration = ctrl.close_duration;
 
-                    #[cfg(debug_assertions)]
-                    info!("Lid: play closing (duration={:.3})", duration);
+                #[cfg(debug_assertions)]
+                info!("Lid: play closing (duration={:.3})", duration);
 
-                    play_once(&mut ctrl, &mut players, node, duration, DiceBoxLidState::Closing);
-                } else {
-                    // No animation clip available: treat as instantly closed.
-                    ctrl.lid_state = DiceBoxLidState::Closed;
-                    ctrl.state_timer = 0.0;
-                }
+                play_once(
+                    &mut ctrl,
+                    &mut players,
+                    node,
+                    duration,
+                    DiceBoxLidState::Closing,
+                );
+            } else {
+                // No animation clip available: treat as instantly closed.
+                ctrl.lid_state = DiceBoxLidState::Closed;
+                ctrl.state_timer = 0.0;
             }
         }
     }
@@ -676,7 +690,13 @@ pub fn open_lid_on_roll_completed(
     if ctrl.pending_roll.is_none() && ctrl.lid_state == DiceBoxLidState::Closed {
         if let Some(node) = ctrl.opening_node {
             let duration = ctrl.open_duration;
-            play_once(&mut ctrl, &mut players, node, duration, DiceBoxLidState::Opening);
+            play_once(
+                &mut ctrl,
+                &mut players,
+                node,
+                duration,
+                DiceBoxLidState::Opening,
+            );
             ctrl.pending_open_after_roll = false;
         }
     }

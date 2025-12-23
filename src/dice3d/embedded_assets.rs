@@ -10,11 +10,8 @@ pub const CUP_MODEL_SCENE_PATH: &str = concat!(
 );
 
 pub const BOX_MODEL_ASSET_PATH: &str = concat!(env!("CARGO_PKG_NAME"), "/models/box.glb");
-pub const BOX_MODEL_GLTF_PATH: &str = concat!(
-    "embedded://",
-    env!("CARGO_PKG_NAME"),
-    "/models/box.glb"
-);
+pub const BOX_MODEL_GLTF_PATH: &str =
+    concat!("embedded://", env!("CARGO_PKG_NAME"), "/models/box.glb");
 pub const BOX_MODEL_SCENE_PATH: &str = concat!(
     "embedded://",
     env!("CARGO_PKG_NAME"),
@@ -43,18 +40,27 @@ pub const DICE_WOODEN_BOX_SFX_PATH: &str = concat!(
 
 pub const DICE_FX_ELECTRICITY_SFX_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/sounds/fx_electricity.mp3");
-pub const DICE_FX_ELECTRICITY_SFX_PATH: &str =
-    concat!("embedded://", env!("CARGO_PKG_NAME"), "/sounds/fx_electricity.mp3");
+pub const DICE_FX_ELECTRICITY_SFX_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/sounds/fx_electricity.mp3"
+);
 
 pub const DICE_FX_EXPLOSION_SFX_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/sounds/fx_explosion.mp3");
-pub const DICE_FX_EXPLOSION_SFX_PATH: &str =
-    concat!("embedded://", env!("CARGO_PKG_NAME"), "/sounds/fx_explosion.mp3");
+pub const DICE_FX_EXPLOSION_SFX_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/sounds/fx_explosion.mp3"
+);
 
 pub const DICE_FX_FIREWORKS_SFX_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/sounds/fx_fireworks.mp3");
-pub const DICE_FX_FIREWORKS_SFX_PATH: &str =
-    concat!("embedded://", env!("CARGO_PKG_NAME"), "/sounds/fx_fireworks.mp3");
+pub const DICE_FX_FIREWORKS_SFX_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/sounds/fx_fireworks.mp3"
+);
 
 // -----------------------------------------------------------------------------
 // Dice FX textures (embedded)
@@ -65,20 +71,21 @@ pub const DICE_FX_FIRE_NOISE_ASSET_PATH: &str =
 pub const DICE_FX_FIRE_NOISE_PATH: &str =
     concat!("embedded://", env!("CARGO_PKG_NAME"), "/fx/fire/noise.png");
 
-pub const DICE_FX_FIRE_RAMP_ASSET_PATH: &str =
-    concat!(env!("CARGO_PKG_NAME"), "/fx/fire/ramp.png");
+pub const DICE_FX_FIRE_RAMP_ASSET_PATH: &str = concat!(env!("CARGO_PKG_NAME"), "/fx/fire/ramp.png");
 pub const DICE_FX_FIRE_RAMP_PATH: &str =
     concat!("embedded://", env!("CARGO_PKG_NAME"), "/fx/fire/ramp.png");
 
-pub const DICE_FX_FIRE_MASK_ASSET_PATH: &str =
-    concat!(env!("CARGO_PKG_NAME"), "/fx/fire/mask.png");
+pub const DICE_FX_FIRE_MASK_ASSET_PATH: &str = concat!(env!("CARGO_PKG_NAME"), "/fx/fire/mask.png");
 pub const DICE_FX_FIRE_MASK_PATH: &str =
     concat!("embedded://", env!("CARGO_PKG_NAME"), "/fx/fire/mask.png");
 
 pub const DICE_FX_ATOMIC_NOISE_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/fx/atomic/noise.png");
-pub const DICE_FX_ATOMIC_NOISE_PATH: &str =
-    concat!("embedded://", env!("CARGO_PKG_NAME"), "/fx/atomic/noise.png");
+pub const DICE_FX_ATOMIC_NOISE_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/fx/atomic/noise.png"
+);
 
 pub const DICE_FX_ATOMIC_RAMP_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/fx/atomic/ramp.png");
@@ -92,18 +99,27 @@ pub const DICE_FX_ATOMIC_MASK_PATH: &str =
 
 pub const DICE_FX_ELECTRIC_NOISE_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/fx/electric/noise.png");
-pub const DICE_FX_ELECTRIC_NOISE_PATH: &str =
-    concat!("embedded://", env!("CARGO_PKG_NAME"), "/fx/electric/noise.png");
+pub const DICE_FX_ELECTRIC_NOISE_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/fx/electric/noise.png"
+);
 
 pub const DICE_FX_ELECTRIC_RAMP_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/fx/electric/ramp.png");
-pub const DICE_FX_ELECTRIC_RAMP_PATH: &str =
-    concat!("embedded://", env!("CARGO_PKG_NAME"), "/fx/electric/ramp.png");
+pub const DICE_FX_ELECTRIC_RAMP_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/fx/electric/ramp.png"
+);
 
 pub const DICE_FX_ELECTRIC_MASK_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/fx/electric/mask.png");
-pub const DICE_FX_ELECTRIC_MASK_PATH: &str =
-    concat!("embedded://", env!("CARGO_PKG_NAME"), "/fx/electric/mask.png");
+pub const DICE_FX_ELECTRIC_MASK_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/fx/electric/mask.png"
+);
 
 pub struct Dice3dEmbeddedAssetsPlugin;
 

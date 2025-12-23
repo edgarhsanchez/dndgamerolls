@@ -1233,7 +1233,11 @@ impl Default for SettingsState {
                             .iter()
                             .position(|e| e.source_image_path.as_deref() == Some(p))
                     })
-                    .or_else(|| editing_custom_dice_fx_library.iter().position(|e| e == &active))
+                    .or_else(|| {
+                        editing_custom_dice_fx_library
+                            .iter()
+                            .position(|e| e == &active)
+                    })
                     .unwrap_or_else(|| {
                         editing_custom_dice_fx_library.push(active.clone());
                         editing_custom_dice_fx_library.len() - 1

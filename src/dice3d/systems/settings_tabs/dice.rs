@@ -231,7 +231,12 @@ pub fn build_dice_tab(
                             ..default()
                         })
                         .with_children(|slider_slot| {
-                            spawn_slider_control_with(slider_slot, theme, slider, DiceFxParamSlider { kind });
+                            spawn_slider_control_with(
+                                slider_slot,
+                                theme,
+                                slider,
+                                DiceFxParamSlider { kind },
+                            );
                         });
                     });
 
@@ -372,9 +377,9 @@ pub fn build_dice_tab(
                 });
             }
         });
-    }
+}
 
-    /* Legacy Dice FX curve/custom UI removed
+/* Legacy Dice FX curve/custom UI removed
                         crate::dice3d::types::DiceFxEffectKind::Lightning => 2,
                                     crate::dice3d::types::DiceFxEffectKind::Firework => 3,
                                     crate::dice3d::types::DiceFxEffectKind::Explosion => 4,

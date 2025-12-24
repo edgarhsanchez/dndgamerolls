@@ -2,7 +2,7 @@
 //!
 //! This module handles loading and saving application settings.
 
-use super::{DiceFxEffectKind, DiceType};
+use super::DiceType;
 use bevy::log::info;
 use bevy::prelude::*;
 use csscolorparser;
@@ -665,12 +665,6 @@ pub struct AppSettings {
     #[serde(default)]
     pub custom_dice_fx: Option<CustomDiceFxSetting>,
 
-    /// Mapping from each die face value to a built-in effect.
-    ///
-    /// This is keyed per die type (D4/D6/...) and per face value (1..=max).
-    #[serde(default)]
-    pub dice_fx_roll_effects: DiceFxRollEffectsSetting,
-
     /// Opacity for the dice surface FX shell (0..1).
     ///
     /// This affects the translucent shader surface used for electric/fire/atomic/custom FX.
@@ -690,138 +684,6 @@ pub struct AppSettings {
     /// The settings modal allows selecting and editing any entry in this list.
     #[serde(default)]
     pub custom_dice_fx_library: Vec<CustomDiceFxSetting>,
-}
-
-/// Per-die roll outcome -> built-in effect mapping.
-///
-/// Stored as vectors sized (max_value + 1) for each die type. Index 0 is unused.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct DiceFxRollEffectsSetting {
-    #[serde(default = "default_roll_effects_d4")]
-    pub d4: Vec<DiceFxEffectKind>,
-    #[serde(default = "default_roll_effects_d6")]
-    pub d6: Vec<DiceFxEffectKind>,
-    #[serde(default = "default_roll_effects_d8")]
-    pub d8: Vec<DiceFxEffectKind>,
-    #[serde(default = "default_roll_effects_d10")]
-    pub d10: Vec<DiceFxEffectKind>,
-    #[serde(default = "default_roll_effects_d12")]
-    pub d12: Vec<DiceFxEffectKind>,
-    #[serde(default = "default_roll_effects_d20")]
-    pub d20: Vec<DiceFxEffectKind>,
-}
-
-fn default_roll_effects_for(die: DiceType) -> Vec<DiceFxEffectKind> {
-    let max = die.max_value() as usize;
-    let mut v = vec![DiceFxEffectKind::None; max + 1];
-    if max >= 1 {
-        // Preserve the old baseline behavior by default:
-        // - any max face value -> Lightning
-        v[max] = DiceFxEffectKind::Lightning;
-    }
-    if die == DiceType::D20 {
-        // Old baseline behavior: Nat20 -> Fire.
-        v[20] = DiceFxEffectKind::Fire;
-    }
-    v
-}
-
-fn default_roll_effects_d4() -> Vec<DiceFxEffectKind> {
-    default_roll_effects_for(DiceType::D4)
-}
-fn default_roll_effects_d6() -> Vec<DiceFxEffectKind> {
-    default_roll_effects_for(DiceType::D6)
-}
-fn default_roll_effects_d8() -> Vec<DiceFxEffectKind> {
-    default_roll_effects_for(DiceType::D8)
-}
-fn default_roll_effects_d10() -> Vec<DiceFxEffectKind> {
-    default_roll_effects_for(DiceType::D10)
-}
-fn default_roll_effects_d12() -> Vec<DiceFxEffectKind> {
-    default_roll_effects_for(DiceType::D12)
-}
-fn default_roll_effects_d20() -> Vec<DiceFxEffectKind> {
-    default_roll_effects_for(DiceType::D20)
-}
-
-impl Default for DiceFxRollEffectsSetting {
-    fn default() -> Self {
-        Self {
-            d4: default_roll_effects_d4(),
-            d6: default_roll_effects_d6(),
-            d8: default_roll_effects_d8(),
-            d10: default_roll_effects_d10(),
-            d12: default_roll_effects_d12(),
-            d20: default_roll_effects_d20(),
-        }
-    }
-}
-
-impl DiceFxRollEffectsSetting {
-    pub fn normalize(&mut self) {
-        fn ensure_len(v: &mut Vec<DiceFxEffectKind>, die: DiceType) {
-            let need = die.max_value() as usize + 1;
-            if v.len() != need {
-                v.resize(need, DiceFxEffectKind::None);
-            }
-        }
-        ensure_len(&mut self.d4, DiceType::D4);
-        ensure_len(&mut self.d6, DiceType::D6);
-        ensure_len(&mut self.d8, DiceType::D8);
-        ensure_len(&mut self.d10, DiceType::D10);
-        ensure_len(&mut self.d12, DiceType::D12);
-        ensure_len(&mut self.d20, DiceType::D20);
-    }
-
-    pub fn effect_for(&self, die: DiceType, value: u32) -> DiceFxEffectKind {
-        let idx = value as usize;
-        match die {
-            DiceType::D4 => self.d4.get(idx).copied().unwrap_or(DiceFxEffectKind::None),
-            DiceType::D6 => self.d6.get(idx).copied().unwrap_or(DiceFxEffectKind::None),
-            DiceType::D8 => self.d8.get(idx).copied().unwrap_or(DiceFxEffectKind::None),
-            DiceType::D10 => self.d10.get(idx).copied().unwrap_or(DiceFxEffectKind::None),
-            DiceType::D12 => self.d12.get(idx).copied().unwrap_or(DiceFxEffectKind::None),
-            DiceType::D20 => self.d20.get(idx).copied().unwrap_or(DiceFxEffectKind::None),
-        }
-    }
-
-    pub fn set_effect_for(&mut self, die: DiceType, value: u32, effect: DiceFxEffectKind) {
-        self.normalize();
-        let idx = value as usize;
-        match die {
-            DiceType::D4 => {
-                if let Some(slot) = self.d4.get_mut(idx) {
-                    *slot = effect;
-                }
-            }
-            DiceType::D6 => {
-                if let Some(slot) = self.d6.get_mut(idx) {
-                    *slot = effect;
-                }
-            }
-            DiceType::D8 => {
-                if let Some(slot) = self.d8.get_mut(idx) {
-                    *slot = effect;
-                }
-            }
-            DiceType::D10 => {
-                if let Some(slot) = self.d10.get_mut(idx) {
-                    *slot = effect;
-                }
-            }
-            DiceType::D12 => {
-                if let Some(slot) = self.d12.get_mut(idx) {
-                    *slot = effect;
-                }
-            }
-            DiceType::D20 => {
-                if let Some(slot) = self.d20.get_mut(idx) {
-                    *slot = effect;
-                }
-            }
-        }
-    }
 }
 
 fn default_dice_fx_surface_opacity() -> f32 {
@@ -996,7 +858,6 @@ impl Default for AppSettings {
             dice_scales: DiceScaleSettings::default(),
 
             custom_dice_fx: None,
-            dice_fx_roll_effects: DiceFxRollEffectsSetting::default(),
             dice_fx_surface_opacity: default_dice_fx_surface_opacity(),
             dice_fx_plume_height_multiplier: default_dice_fx_plume_height_multiplier(),
             dice_fx_plume_radius_multiplier: default_dice_fx_plume_radius_multiplier(),
@@ -1137,9 +998,6 @@ pub struct SettingsState {
     /// Editing value for custom dice FX (applied on OK).
     pub editing_custom_dice_fx: CustomDiceFxSetting,
 
-    /// Editing value for the roll->effect mapping (applied on OK).
-    pub editing_dice_fx_roll_effects: DiceFxRollEffectsSetting,
-
     /// Editing values for global Dice FX visuals (applied on OK).
     pub editing_dice_fx_surface_opacity: f32,
     pub editing_dice_fx_plume_height_multiplier: f32,
@@ -1214,8 +1072,6 @@ impl Default for SettingsState {
         let editing_dice_fx_surface_opacity = settings.dice_fx_surface_opacity;
         let editing_dice_fx_plume_height_multiplier = settings.dice_fx_plume_height_multiplier;
         let editing_dice_fx_plume_radius_multiplier = settings.dice_fx_plume_radius_multiplier;
-        let mut editing_dice_fx_roll_effects = settings.dice_fx_roll_effects.clone();
-        editing_dice_fx_roll_effects.normalize();
 
         let mut editing_custom_dice_fx_library = settings.custom_dice_fx_library.clone();
         if editing_custom_dice_fx_library.is_empty() {
@@ -1233,11 +1089,7 @@ impl Default for SettingsState {
                             .iter()
                             .position(|e| e.source_image_path.as_deref() == Some(p))
                     })
-                    .or_else(|| {
-                        editing_custom_dice_fx_library
-                            .iter()
-                            .position(|e| e == &active)
-                    })
+                    .or_else(|| editing_custom_dice_fx_library.iter().position(|e| e == &active))
                     .unwrap_or_else(|| {
                         editing_custom_dice_fx_library.push(active.clone());
                         editing_custom_dice_fx_library.len() - 1
@@ -1274,7 +1126,6 @@ impl Default for SettingsState {
             editing_dice_scales,
 
             editing_custom_dice_fx,
-            editing_dice_fx_roll_effects,
             editing_dice_fx_surface_opacity,
             editing_dice_fx_plume_height_multiplier,
             editing_dice_fx_plume_radius_multiplier,

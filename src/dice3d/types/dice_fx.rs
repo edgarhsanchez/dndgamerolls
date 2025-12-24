@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
 use super::DiceType;
 
 /// Fired when a dice roll has fully settled and face values have been determined.
@@ -24,34 +22,31 @@ pub struct DieLastRoll {
 }
 
 /// Which special effects should be shown for a die.
+///
+/// These flags map directly to the shader params in `dice3d::dice_fx`.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DiceFxState {
-    pub effect: DiceFxEffectKind,
+    pub fire: bool,
+    pub atomic: bool,
+    pub electric: bool,
+    pub custom: bool,
+
+    pub custom_started_at: f32,
+    pub custom_duration: f32,
 }
 
-/// Which effect to play for a given die outcome.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DiceFxEffectKind {
-    #[default]
-    None,
-    Fire,
-    Lightning,
-    Firework,
-    Explosion,
-}
-
-/// Marker for a fire particle effect attached to a die.
+/// Marker for the surface FX shell mesh attached to a die.
 #[derive(Component)]
-pub struct DiceFxFireEffect;
+pub struct DiceFxSurfaceShell;
 
-/// Marker for a lightning particle effect attached to a die.
+/// Marker for the fire plume mesh attached to a die.
 #[derive(Component)]
-pub struct DiceFxLightningEffect;
+pub struct DiceFxFirePlume;
 
-/// Marker for a firework particle effect attached to a die.
+/// Marker for the atomic plume mesh attached to a die.
 #[derive(Component)]
-pub struct DiceFxFireworkEffect;
+pub struct DiceFxAtomicPlume;
 
-/// Marker for an explosion particle effect attached to a die.
-#[derive(Component)]
-pub struct DiceFxExplosionEffect;
+/// Component to store a material handle for FX child entities.
+#[derive(Component, Clone, Debug)]
+pub struct DiceFxMaterialHandle<M: Material>(pub Handle<M>);

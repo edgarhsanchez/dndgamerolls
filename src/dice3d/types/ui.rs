@@ -622,13 +622,6 @@ pub struct ContainerShakeAnimation {
 // Custom Dice FX (Settings Modal)
 // ============================================================================
 
-/// Dropdown for selecting the built-in effect for a given die face value.
-#[derive(Component, Debug, Clone, Copy)]
-pub struct DiceFxRollEffectSelect {
-    pub die_type: DiceType,
-    pub value: u32,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DiceFxPreviewImageKind {
     Source,

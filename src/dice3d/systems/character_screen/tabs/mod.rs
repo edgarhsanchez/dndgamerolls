@@ -219,7 +219,13 @@ fn spawn_tab_content_area(
                 .with_children(|content| {
                     if let Some(sheet) = &character_data.sheet {
                         // Spawn header with save button
-                        spawn_header_row(content, sheet, character_data.is_modified, icon_assets);
+                        spawn_header_row(
+                            content,
+                            sheet,
+                            character_data.is_modified,
+                            icon_assets,
+                            theme,
+                        );
 
                         // Spawn all tab contents (visibility controlled by selected tab)
                         spawn_all_tab_contents(
@@ -243,8 +249,9 @@ fn spawn_tab_content_area(
 fn spawn_header_row(
     parent: &mut ChildSpawnerCommands,
     sheet: &CharacterSheet,
-    is_modified: bool,
+    _is_modified: bool,
     icon_assets: &IconAssets,
+    theme: &MaterialTheme,
 ) {
     let save_icon = icon_assets.icons.get(&IconType::Save).cloned();
 
@@ -274,30 +281,22 @@ fn spawn_header_row(
             ));
 
             // Save button
+            // Use a Material button so `ButtonClickEvent` + disabling behavior are consistent.
+            // Styling/disabled state will be handled by `update_save_button_appearance`.
             header
                 .spawn((
-                    Button,
-                    Node {
-                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        column_gap: Val::Px(8.0),
-                        border: UiRect::all(Val::Px(1.0)),
-                        ..default()
-                    },
-                    BackgroundColor(if is_modified {
-                        MD3_PRIMARY
-                    } else {
-                        MD3_SURFACE_CONTAINER
-                    }),
-                    BorderColor::from(if is_modified {
-                        MD3_PRIMARY
-                    } else {
-                        MD3_OUTLINE
-                    }),
-                    BorderRadius::all(Val::Px(8.0)),
+                    MaterialButtonBuilder::new("Save")
+                        .filled_tonal()
+                        .build(theme),
                     SaveButton,
                 ))
+                .insert(Node {
+                    padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(8.0),
+                    ..default()
+                })
                 .with_children(|btn| {
                     if let Some(handle) = save_icon {
                         btn.spawn((
@@ -310,16 +309,13 @@ fn spawn_header_row(
                         ));
                     }
                     btn.spawn((
+                        bevy_material_ui::button::ButtonLabel,
                         Text::new("Save"),
                         TextFont {
                             font_size: 14.0,
                             ..default()
                         },
-                        TextColor(if is_modified {
-                            MD3_ON_PRIMARY
-                        } else {
-                            MD3_ON_SURFACE_VARIANT
-                        }),
+                        TextColor(theme.on_surface),
                     ));
                 });
         });
@@ -568,7 +564,8 @@ pub fn update_sheet_tab_styles(
 /// Update tab content visibility based on selected tab
 pub fn update_sheet_tab_visibility(
     selected_tab: Res<SelectedCharacterSheetTab>,
-    mut content_query: Query<(&CharacterSheetTabContent, &mut Node)>,
+    mut content_query: Query<(&CharacterSheetTabContent, &mut Node), Without<ScrollableContent>>,
+    mut scrollable_query: Query<&mut Node, (With<ScrollableContent>, Without<CharacterSheetTabContent>)>,
 ) {
     if !selected_tab.is_changed() {
         return;
@@ -580,5 +577,11 @@ pub fn update_sheet_tab_visibility(
         } else {
             Display::None
         };
+    }
+
+    // When switching tabs, reset scroll so the newly selected tab isn't hidden
+    // due to a previous tab's scroll offset.
+    for mut node in scrollable_query.iter_mut() {
+        node.top = Val::Px(0.0);
     }
 }

@@ -627,6 +627,9 @@ fn spawn_settings_modal(
                     .spawn(Node {
                         width: Val::Percent(100.0),
                         flex_grow: 1.0,
+                        // Needed so absolutely-positioned tab panels have a well-defined
+                        // containing block to fill.
+                        position_type: PositionType::Relative,
                         min_width: Val::Px(0.0),
                         min_height: Val::Px(0.0),
                         overflow: Overflow::clip(),

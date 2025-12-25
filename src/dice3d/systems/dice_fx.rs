@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
 use bevy_hanabi::prelude::*;
+use rand::seq::SliceRandom;
 use rand::Rng;
 
 use crate::dice3d::dice_fx::DiceFxRollingTracker;
@@ -15,9 +16,12 @@ use crate::dice3d::throw_control::{BOX_FLOOR_Y, BOX_HALF_EXTENT, BOX_TOP_Y, CUP_
 pub struct DiceFxOwner(pub Entity);
 
 #[derive(Component, Clone, Copy, Debug)]
-pub struct DiceElectricityWander {
-    pub velocity: Vec3,
+pub struct ElectricBoltEmitter {
+    pub next_bolt_at: f32,
 }
+
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FxDespawnAt(pub f32);
 
 fn effective_dice_fx_plume_height_multiplier(settings_state: &SettingsState) -> f32 {
     if settings_state.show_modal
@@ -62,7 +66,6 @@ pub fn clear_dice_fx_on_roll_start(
     roll_state: Res<RollState>,
     mut tracker: ResMut<DiceFxRollingTracker>,
     dice_query: Query<(Entity, Option<&Children>), With<Die>>,
-    dice_box: Query<(Entity, Option<&Children>), With<DiceBox>>,
     fx: Query<(), With<DiceHanabiFxInstance>>,
 ) {
     let now_rolling = roll_state.rolling;
@@ -76,18 +79,13 @@ pub fn clear_dice_fx_on_roll_start(
     for (die_entity, children) in dice_query.iter() {
         commands.entity(die_entity).remove::<DiceFxState>();
         commands.entity(die_entity).remove::<DieLastRoll>();
+        commands.entity(die_entity).remove::<ElectricBoltEmitter>();
 
         despawn_all_fx_children(
             &mut commands,
             children,
             &fx,
         );
-    }
-
-    for (box_entity, children) in dice_box.iter() {
-        despawn_all_fx_children(&mut commands, children, &fx);
-        // Wander component is on the FX child, so clearing children is enough.
-        commands.entity(box_entity).remove::<DiceFxState>();
     }
 }
 
@@ -99,12 +97,13 @@ pub fn apply_dice_fx_from_roll_complete(
     hanabi_fx: Res<DiceHanabiFxAssets>,
     asset_server: Res<AssetServer>,
     global_transforms: Query<&GlobalTransform>,
-    dice_box: Query<Entity, With<DiceBox>>,
 ) {
     for event in ev.read() {
         let started_at = time.elapsed_secs();
         // FX should persist until the next roll.
         let duration = 0.0_f32;
+
+        let mut rng = rand::thread_rng();
 
         let sfx_pos = event
             .results
@@ -132,8 +131,7 @@ pub fn apply_dice_fx_from_roll_complete(
 
             commands.entity(r.entity).insert(DieLastRoll { value: r.value });
 
-            // Electricity is a container-wide effect (spawned separately below).
-            if fire || fireworks || explosion || plasma {
+            if fire || electric || fireworks || explosion || plasma {
                 commands.entity(r.entity).insert(DiceFxState {
                     fire,
                     electric,
@@ -163,51 +161,18 @@ pub fn apply_dice_fx_from_roll_complete(
                         ));
                     });
                 }
+
+                // Electricity also emits intermittent jagged bolts toward other dice / hidden targets.
+                if electric {
+                    let next = started_at + rng.gen_range(0.05..0.18);
+                    commands.entity(r.entity).insert(ElectricBoltEmitter { next_bolt_at: next });
+                } else {
+                    commands.entity(r.entity).remove::<ElectricBoltEmitter>();
+                }
             } else {
                 commands.entity(r.entity).remove::<DiceFxState>();
+                commands.entity(r.entity).remove::<ElectricBoltEmitter>();
             }
-        }
-
-        // Container-wide Electricity: a wandering emitter inside the box/cup.
-        if any_electric {
-            let Some(box_entity) = dice_box.iter().next() else {
-                continue;
-            };
-
-            let mut rng = rand::thread_rng();
-            let speed = rng.gen_range(2.0..6.0);
-            let dir = Vec3::new(rng.gen_range(-1.0..1.0), rng.gen_range(-0.2..0.8), rng.gen_range(-1.0..1.0))
-                .normalize_or_zero();
-
-            // Start near the center, slightly above the floor.
-            let start_pos = Vec3::new(0.0, (BOX_TOP_Y * 0.45).max(0.35), 0.0);
-
-            commands.entity(box_entity).with_children(|parent| {
-                parent.spawn((
-                    ParticleEffect::new(hanabi_fx.electricity.clone()),
-                    Transform::from_translation(start_pos),
-                    GlobalTransform::default(),
-                    Visibility::Visible,
-                    DiceHanabiFxInstance {
-                        kind: DiceRollFxKind::Electricity,
-                    },
-                    DiceElectricityWander {
-                        velocity: dir * speed,
-                    },
-                    // owner is the container
-                    DiceFxOwner(box_entity),
-                ));
-            });
-
-            // Make sure DiceFxState reflects that electricity is active.
-            commands.entity(box_entity).insert(DiceFxState {
-                fire: false,
-                electric: true,
-                fireworks: false,
-                explosion: false,
-                started_at,
-                duration,
-            });
         }
 
         if let Some(pos) = sfx_pos {
@@ -248,80 +213,183 @@ pub fn apply_dice_fx_from_roll_complete(
     }
 }
 
-pub fn update_electricity_wander(
+fn hidden_electric_targets(style: DiceContainerStyle) -> Vec<Vec3> {
+    match style {
+        DiceContainerStyle::Box => {
+            let r = BOX_HALF_EXTENT * 0.92;
+            let y1 = (BOX_FLOOR_Y + 0.25).max(0.18);
+            let y2 = (BOX_TOP_Y - 0.20).max(y1 + 0.05);
+            vec![
+                Vec3::new(-r, y1, -r),
+                Vec3::new(-r, y1, r),
+                Vec3::new(r, y1, -r),
+                Vec3::new(r, y1, r),
+                Vec3::new(-r, y2, 0.0),
+                Vec3::new(r, y2, 0.0),
+                Vec3::new(0.0, y2, -r),
+                Vec3::new(0.0, y2, r),
+            ]
+        }
+        DiceContainerStyle::Cup => {
+            let r = CUP_RADIUS * 0.88;
+            let y1 = (BOX_FLOOR_Y + 0.25).max(0.18);
+            let y2 = (BOX_TOP_Y - 0.25).max(y1 + 0.05);
+            vec![
+                Vec3::new(r, y1, 0.0),
+                Vec3::new(-r, y1, 0.0),
+                Vec3::new(0.0, y1, r),
+                Vec3::new(0.0, y1, -r),
+                Vec3::new(r * 0.7, y2, r * 0.7),
+                Vec3::new(-r * 0.7, y2, r * 0.7),
+                Vec3::new(r * 0.7, y2, -r * 0.7),
+                Vec3::new(-r * 0.7, y2, -r * 0.7),
+            ]
+        }
+    }
+}
+
+pub fn spawn_electric_bolts(
+    mut commands: Commands,
     time: Res<Time>,
     container_style: Res<DiceContainerStyle>,
-    mut q: Query<(&mut Transform, &mut DiceElectricityWander)>,
+    hanabi_fx: Res<DiceHanabiFxAssets>,
+    dice_box: Query<&GlobalTransform, With<DiceBox>>,
+    mut dice_gt: Query<(
+        Entity,
+        &GlobalTransform,
+        Option<&DiceFxState>,
+        Option<Mut<ElectricBoltEmitter>>,
+    ), With<Die>>,
 ) {
-    let dt = time.delta_secs();
+    let now = time.elapsed_secs();
+    let mut rng = rand::thread_rng();
 
-    for (mut transform, mut wander) in q.iter_mut() {
-        let mut pos = transform.translation;
-        pos += wander.velocity * dt;
+    let box_gt = dice_box.iter().next();
 
-        // Keep it inside the container, "bouncing" off walls.
-        match *container_style {
-            DiceContainerStyle::Box => {
-                let min_x = -BOX_HALF_EXTENT * 0.92;
-                let max_x = BOX_HALF_EXTENT * 0.92;
-                let min_z = -BOX_HALF_EXTENT * 0.92;
-                let max_z = BOX_HALF_EXTENT * 0.92;
-                let min_y = BOX_FLOOR_Y + 0.15;
-                let max_y = BOX_TOP_Y - 0.15;
+    // Precompute hidden targets in world space if we can.
+    let hidden_local = hidden_electric_targets(*container_style);
+    let hidden_world: Vec<Vec3> = if let Some(gt) = box_gt {
+        hidden_local
+            .into_iter()
+            .map(|p| gt.transform_point(p))
+            .collect()
+    } else {
+        hidden_local
+    };
 
-                if pos.x < min_x {
-                    pos.x = min_x;
-                    wander.velocity.x = wander.velocity.x.abs();
-                } else if pos.x > max_x {
-                    pos.x = max_x;
-                    wander.velocity.x = -wander.velocity.x.abs();
-                }
+    // Snapshot other dice positions.
+    let mut other_dice: Vec<(Entity, Vec3)> = Vec::new();
+    for (e, gt, _, _) in dice_gt.iter() {
+        other_dice.push((e, gt.translation()));
+    }
 
-                if pos.z < min_z {
-                    pos.z = min_z;
-                    wander.velocity.z = wander.velocity.z.abs();
-                } else if pos.z > max_z {
-                    pos.z = max_z;
-                    wander.velocity.z = -wander.velocity.z.abs();
-                }
-
-                if pos.y < min_y {
-                    pos.y = min_y;
-                    wander.velocity.y = wander.velocity.y.abs();
-                } else if pos.y > max_y {
-                    pos.y = max_y;
-                    wander.velocity.y = -wander.velocity.y.abs();
-                }
-            }
-            DiceContainerStyle::Cup => {
-                let min_y = BOX_FLOOR_Y + 0.15;
-                let max_y = BOX_TOP_Y - 0.10;
-
-                let r = CUP_RADIUS * 0.88;
-                let xz = Vec2::new(pos.x, pos.z);
-                let len = xz.length();
-                if len > r {
-                    let n = xz / len;
-                    // Reflect velocity around the normal in XZ plane.
-                    let v_xz = Vec2::new(wander.velocity.x, wander.velocity.z);
-                    let reflected = v_xz - 2.0 * v_xz.dot(n) * n;
-                    wander.velocity.x = reflected.x;
-                    wander.velocity.z = reflected.y;
-                    pos.x = n.x * r;
-                    pos.z = n.y * r;
-                }
-
-                if pos.y < min_y {
-                    pos.y = min_y;
-                    wander.velocity.y = wander.velocity.y.abs();
-                } else if pos.y > max_y {
-                    pos.y = max_y;
-                    wander.velocity.y = -wander.velocity.y.abs();
-                }
-            }
+    for (die_entity, die_gt, maybe_fx_state, maybe_emitter) in dice_gt.iter_mut() {
+        let Some(fx_state) = maybe_fx_state else {
+            continue;
+        };
+        if !fx_state.electric {
+            continue;
         }
 
-        transform.translation = pos;
+        let Some(mut emitter) = maybe_emitter else {
+            // If we somehow missed inserting it, create it and let next frame handle.
+            commands
+                .entity(die_entity)
+                .insert(ElectricBoltEmitter { next_bolt_at: now + 0.10 });
+            continue;
+        };
+
+        if now < emitter.next_bolt_at {
+            continue;
+        }
+
+        // Schedule next bolt. Keep it flickery.
+        emitter.next_bolt_at = now + rng.gen_range(0.09..0.22);
+
+        let source_world = die_gt.translation();
+        let die_rot_world = die_gt.compute_transform().rotation;
+
+        // Choose a target:
+        // - Prefer other dice ~70% of the time (when available)
+        // - Otherwise, occasionally hit "hidden" anchors to feel unpredictable
+        let target_world = {
+            let mut candidates: Vec<Vec3> = Vec::new();
+            for (e, p) in other_dice.iter() {
+                if *e != die_entity {
+                    candidates.push(*p);
+                }
+            }
+
+            let prefer_other_dice = rng.gen_bool(0.70);
+
+            if prefer_other_dice {
+                if !candidates.is_empty() {
+                    *candidates.choose(&mut rng).unwrap()
+                } else if !hidden_world.is_empty() {
+                    *hidden_world.choose(&mut rng).unwrap()
+                } else {
+                    source_world + Vec3::Y * 0.8
+                }
+            } else if !hidden_world.is_empty() {
+                *hidden_world.choose(&mut rng).unwrap()
+            } else if !candidates.is_empty() {
+                *candidates.choose(&mut rng).unwrap()
+            } else {
+                source_world + Vec3::Y * 0.8
+            }
+        };
+
+        let mut world_dir = target_world - source_world;
+        let distance = world_dir.length().clamp(0.15, 2.0);
+        world_dir = world_dir.normalize_or_zero();
+        if world_dir == Vec3::ZERO {
+            continue;
+        }
+
+        // Convert direction into die-local space so we can spawn as child.
+        let local_dir = (die_rot_world.inverse() * world_dir).normalize_or_zero();
+        let base_rot = Quat::from_rotation_arc(Vec3::Y, local_dir);
+
+        // Spawn 2-6 bolts for branching/jaggedness.
+        let bolt_count = rng.gen_range(2..=6);
+        for _ in 0..bolt_count {
+            let yaw = rng.gen_range(-0.55..0.55);
+            let roll = rng.gen_range(-0.65..0.65);
+            let twist = Quat::from_rotation_y(yaw) * Quat::from_rotation_z(roll);
+
+            let offset = Vec3::new(
+                rng.gen_range(-0.05..0.05),
+                rng.gen_range(0.02..0.12),
+                rng.gen_range(-0.05..0.05),
+            );
+
+            let bolt_rot = base_rot * twist;
+
+            commands.entity(die_entity).with_children(|parent| {
+                parent.spawn((
+                    ParticleEffect::new(hanabi_fx.electricity_bolt.clone()),
+                    Transform::from_translation(offset)
+                        .with_rotation(bolt_rot)
+                        .with_scale(Vec3::new(1.0, distance, 1.0)),
+                    GlobalTransform::default(),
+                    Visibility::Visible,
+                    DiceHanabiFxInstance {
+                        kind: DiceRollFxKind::Electricity,
+                    },
+                    DiceFxOwner(die_entity),
+                    FxDespawnAt(now + 0.35),
+                ));
+            });
+        }
+    }
+}
+
+pub fn despawn_temporary_fx(mut commands: Commands, time: Res<Time>, q: Query<(Entity, &FxDespawnAt)>) {
+    let now = time.elapsed_secs();
+    for (e, at) in q.iter() {
+        if now >= at.0 {
+            commands.entity(e).despawn();
+        }
     }
 }
 

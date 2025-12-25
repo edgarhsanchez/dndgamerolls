@@ -20,8 +20,14 @@ pub fn spawn_scrollable_tab_content(
     // Panel for TabContent (fills available space).
     let mut panel = parent.spawn((
         Node {
+            // Fill the tab area regardless of content size. This avoids the Dice tab
+            // looking shorter than other tabs when it has less content.
+            position_type: PositionType::Absolute,
+            left: Val::Px(0.0),
+            right: Val::Px(0.0),
+            top: Val::Px(0.0),
+            bottom: Val::Px(0.0),
             width: Val::Percent(100.0),
-            height: Val::Percent(100.0),
             min_width: Val::Px(0.0),
             min_height: Val::Px(0.0),
             display: if visible {
@@ -45,7 +51,8 @@ pub fn spawn_scrollable_tab_content(
                 ScrollPosition::default(),
                 Node {
                     width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
+                    flex_grow: 1.0,
+                    flex_basis: Val::Px(0.0),
                     min_width: Val::Px(0.0),
                     min_height: Val::Px(0.0),
                     overflow: Overflow::scroll_y(),

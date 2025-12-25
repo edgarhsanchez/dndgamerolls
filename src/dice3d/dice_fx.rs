@@ -25,6 +25,7 @@ impl Plugin for DiceFxPlugin {
                 Update,
                 crate::dice3d::apply_dice_fx_from_roll_complete.after(crate::dice3d::check_dice_settled),
             )
-            .add_systems(Update, crate::dice3d::update_electricity_wander);
+            .add_systems(Update, crate::dice3d::spawn_electric_bolts)
+            .add_systems(Update, crate::dice3d::despawn_temporary_fx);
     }
 }

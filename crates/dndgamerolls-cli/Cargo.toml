@@ -1,6 +1,6 @@
 [package]
 name = "dndgamerolls-cli"
-version = "0.2.5"
+version = "0.2.18"
 edition = "2021"
 authors = ["Edgar Sanchez <esanchez@m2iab.com>"]
 description = "DnD Game Rolls CLI - A command-line D&D dice roller with character sheet support"

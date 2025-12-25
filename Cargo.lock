@@ -3245,7 +3245,7 @@ dependencies = [
 
 [[package]]
 name = "dndgamerolls-cli"
-version = "0.2.5"
+version = "0.2.18"
 dependencies = [
  "clap",
  "colored",

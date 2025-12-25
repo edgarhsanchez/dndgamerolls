@@ -12,11 +12,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use surrealdb::engine::local::SurrealKv;
-use surrealdb::types::Value as SurrealValue;
+use surrealdb::sql::Value as SurrealValue;
 use surrealdb::Surreal;
 
 fn surreal_value_to_json(value: SurrealValue) -> Result<JsonValue, String> {
-    Ok(value.into_json_value())
+    serde_json::to_value(value).map_err(|e| format!("Failed to encode JSON: {e}"))
 }
 
 fn from_surreal_value<T: DeserializeOwned>(value: SurrealValue) -> Result<T, String> {

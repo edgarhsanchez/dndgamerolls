@@ -13,17 +13,16 @@ use bevy::window::PrimaryWindow;
 use bevy_material_ui::prelude::*;
 use bevy_material_ui::theme::ThemeMode;
 use std::cmp::Ordering;
-use std::path::{Path, PathBuf};
 
 use crate::dice3d::types::*;
 use bevy_material_ui::prelude::SwitchChangeEvent;
 
-use crate::dice3d::fx_image_gen::generate_custom_fx_textures;
-
 use super::settings_tabs;
 
 const SETTINGS_DIALOG_WIDTH: f32 = 780.0;
-const SETTINGS_DIALOG_HEIGHT: f32 = 720.0;
+const SETTINGS_DIALOG_HEIGHT: f32 = 860.0;
+const SETTINGS_DIALOG_MIN_WIDTH: f32 = 560.0;
+const SETTINGS_DIALOG_MIN_HEIGHT: f32 = 560.0;
 
 const DICE_SCALE_PREVIEW_LAYER: u8 = 31;
 const DICE_SCALE_PREVIEW_WIDTH: u32 = 360;
@@ -353,8 +352,13 @@ pub fn load_settings_state_from_db(
             settings_state.editing_shake_config = loaded.shake_config.to_runtime();
             settings_state.last_saved_shake_config = loaded.shake_config.clone();
 
-            // Stage custom dice FX + library into editable state.
-            init_custom_dice_fx_editing_from_settings(&mut settings_state);
+            settings_state.editing_dice_scales = loaded.dice_scales.clone();
+            settings_state.editing_dice_roll_fx_mappings = loaded.dice_roll_fx_mappings.clone();
+            settings_state.editing_dice_fx_surface_opacity = loaded.dice_fx_surface_opacity;
+            settings_state.editing_dice_fx_plume_height_multiplier =
+                loaded.dice_fx_plume_height_multiplier;
+            settings_state.editing_dice_fx_plume_radius_multiplier =
+                loaded.dice_fx_plume_radius_multiplier;
 
             settings_state.color_input_text.clear();
             settings_state.highlight_input_text.clear();
@@ -375,49 +379,6 @@ pub fn load_settings_state_from_db(
             );
         }
     }
-}
-
-fn init_custom_dice_fx_editing_from_settings(settings_state: &mut SettingsState) {
-    // Start from persisted library.
-    settings_state.editing_custom_dice_fx_library = settings_state.settings.custom_dice_fx_library.clone();
-    if settings_state.editing_custom_dice_fx_library.is_empty() {
-        settings_state
-            .editing_custom_dice_fx_library
-            .push(CustomDiceFxSetting::default());
-    }
-
-    // Choose the active/selected entry.
-    if let Some(active) = settings_state.settings.custom_dice_fx.clone() {
-        let idx = active
-            .source_image_path
-            .as_deref()
-            .and_then(|p| {
-                settings_state
-                    .editing_custom_dice_fx_library
-                    .iter()
-                    .position(|e| e.source_image_path.as_deref() == Some(p))
-            })
-            .or_else(|| {
-                settings_state
-                    .editing_custom_dice_fx_library
-                    .iter()
-                    .position(|e| e == &active)
-            })
-            .unwrap_or_else(|| {
-                settings_state.editing_custom_dice_fx_library.push(active.clone());
-                settings_state.editing_custom_dice_fx_library.len() - 1
-            });
-
-        settings_state.selected_custom_dice_fx_library_index = Some(idx);
-        settings_state.editing_custom_dice_fx = active;
-    } else {
-        settings_state.selected_custom_dice_fx_library_index = Some(0);
-        settings_state.editing_custom_dice_fx = settings_state.editing_custom_dice_fx_library[0].clone();
-    }
-
-    settings_state.dice_fx_trigger_value_input_text = settings_state.editing_custom_dice_fx.trigger_value.to_string();
-    settings_state.dice_fx_duration_input_text =
-        format!("{:.3}", settings_state.editing_custom_dice_fx.duration_seconds.max(0.0));
 }
 
 fn apply_theme_override(settings: &AppSettings, theme: &mut MaterialTheme) {
@@ -492,7 +453,6 @@ fn spawn_settings_modal(
     settings_state: &SettingsState,
     shake_config: &ContainerShakeConfig,
     dice_scale_preview_image: Option<Handle<Image>>,
-    blank_image: Option<Handle<Image>>,
 ) {
     let options = [
         DiceTypeSetting::D4,
@@ -527,11 +487,12 @@ fn spawn_settings_modal(
             Node {
                 display: Display::None, // synced by DialogPlugin
                 position_type: PositionType::Absolute,
-                width: Val::Px(SETTINGS_DIALOG_WIDTH),
-                height: Val::Px(SETTINGS_DIALOG_HEIGHT),
-                min_width: Val::Px(SETTINGS_DIALOG_WIDTH),
+                // Responsive sizing: use most of the window, but cap to a nice desktop size.
+                width: Val::Percent(92.0),
+                height: Val::Percent(92.0),
+                min_width: Val::Px(SETTINGS_DIALOG_MIN_WIDTH),
+                min_height: Val::Px(SETTINGS_DIALOG_MIN_HEIGHT),
                 max_width: Val::Px(SETTINGS_DIALOG_WIDTH),
-                min_height: Val::Px(SETTINGS_DIALOG_HEIGHT),
                 max_height: Val::Px(SETTINGS_DIALOG_HEIGHT),
                 padding: UiRect::all(Val::Px(Spacing::EXTRA_LARGE)),
                 flex_direction: FlexDirection::Column,
@@ -686,7 +647,6 @@ fn spawn_settings_modal(
                                     settings_state.default_roll_uses_shake_editing,
                                     &settings_state.editing_dice_scales,
                                     dice_scale_preview_image.clone(),
-                                    blank_image.clone(),
                                     settings_state,
                                 );
                             },
@@ -916,8 +876,8 @@ pub fn handle_settings_button_click(
     mut settings_state: ResMut<SettingsState>,
     shake_config: Res<ContainerShakeConfig>,
     _theme: Res<MaterialTheme>,
-    db: Option<Res<CharacterDatabase>>,
-    mut images: ResMut<Assets<Image>>,
+    _db: Option<Res<CharacterDatabase>>,
+    _images: ResMut<Assets<Image>>,
 ) {
     for event in click_events.read() {
         if button_query.get(event.entity).is_err() {
@@ -939,39 +899,14 @@ pub fn handle_settings_button_click(
 
         settings_state.editing_dice_scales = settings_state.settings.dice_scales.clone();
 
+        settings_state.editing_dice_roll_fx_mappings =
+            settings_state.settings.dice_roll_fx_mappings.clone();
+
         settings_state.editing_dice_fx_surface_opacity = settings_state.settings.dice_fx_surface_opacity;
         settings_state.editing_dice_fx_plume_height_multiplier =
             settings_state.settings.dice_fx_plume_height_multiplier;
         settings_state.editing_dice_fx_plume_radius_multiplier =
             settings_state.settings.dice_fx_plume_radius_multiplier;
-
-        // Custom dice FX staging.
-        init_custom_dice_fx_editing_from_settings(&mut settings_state);
-
-        settings_state.selected_dice_fx_curve_point_id = None;
-        settings_state.dragging_dice_fx_curve_point_id = None;
-        settings_state.dragging_dice_fx_curve_bezier = None;
-        settings_state.dice_fx_curve_edit_mode = ShakeCurveEditMode::None;
-        settings_state.dice_fx_curve_add_mask = true;
-        settings_state.dice_fx_curve_add_noise = false;
-        settings_state.dice_fx_curve_add_ramp = false;
-        settings_state.dice_fx_curve_add_opacity = false;
-        settings_state.dice_fx_curve_add_plume_height = false;
-        settings_state.dice_fx_curve_add_plume_radius = false;
-
-        settings_state.dice_fx_saved_dir_display_text = custom_fx_out_dir(db.as_deref())
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        settings_state.dice_fx_preview_source = None;
-        settings_state.dice_fx_preview_noise = None;
-        settings_state.dice_fx_preview_mask = None;
-        settings_state.dice_fx_preview_ramp = None;
-        settings_state.dice_fx_preview_source_path = None;
-        settings_state.dice_fx_preview_noise_path = None;
-        settings_state.dice_fx_preview_mask_path = None;
-        settings_state.dice_fx_preview_ramp_path = None;
-        refresh_dice_fx_preview_handles_from_paths(&mut settings_state, &mut images);
 
         // Copy current shake settings into an editable staging area.
         settings_state.editing_shake_config = shake_config.clone();
@@ -1051,7 +986,6 @@ pub fn manage_settings_modal(
     settings_state: Res<SettingsState>,
     theme: Res<MaterialTheme>,
     preview_target: Option<Res<DiceScalePreviewRenderTarget>>,
-    ui_images: Option<Res<SettingsUiImages>>,
     modal_query: Query<Entity, With<SettingsModalOverlay>>,
 ) {
     if !settings_state.is_changed() {
@@ -1069,7 +1003,6 @@ pub fn manage_settings_modal(
                 &settings_state,
                 &settings_state.editing_shake_config,
                 preview_target.map(|r| r.image.clone()),
-                ui_images.map(|r| r.blank.clone()),
             );
         }
     } else {
@@ -1112,27 +1045,15 @@ pub fn handle_settings_ok_click(
         settings_state.settings.dice_fx_plume_radius_multiplier =
             settings_state.editing_dice_fx_plume_radius_multiplier.clamp(0.25, 3.0);
 
+        // Apply per-die/per-face Dice Roll FX mappings.
+        let mut mappings = settings_state.editing_dice_roll_fx_mappings.clone();
+        for m in &mut mappings {
+            m.normalize_len();
+        }
+        settings_state.settings.dice_roll_fx_mappings = mappings;
+
         settings_state.settings.default_roll_uses_shake =
             settings_state.default_roll_uses_shake_editing;
-
-        // Persist the currently edited FX back into the selected library slot.
-        if let Some(i) = settings_state.selected_custom_dice_fx_library_index {
-            if i < settings_state.editing_custom_dice_fx_library.len() {
-                settings_state.editing_custom_dice_fx_library[i] =
-                    settings_state.editing_custom_dice_fx.clone();
-            }
-        }
-
-        // Persist library.
-        settings_state.settings.custom_dice_fx_library =
-            settings_state.editing_custom_dice_fx_library.clone();
-
-        // Apply custom dice FX settings (store as Some when enabled, None when disabled).
-        settings_state.settings.custom_dice_fx = if settings_state.editing_custom_dice_fx.enabled {
-            Some(settings_state.editing_custom_dice_fx.clone())
-        } else {
-            None
-        };
 
         // Update the clear color
         clear_color.0 = settings_state.settings.background_color.to_color();
@@ -1191,80 +1112,6 @@ pub fn handle_settings_ok_click(
         // Close modal
         settings_state.show_modal = false;
         settings_state.modal_kind = crate::dice3d::types::ActiveModalKind::None;
-    }
-}
-
-pub fn handle_dice_fx_saved_effect_select_change(
-    mut commands: Commands,
-    mut events: MessageReader<SelectChangeEvent>,
-    mut settings_state: ResMut<SettingsState>,
-    selects: Query<&MaterialSelect>,
-    modal_query: Query<Entity, With<SettingsModalOverlay>>,
-    mut images: ResMut<Assets<Image>>,
-) {
-    if !(settings_state.show_modal
-        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
-    {
-        return;
-    }
-
-    for ev in events.read() {
-        // Filter to our dropdown.
-        if let Ok(select) = selects.get(ev.entity) {
-            if select.label.as_deref() != Some("Saved dice effects") {
-                continue;
-            }
-        }
-
-        let Some(value) = ev.option.value.clone() else {
-            continue;
-        };
-        let Ok(new_idx) = value.parse::<usize>() else {
-            continue;
-        };
-
-        // Save current edits into the previously selected entry so switching doesn't lose changes.
-        if let Some(prev) = settings_state.selected_custom_dice_fx_library_index {
-            if prev < settings_state.editing_custom_dice_fx_library.len() {
-                settings_state.editing_custom_dice_fx_library[prev] =
-                    settings_state.editing_custom_dice_fx.clone();
-            }
-        }
-
-        if new_idx >= settings_state.editing_custom_dice_fx_library.len() {
-            continue;
-        }
-
-        settings_state.selected_custom_dice_fx_library_index = Some(new_idx);
-        settings_state.editing_custom_dice_fx =
-            settings_state.editing_custom_dice_fx_library[new_idx].clone();
-
-        settings_state.dice_fx_trigger_value_input_text =
-            settings_state.editing_custom_dice_fx.trigger_value.to_string();
-        settings_state.dice_fx_duration_input_text =
-            format!("{:.3}", settings_state.editing_custom_dice_fx.duration_seconds.max(0.0));
-
-        // Reset curve editor selection/drag state when switching effects.
-        settings_state.selected_dice_fx_curve_point_id = None;
-        settings_state.dragging_dice_fx_curve_point_id = None;
-        settings_state.dragging_dice_fx_curve_bezier = None;
-
-        // Refresh preview base images from disk for the newly selected effect.
-        settings_state.dice_fx_preview_source = None;
-        settings_state.dice_fx_preview_noise = None;
-        settings_state.dice_fx_preview_mask = None;
-        settings_state.dice_fx_preview_ramp = None;
-        settings_state.dice_fx_preview_last_time_t = -1.0;
-        settings_state.dice_fx_preview_source_path = None;
-        settings_state.dice_fx_preview_noise_path = None;
-        settings_state.dice_fx_preview_mask_path = None;
-        settings_state.dice_fx_preview_ramp_path = None;
-        refresh_dice_fx_preview_handles_from_paths(&mut settings_state, &mut images);
-
-        // Force a modal rebuild so all widgets (selects/text fields) reflect the new effect.
-        for entity in modal_query.iter() {
-            commands.entity(entity).despawn();
-        }
     }
 }
 
@@ -1327,9 +1174,11 @@ pub fn handle_dice_fx_param_slider_changes(
     }
 }
 
-pub fn handle_dice_fx_preview_time_slider_changes(
-    mut events: MessageReader<SliderChangeEvent>,
-    slider_query: Query<(), With<DiceFxPreviewTimeSlider>>,
+/// Handle Dice Roll FX mapping dropdown changes (per die type, per rolled value).
+pub fn handle_dice_roll_fx_mapping_select_change(
+    mut events: MessageReader<SelectChangeEvent>,
+    tag_query: Query<&DiceRollFxMappingSelect>,
+    parents: Query<&ChildOf>,
     mut settings_state: ResMut<SettingsState>,
 ) {
     if !(settings_state.show_modal
@@ -1338,12 +1187,62 @@ pub fn handle_dice_fx_preview_time_slider_changes(
         return;
     }
 
-    for event in events.read() {
-        if slider_query.get(event.entity).is_err() {
-            continue;
+    fn parse_kind(value: &str) -> DiceRollFxKind {
+        match value {
+            "fire" => DiceRollFxKind::Fire,
+            "electricity" => DiceRollFxKind::Electricity,
+            "fireworks" => DiceRollFxKind::Fireworks,
+            "explosion" => DiceRollFxKind::Explosion,
+            "plasma" => DiceRollFxKind::Plasma,
+            _ => DiceRollFxKind::None,
+        }
+    }
+
+    fn ensure_mapping_mut(
+        mappings: &mut Vec<DiceRollFxMapping>,
+        die_type: DiceType,
+    ) -> &mut DiceRollFxMapping {
+        if let Some(i) = mappings.iter().position(|m| m.die_type == die_type) {
+            return &mut mappings[i];
         }
 
-        settings_state.dice_fx_preview_time_t = event.value.clamp(0.0, 1.0);
+        mappings.push(DiceRollFxMapping::new(die_type));
+        mappings.last_mut().expect("just pushed DiceRollFxMapping")
+    }
+
+    fn find_tag_entity(
+        start: Entity,
+        tag_query: &Query<&DiceRollFxMappingSelect>,
+        parents: &Query<&ChildOf>,
+    ) -> Option<Entity> {
+        let mut cur = start;
+        for _ in 0..16 {
+            if tag_query.get(cur).is_ok() {
+                return Some(cur);
+            }
+            let Ok(parent) = parents.get(cur) else {
+                break;
+            };
+            cur = parent.0;
+        }
+        None
+    }
+
+    for ev in events.read() {
+        let Some(tag_entity) = find_tag_entity(ev.entity, &tag_query, &parents) else {
+            continue;
+        };
+        let Ok(tag) = tag_query.get(tag_entity) else {
+            continue;
+        };
+
+        let Some(value) = ev.option.value.as_deref() else {
+            continue;
+        };
+
+        let kind = parse_kind(value);
+        let mapping = ensure_mapping_mut(&mut settings_state.editing_dice_roll_fx_mappings, tag.die_type);
+        mapping.set(tag.value, kind);
     }
 }
 
@@ -1591,584 +1490,6 @@ pub fn handle_theme_seed_select_change(
             let seed = parsed.to_color();
             settings_state.editing_theme_seed_override = Some(parsed);
             *theme = MaterialTheme::from_seed(seed, theme.mode);
-        }
-    }
-}
-
-// ============================================================================
-// Dice FX (Custom Effect) - Settings Modal
-// ============================================================================
-
-fn custom_fx_out_dir(db: Option<&CharacterDatabase>) -> Option<PathBuf> {
-    let db = db?;
-    let data_dir = db.db_path.parent()?;
-    Some(data_dir.join("fx").join("custom_dice_effect"))
-}
-
-fn load_image_from_disk(path: &Path) -> Result<Image, String> {
-    let dyn_img = image::ImageReader::open(path)
-        .map_err(|e| format!("Failed to open image {path:?}: {e}"))?
-        .with_guessed_format()
-        .map_err(|e| format!("Failed to guess image format {path:?}: {e}"))?
-        .decode()
-        .map_err(|e| format!("Failed to decode image {path:?}: {e}"))?;
-
-    let rgba = dyn_img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-
-    let size = Extent3d {
-        width: w,
-        height: h,
-        depth_or_array_layers: 1,
-    };
-
-    let mut image = Image {
-        texture_descriptor: bevy::render::render_resource::TextureDescriptor {
-            label: None,
-            size,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8UnormSrgb,
-            mip_level_count: 1,
-            sample_count: 1,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            view_formats: &[],
-        },
-        ..default()
-    };
-
-    image.resize(size);
-    image.data = Some(rgba.into_raw());
-    Ok(image)
-}
-
-fn refresh_dice_fx_preview_handles_from_paths(
-    settings_state: &mut SettingsState,
-    images: &mut Assets<Image>,
-) {
-    let cfg = &settings_state.editing_custom_dice_fx;
-
-    if let Some(path) = cfg.source_image_path.as_ref() {
-        if settings_state.dice_fx_preview_source_path.as_deref() != Some(path)
-            || settings_state.dice_fx_preview_base_source.is_none()
-        {
-            if let Ok(img) = load_image_from_disk(Path::new(path)) {
-                settings_state.dice_fx_preview_base_source = Some(images.add(img.clone()));
-                settings_state.dice_fx_preview_source = Some(images.add(img));
-                settings_state.dice_fx_preview_source_path = Some(path.clone());
-            }
-        }
-    }
-
-    if let Some(path) = cfg.noise_image_path.as_ref() {
-        if settings_state.dice_fx_preview_noise_path.as_deref() != Some(path)
-            || settings_state.dice_fx_preview_base_noise.is_none()
-        {
-            if let Ok(img) = load_image_from_disk(Path::new(path)) {
-                settings_state.dice_fx_preview_base_noise = Some(images.add(img.clone()));
-                settings_state.dice_fx_preview_noise = Some(images.add(img));
-                settings_state.dice_fx_preview_noise_path = Some(path.clone());
-            }
-        }
-    }
-
-    if let Some(path) = cfg.mask_image_path.as_ref() {
-        if settings_state.dice_fx_preview_mask_path.as_deref() != Some(path)
-            || settings_state.dice_fx_preview_base_mask.is_none()
-        {
-            if let Ok(img) = load_image_from_disk(Path::new(path)) {
-                settings_state.dice_fx_preview_base_mask = Some(images.add(img.clone()));
-                settings_state.dice_fx_preview_mask = Some(images.add(img));
-                settings_state.dice_fx_preview_mask_path = Some(path.clone());
-            }
-        }
-    }
-
-    if let Some(path) = cfg.ramp_image_path.as_ref() {
-        if settings_state.dice_fx_preview_ramp_path.as_deref() != Some(path)
-            || settings_state.dice_fx_preview_base_ramp.is_none()
-        {
-            if let Ok(img) = load_image_from_disk(Path::new(path)) {
-                settings_state.dice_fx_preview_base_ramp = Some(images.add(img.clone()));
-                settings_state.dice_fx_preview_ramp = Some(images.add(img));
-                settings_state.dice_fx_preview_ramp_path = Some(path.clone());
-            }
-        }
-    }
-}
-
-fn rgb_to_hsv(rgb: Vec3) -> Vec3 {
-    let r = rgb.x;
-    let g = rgb.y;
-    let b = rgb.z;
-
-    let max = r.max(g.max(b));
-    let min = r.min(g.min(b));
-    let delta = max - min;
-
-    let mut h = 0.0;
-    if delta > 1e-6 {
-        if max == r {
-            h = ((g - b) / delta) % 6.0;
-        } else if max == g {
-            h = ((b - r) / delta) + 2.0;
-        } else {
-            h = ((r - g) / delta) + 4.0;
-        }
-        h /= 6.0;
-        if h < 0.0 {
-            h += 1.0;
-        }
-    }
-
-    let s = if max <= 1e-6 { 0.0 } else { delta / max };
-    let v = max;
-    Vec3::new(h, s, v)
-}
-
-fn hsv_to_rgb(hsv: Vec3) -> Vec3 {
-    let h = hsv.x.fract() * 6.0;
-    let s = hsv.y.clamp(0.0, 1.0);
-    let v = hsv.z.clamp(0.0, 1.0);
-
-    let c = v * s;
-    let x = c * (1.0 - ((h % 2.0) - 1.0).abs());
-    let m = v - c;
-
-    let (rp, gp, bp) = if (0.0..1.0).contains(&h) {
-        (c, x, 0.0)
-    } else if (1.0..2.0).contains(&h) {
-        (x, c, 0.0)
-    } else if (2.0..3.0).contains(&h) {
-        (0.0, c, x)
-    } else if (3.0..4.0).contains(&h) {
-        (0.0, x, c)
-    } else if (4.0..5.0).contains(&h) {
-        (x, 0.0, c)
-    } else {
-        (c, 0.0, x)
-    };
-
-    Vec3::new(rp + m, gp + m, bp + m)
-}
-
-fn apply_brightness_contrast_gray(v: f32, brightness: f32, contrast: f32) -> f32 {
-    ((v - 0.5) * contrast + 0.5 + brightness).clamp(0.0, 1.0)
-}
-
-fn apply_preview_effects(
-    base: &Image,
-    kind: DiceFxPreviewImageKind,
-    mask_curve: f32,
-    noise_curve: f32,
-    ramp_curve: f32,
-) -> Option<Vec<u8>> {
-    let data = base.data.as_ref()?;
-    if data.len() < 4 {
-        return None;
-    }
-
-    let mut out = data.clone();
-
-    // Map curves (0..1) -> parameters.
-    let hue_shift = ramp_curve.clamp(0.0, 1.0);
-    let mask_brightness = (mask_curve - 0.5) * 0.35;
-    let mask_contrast = 0.75 + 1.75 * mask_curve;
-    let noise_contrast = 0.75 + 1.75 * noise_curve;
-
-    match kind {
-        DiceFxPreviewImageKind::Ramp => {
-            // Hue shift each pixel.
-            for px in out.chunks_mut(4) {
-                let rgb = Vec3::new(px[0] as f32 / 255.0, px[1] as f32 / 255.0, px[2] as f32 / 255.0);
-                let mut hsv = rgb_to_hsv(rgb);
-                hsv.x = (hsv.x + hue_shift).fract();
-                let rgb2 = hsv_to_rgb(hsv);
-                px[0] = (rgb2.x * 255.0).round().clamp(0.0, 255.0) as u8;
-                px[1] = (rgb2.y * 255.0).round().clamp(0.0, 255.0) as u8;
-                px[2] = (rgb2.z * 255.0).round().clamp(0.0, 255.0) as u8;
-            }
-        }
-        DiceFxPreviewImageKind::Mask => {
-            for px in out.chunks_mut(4) {
-                let v = (px[0] as f32) / 255.0;
-                let v2 = apply_brightness_contrast_gray(v, mask_brightness, mask_contrast);
-                let b = (v2 * 255.0).round().clamp(0.0, 255.0) as u8;
-                px[0] = b;
-                px[1] = b;
-                px[2] = b;
-                px[3] = 255;
-            }
-        }
-        DiceFxPreviewImageKind::Noise => {
-            for px in out.chunks_mut(4) {
-                let v = (px[0] as f32) / 255.0;
-                let v2 = apply_brightness_contrast_gray(v, 0.0, noise_contrast);
-                let b = (v2 * 255.0).round().clamp(0.0, 255.0) as u8;
-                px[0] = b;
-                px[1] = b;
-                px[2] = b;
-                px[3] = 255;
-            }
-        }
-        DiceFxPreviewImageKind::Source => {
-            for px in out.chunks_mut(4) {
-                let rgb = Vec3::new(px[0] as f32 / 255.0, px[1] as f32 / 255.0, px[2] as f32 / 255.0);
-                let mut hsv = rgb_to_hsv(rgb);
-                hsv.x = (hsv.x + hue_shift).fract();
-                let mut rgb2 = hsv_to_rgb(hsv);
-                // Also show mask curve effect as brightness/contrast.
-                rgb2.x = apply_brightness_contrast_gray(rgb2.x, mask_brightness * 0.6, 0.9 + 0.8 * mask_curve);
-                rgb2.y = apply_brightness_contrast_gray(rgb2.y, mask_brightness * 0.6, 0.9 + 0.8 * mask_curve);
-                rgb2.z = apply_brightness_contrast_gray(rgb2.z, mask_brightness * 0.6, 0.9 + 0.8 * mask_curve);
-                px[0] = (rgb2.x * 255.0).round().clamp(0.0, 255.0) as u8;
-                px[1] = (rgb2.y * 255.0).round().clamp(0.0, 255.0) as u8;
-                px[2] = (rgb2.z * 255.0).round().clamp(0.0, 255.0) as u8;
-            }
-        }
-    }
-
-    Some(out)
-}
-
-pub fn handle_dice_fx_upload_image_click(
-    mut commands: Commands,
-    mut click_events: MessageReader<ButtonClickEvent>,
-    upload_query: Query<(), With<DiceFxUploadImageButton>>,
-    mut settings_state: ResMut<SettingsState>,
-    db: Option<Res<CharacterDatabase>>,
-    mut images: ResMut<Assets<Image>>,
-    modal_query: Query<Entity, With<SettingsModalOverlay>>,
-) {
-    if !(settings_state.show_modal
-        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
-    {
-        return;
-    }
-
-    for ev in click_events.read() {
-        if upload_query.get(ev.entity).is_err() {
-            continue;
-        }
-
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("Image", &["png", "jpg", "jpeg", "bmp", "tga", "gif", "webp"])
-            .pick_file()
-        else {
-            continue;
-        };
-
-        let Some(out_dir) = custom_fx_out_dir(db.as_deref()) else {
-            warn!("No CharacterDatabase available; cannot persist custom FX images");
-            continue;
-        };
-
-        match generate_custom_fx_textures(
-            path.as_path(),
-            out_dir.as_path(),
-            &settings_state.editing_custom_dice_fx,
-        ) {
-            Ok(gen) => {
-                let source_handle = images.add(gen.source_image);
-                let noise_handle = images.add(gen.noise_image);
-                let ramp_handle = images.add(gen.ramp_image);
-                let mask_handle = images.add(gen.mask_image);
-
-                // Persist paths in editing config; the runtime FX system will load these
-                // when settings are applied.
-                settings_state.editing_custom_dice_fx.enabled = true;
-                settings_state.editing_custom_dice_fx.source_image_path =
-                    Some(gen.source_path.to_string_lossy().to_string());
-                settings_state.editing_custom_dice_fx.noise_image_path =
-                    Some(gen.noise_path.to_string_lossy().to_string());
-                settings_state.editing_custom_dice_fx.ramp_image_path =
-                    Some(gen.ramp_path.to_string_lossy().to_string());
-                settings_state.editing_custom_dice_fx.mask_image_path =
-                    Some(gen.mask_path.to_string_lossy().to_string());
-
-                // Update preview cache so the settings UI can show the images immediately.
-                settings_state.dice_fx_preview_base_source = Some(source_handle);
-                settings_state.dice_fx_preview_base_noise = Some(noise_handle);
-                settings_state.dice_fx_preview_base_ramp = Some(ramp_handle);
-                settings_state.dice_fx_preview_base_mask = Some(mask_handle);
-
-                // Force regeneration of display previews on next sync.
-                settings_state.dice_fx_preview_source = None;
-                settings_state.dice_fx_preview_noise = None;
-                settings_state.dice_fx_preview_ramp = None;
-                settings_state.dice_fx_preview_mask = None;
-                settings_state.dice_fx_preview_last_time_t = -1.0;
-
-                settings_state.dice_fx_preview_source_path =
-                    settings_state.editing_custom_dice_fx.source_image_path.clone();
-                settings_state.dice_fx_preview_noise_path =
-                    settings_state.editing_custom_dice_fx.noise_image_path.clone();
-                settings_state.dice_fx_preview_ramp_path =
-                    settings_state.editing_custom_dice_fx.ramp_image_path.clone();
-                settings_state.dice_fx_preview_mask_path =
-                    settings_state.editing_custom_dice_fx.mask_image_path.clone();
-
-                // Add/update this effect in the editing library and select it.
-                let fx = settings_state.editing_custom_dice_fx.clone();
-                let idx = fx
-                    .source_image_path
-                    .as_deref()
-                    .and_then(|p| {
-                        settings_state
-                            .editing_custom_dice_fx_library
-                            .iter()
-                            .position(|e| e.source_image_path.as_deref() == Some(p))
-                    })
-                    .unwrap_or_else(|| {
-                        settings_state.editing_custom_dice_fx_library.push(fx.clone());
-                        settings_state.editing_custom_dice_fx_library.len() - 1
-                    });
-                settings_state.editing_custom_dice_fx_library[idx] = fx;
-                settings_state.selected_custom_dice_fx_library_index = Some(idx);
-
-                // Force a rebuild so the Saved effects dropdown includes the new entry.
-                for entity in modal_query.iter() {
-                    commands.entity(entity).despawn();
-                }
-            }
-            Err(e) => {
-                warn!("Failed to generate custom dice FX textures: {e}");
-            }
-        }
-    }
-}
-
-pub fn sync_dice_fx_preview_images(
-    mut settings_state: ResMut<SettingsState>,
-    mut images: ResMut<Assets<Image>>,
-    mut preview_nodes: Query<(&DiceFxPreviewImageNode, &mut bevy::ui::widget::ImageNode)>,
-    mut time_label: Query<&mut Text, With<DiceFxPreviewTimeLabel>>,
-) {
-    if !(settings_state.show_modal
-        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
-    {
-        return;
-    }
-
-    // If the user re-opened the modal, or paths changed via other edits, ensure previews exist.
-    refresh_dice_fx_preview_handles_from_paths(&mut settings_state, &mut images);
-
-    // Update the time label.
-    let dur = settings_state
-        .editing_custom_dice_fx
-        .duration_seconds
-        .max(0.0);
-    let preview_t = settings_state.dice_fx_preview_time_t.clamp(0.0, 1.0);
-    let preview_seconds = preview_t * dur;
-    if let Some(mut text) = time_label.iter_mut().next() {
-        *text = Text::new(format!("t = {:.2}s ({:.0}%)", preview_seconds, preview_t * 100.0));
-    }
-
-    // Regenerate previews if time changed (or if we're missing display handles).
-    let time_changed = (settings_state.dice_fx_preview_last_time_t - preview_t).abs() > 0.0005;
-    let need_any = settings_state.dice_fx_preview_source.is_none()
-        || settings_state.dice_fx_preview_noise.is_none()
-        || settings_state.dice_fx_preview_mask.is_none()
-        || settings_state.dice_fx_preview_ramp.is_none();
-
-    if time_changed || need_any {
-        settings_state.dice_fx_preview_last_time_t = preview_t;
-        let u = preview_t;
-
-        let mask_curve = sample_fx_curve(&settings_state.editing_custom_dice_fx.curve_points_mask, u)
-            .clamp(0.0, 1.0);
-        let noise_curve = sample_fx_curve(&settings_state.editing_custom_dice_fx.curve_points_noise, u)
-            .clamp(0.0, 1.0);
-        let ramp_curve = sample_fx_curve(&settings_state.editing_custom_dice_fx.curve_points_ramp, u)
-            .clamp(0.0, 1.0);
-
-        // Apply to each preview kind.
-        let mut update_one = |kind: DiceFxPreviewImageKind,
-                              base_handle: &Option<Handle<Image>>,
-                              display_handle: &mut Option<Handle<Image>>| {
-            let Some(base_handle) = base_handle.as_ref() else { return; };
-            let Some(base_img) = images.get(base_handle) else { return; };
-            let Some(new_data) = apply_preview_effects(base_img, kind, mask_curve, noise_curve, ramp_curve) else {
-                return;
-            };
-
-            if display_handle.is_none() {
-                let mut img = base_img.clone();
-                img.data = Some(new_data);
-                *display_handle = Some(images.add(img));
-                return;
-            }
-
-            if let Some(h) = display_handle.as_ref() {
-                if let Some(img) = images.get_mut(h) {
-                    img.data = Some(new_data);
-                }
-            }
-        };
-
-        let base_source = settings_state.dice_fx_preview_base_source.clone();
-        let base_noise = settings_state.dice_fx_preview_base_noise.clone();
-        let base_mask = settings_state.dice_fx_preview_base_mask.clone();
-        let base_ramp = settings_state.dice_fx_preview_base_ramp.clone();
-
-        update_one(
-            DiceFxPreviewImageKind::Source,
-            &base_source,
-            &mut settings_state.dice_fx_preview_source,
-        );
-        update_one(
-            DiceFxPreviewImageKind::Noise,
-            &base_noise,
-            &mut settings_state.dice_fx_preview_noise,
-        );
-        update_one(
-            DiceFxPreviewImageKind::Mask,
-            &base_mask,
-            &mut settings_state.dice_fx_preview_mask,
-        );
-        update_one(
-            DiceFxPreviewImageKind::Ramp,
-            &base_ramp,
-            &mut settings_state.dice_fx_preview_ramp,
-        );
-    }
-
-    for (tag, mut image_node) in preview_nodes.iter_mut() {
-        let desired = match tag.kind {
-            DiceFxPreviewImageKind::Source => settings_state.dice_fx_preview_source.as_ref(),
-            DiceFxPreviewImageKind::Noise => settings_state.dice_fx_preview_noise.as_ref(),
-            DiceFxPreviewImageKind::Mask => settings_state.dice_fx_preview_mask.as_ref(),
-            DiceFxPreviewImageKind::Ramp => settings_state.dice_fx_preview_ramp.as_ref(),
-        };
-
-        if let Some(handle) = desired {
-            image_node.image = handle.clone();
-        }
-    }
-}
-
-pub fn handle_dice_fx_trigger_select_change(
-    mut events: MessageReader<SelectChangeEvent>,
-    mut settings_state: ResMut<SettingsState>,
-    selects: Query<&MaterialSelect>,
-) {
-    if !(settings_state.show_modal
-        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
-    {
-        return;
-    }
-
-    for ev in events.read() {
-        if let Ok(select) = selects.get(ev.entity) {
-            if select.label.as_deref() != Some("Custom dice effect trigger") {
-                continue;
-            }
-        }
-
-        let value = ev
-            .option
-            .value
-            .clone()
-            .unwrap_or_else(|| ev.option.label.clone());
-
-        settings_state.editing_custom_dice_fx.trigger_kind = match value.as_str() {
-            "all_max" => CustomDiceFxTriggerKind::AllMax,
-            "any_die_equals" => CustomDiceFxTriggerKind::AnyDieEquals,
-            _ => CustomDiceFxTriggerKind::TotalAtLeast,
-        };
-    }
-}
-
-pub fn handle_dice_fx_trigger_value_text_input(
-    mut settings_state: ResMut<SettingsState>,
-    mut change_events: MessageReader<TextFieldChangeEvent>,
-    mut submit_events: MessageReader<TextFieldSubmitEvent>,
-    mut field_query: Query<&mut MaterialTextField, With<DiceFxTriggerValueTextInput>>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-
-    let apply = |value: &str, field: &mut MaterialTextField, state: &mut SettingsState| {
-        state.dice_fx_trigger_value_input_text = value.to_string();
-        match value.trim().parse::<u32>() {
-            Ok(v) if v > 0 => {
-                state.editing_custom_dice_fx.trigger_value = v;
-                field.error = false;
-                field.error_text = None;
-            }
-            _ => {
-                field.error = true;
-                field.error_text = Some("Enter a positive integer".to_string());
-            }
-        }
-    };
-
-    for ev in change_events.read() {
-        let Ok(mut field) = field_query.get_mut(ev.entity) else {
-            continue;
-        };
-        apply(&ev.value, &mut field, &mut settings_state);
-    }
-
-    for ev in submit_events.read() {
-        let Ok(mut field) = field_query.get_mut(ev.entity) else {
-            continue;
-        };
-        apply(&ev.value, &mut field, &mut settings_state);
-        if !field.error {
-            field.value = settings_state.dice_fx_trigger_value_input_text.clone();
-            field.has_content = !field.value.is_empty();
-        }
-    }
-}
-
-pub fn handle_dice_fx_duration_text_input(
-    mut settings_state: ResMut<SettingsState>,
-    mut change_events: MessageReader<TextFieldChangeEvent>,
-    mut submit_events: MessageReader<TextFieldSubmitEvent>,
-    mut field_query: Query<&mut MaterialTextField, With<DiceFxDurationTextInput>>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-
-    let apply = |value: &str, field: &mut MaterialTextField, state: &mut SettingsState| {
-        state.dice_fx_duration_input_text = value.to_string();
-        match value.trim().parse::<f32>() {
-            Ok(mut v) if v.is_finite() && v > 0.0 => {
-                v = v.max(0.01);
-                state.editing_custom_dice_fx.duration_seconds = v;
-                field.error = false;
-                field.error_text = None;
-            }
-            Ok(_) => {
-                field.error = true;
-                field.error_text = Some("Enter a positive number".to_string());
-            }
-            Err(_) => {
-                field.error = true;
-                field.error_text = Some("Enter a number".to_string());
-            }
-        }
-    };
-
-    for ev in change_events.read() {
-        let Ok(mut field) = field_query.get_mut(ev.entity) else {
-            continue;
-        };
-        apply(&ev.value, &mut field, &mut settings_state);
-    }
-
-    for ev in submit_events.read() {
-        let Ok(mut field) = field_query.get_mut(ev.entity) else {
-            continue;
-        };
-        apply(&ev.value, &mut field, &mut settings_state);
-        if !field.error {
-            settings_state.dice_fx_duration_input_text =
-                format!("{:.3}", settings_state.editing_custom_dice_fx.duration_seconds);
-            field.value = settings_state.dice_fx_duration_input_text.clone();
-            field.has_content = !field.value.is_empty();
         }
     }
 }
@@ -3253,1125 +2574,6 @@ pub fn sync_shake_curve_graph_ui(
 // ============================================================================
 // Dice FX curve editor (Mask/Noise/Ramp) - mirrors shake curve UX
 // ============================================================================
-
-fn dice_fx_curve_t_v_to_local_px(graph_size: Vec2, t: f32, v: f32) -> Option<Vec2> {
-    if graph_size.x <= 1.0 || graph_size.y <= 1.0 {
-        return None;
-    }
-
-    const EDGE_PAD_PX: f32 = 7.0;
-    let w = (graph_size.x - 2.0 * EDGE_PAD_PX).max(1.0);
-    let h = (graph_size.y - 2.0 * EDGE_PAD_PX).max(1.0);
-
-    let t = t.clamp(0.0, 1.0);
-    let v = v.clamp(0.0, 1.0);
-    let x = EDGE_PAD_PX + t * w;
-    let y = EDGE_PAD_PX + (1.0 - v) * h;
-    Some(Vec2::new(x, y))
-}
-
-fn dice_fx_graph_local_px_to_t_v(graph_size: Vec2, local: Vec2) -> Option<(f32, f32)> {
-    if graph_size.x <= 1.0 || graph_size.y <= 1.0 {
-        return None;
-    }
-
-    const EDGE_PAD_PX: f32 = 7.0;
-    let w = (graph_size.x - 2.0 * EDGE_PAD_PX).max(1.0);
-    let h = (graph_size.y - 2.0 * EDGE_PAD_PX).max(1.0);
-
-    let lx = (local.x - EDGE_PAD_PX).clamp(0.0, w);
-    let ly = (local.y - EDGE_PAD_PX).clamp(0.0, h);
-
-    let t: f32 = (lx / w).clamp(0.0, 1.0);
-    let v: f32 = (1.0 - (ly / h)).clamp(0.0, 1.0);
-    Some((t, v))
-}
-
-fn dice_fx_channel_enabled(settings_state: &SettingsState, channel: DiceFxCurveChannel) -> bool {
-    match channel {
-        DiceFxCurveChannel::Mask => settings_state.dice_fx_curve_add_mask,
-        DiceFxCurveChannel::Noise => settings_state.dice_fx_curve_add_noise,
-        DiceFxCurveChannel::Ramp => settings_state.dice_fx_curve_add_ramp,
-        DiceFxCurveChannel::Opacity => settings_state.dice_fx_curve_add_opacity,
-        DiceFxCurveChannel::PlumeHeight => settings_state.dice_fx_curve_add_plume_height,
-        DiceFxCurveChannel::PlumeRadius => settings_state.dice_fx_curve_add_plume_radius,
-    }
-}
-
-fn dice_fx_curve_points(cfg: &CustomDiceFxSetting, channel: DiceFxCurveChannel) -> &[FxCurvePointSetting] {
-    match channel {
-        DiceFxCurveChannel::Mask => cfg.curve_points_mask.as_slice(),
-        DiceFxCurveChannel::Noise => cfg.curve_points_noise.as_slice(),
-        DiceFxCurveChannel::Ramp => cfg.curve_points_ramp.as_slice(),
-        DiceFxCurveChannel::Opacity => cfg.curve_points_opacity.as_slice(),
-        DiceFxCurveChannel::PlumeHeight => cfg.curve_points_plume_height.as_slice(),
-        DiceFxCurveChannel::PlumeRadius => cfg.curve_points_plume_radius.as_slice(),
-    }
-}
-
-fn dice_fx_curve_points_mut(
-    cfg: &mut CustomDiceFxSetting,
-    channel: DiceFxCurveChannel,
-) -> &mut Vec<FxCurvePointSetting> {
-    match channel {
-        DiceFxCurveChannel::Mask => &mut cfg.curve_points_mask,
-        DiceFxCurveChannel::Noise => &mut cfg.curve_points_noise,
-        DiceFxCurveChannel::Ramp => &mut cfg.curve_points_ramp,
-        DiceFxCurveChannel::Opacity => &mut cfg.curve_points_opacity,
-        DiceFxCurveChannel::PlumeHeight => &mut cfg.curve_points_plume_height,
-        DiceFxCurveChannel::PlumeRadius => &mut cfg.curve_points_plume_radius,
-    }
-}
-
-fn sort_fx_curve_points(points: &mut Vec<FxCurvePointSetting>) {
-    points.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(Ordering::Equal));
-}
-
-fn find_fx_curve_point_channel(cfg: &CustomDiceFxSetting, id: u64) -> Option<DiceFxCurveChannel> {
-    for ch in [
-        DiceFxCurveChannel::Mask,
-        DiceFxCurveChannel::Noise,
-        DiceFxCurveChannel::Ramp,
-        DiceFxCurveChannel::Opacity,
-        DiceFxCurveChannel::PlumeHeight,
-        DiceFxCurveChannel::PlumeRadius,
-    ] {
-        if dice_fx_curve_points(cfg, ch).iter().any(|p| p.id == id) {
-            return Some(ch);
-        }
-    }
-    None
-}
-
-fn find_fx_curve_point_index(points: &[FxCurvePointSetting], id: u64) -> Option<usize> {
-    points.iter().position(|p| p.id == id)
-}
-
-fn remove_fx_curve_point_by_id(cfg: &mut CustomDiceFxSetting, id: u64) -> bool {
-    let mut removed = false;
-    for ch in [
-        DiceFxCurveChannel::Mask,
-        DiceFxCurveChannel::Noise,
-        DiceFxCurveChannel::Ramp,
-        DiceFxCurveChannel::Opacity,
-        DiceFxCurveChannel::PlumeHeight,
-        DiceFxCurveChannel::PlumeRadius,
-    ] {
-        let pts = dice_fx_curve_points_mut(cfg, ch);
-        let before = pts.len();
-        pts.retain(|p| p.id != id);
-        removed |= pts.len() != before;
-    }
-    removed
-}
-
-fn add_fx_curve_point(
-    cfg: &mut CustomDiceFxSetting,
-    channel: DiceFxCurveChannel,
-    t: f32,
-    value: f32,
-) -> u64 {
-    let new_id = cfg.next_curve_point_id;
-    cfg.next_curve_point_id += 1;
-    dice_fx_curve_points_mut(cfg, channel).push(FxCurvePointSetting {
-        id: new_id,
-        t: t.clamp(0.0, 1.0),
-        value: value.clamp(0.0, 1.0),
-        in_handle: None,
-        out_handle: None,
-    });
-    sort_fx_curve_points(dice_fx_curve_points_mut(cfg, channel));
-    new_id
-}
-
-fn find_nearest_fx_curve_point_id(
-    cfg: &CustomDiceFxSetting,
-    graph_size: Vec2,
-    cursor_local: Vec2,
-    settings_state: &SettingsState,
-    threshold_px: f32,
-) -> Option<u64> {
-    let mut best: Option<(u64, f32, u8)> = None;
-
-    let channel_rank = |ch: DiceFxCurveChannel| match ch {
-        DiceFxCurveChannel::Mask => 0u8,
-        DiceFxCurveChannel::Noise => 1u8,
-        DiceFxCurveChannel::Ramp => 2u8,
-        DiceFxCurveChannel::Opacity => 3u8,
-        DiceFxCurveChannel::PlumeHeight => 4u8,
-        DiceFxCurveChannel::PlumeRadius => 5u8,
-    };
-
-    for ch in [
-        DiceFxCurveChannel::Mask,
-        DiceFxCurveChannel::Noise,
-        DiceFxCurveChannel::Ramp,
-        DiceFxCurveChannel::Opacity,
-        DiceFxCurveChannel::PlumeHeight,
-        DiceFxCurveChannel::PlumeRadius,
-    ] {
-        if !dice_fx_channel_enabled(settings_state, ch) {
-            continue;
-        }
-        for p in dice_fx_curve_points(cfg, ch) {
-            let Some(pos) = dice_fx_curve_t_v_to_local_px(graph_size, p.t, p.value) else {
-                continue;
-            };
-            let d = cursor_local.distance(pos);
-            if d > threshold_px {
-                continue;
-            }
-
-            let rank = channel_rank(ch);
-            match best {
-                None => best = Some((p.id, d, rank)),
-                Some((_, best_d, best_rank)) => {
-                    if d < best_d || (d == best_d && rank < best_rank) {
-                        best = Some((p.id, d, rank));
-                    }
-                }
-            }
-        }
-    }
-
-    best.map(|(id, _, _)| id)
-}
-
-fn sample_fx_curve(points: &[FxCurvePointSetting], t: f32) -> f32 {
-    if points.is_empty() {
-        return 0.0;
-    }
-    if points.len() == 1 {
-        return points[0].value;
-    }
-
-    let t = t.clamp(0.0, 1.0);
-
-    let mut points_sorted: std::borrow::Cow<'_, [FxCurvePointSetting]> =
-        std::borrow::Cow::Borrowed(points);
-    if !points.windows(2).all(|w| w[0].t <= w[1].t) {
-        let mut tmp = points.to_vec();
-        tmp.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap_or(Ordering::Equal));
-        points_sorted = std::borrow::Cow::Owned(tmp);
-    }
-    let points = points_sorted.as_ref();
-
-    if t <= points[0].t {
-        return points[0].value;
-    }
-    if t >= points[points.len() - 1].t {
-        return points[points.len() - 1].value;
-    }
-
-    for w in points.windows(2) {
-        let a = &w[0];
-        let b = &w[1];
-        if t >= a.t && t <= b.t {
-            let dt = (b.t - a.t).max(0.0001);
-            let initial_u = ((t - a.t) / dt).clamp(0.0, 1.0);
-
-            // Convert handle arrays -> Vec2.
-            let mut p1 = a.out_handle.map(|h| Vec2::new(h[0], h[1])).unwrap_or(Vec2::new(
-                lerp(a.t, b.t, 1.0 / 3.0),
-                a.value,
-            ));
-            let mut p2 = b.in_handle.map(|h| Vec2::new(h[0], h[1])).unwrap_or(Vec2::new(
-                lerp(a.t, b.t, 2.0 / 3.0),
-                b.value,
-            ));
-
-            p1.x = p1.x.clamp(a.t.min(b.t), a.t.max(b.t));
-            p2.x = p2.x.clamp(a.t.min(b.t), a.t.max(b.t));
-            p1.y = p1.y.clamp(0.0, 1.0);
-            p2.y = p2.y.clamp(0.0, 1.0);
-
-            let mut u = initial_u;
-            for _ in 0..8 {
-                let x = cubic_bezier(a.t, p1.x, p2.x, b.t, u);
-                let dx = cubic_bezier_derivative(a.t, p1.x, p2.x, b.t, u);
-                if dx.abs() < 1e-5 {
-                    break;
-                }
-                u = (u - (x - t) / dx).clamp(0.0, 1.0);
-            }
-
-            return cubic_bezier(a.value, p1.y, p2.y, b.value, u).clamp(0.0, 1.0);
-        }
-    }
-
-    points[0].value
-}
-
-pub fn handle_dice_fx_curve_chip_clicks(
-    mut click_events: MessageReader<ChipClickEvent>,
-    edit_mode_chips: Query<&DiceFxCurveEditModeChip>,
-    channel_chips: Query<&DiceFxCurveChannelChip>,
-    mut settings_state: ResMut<SettingsState>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-
-    for ev in click_events.read() {
-        if let Ok(chip) = edit_mode_chips.get(ev.entity) {
-            settings_state.dice_fx_curve_edit_mode =
-                if settings_state.dice_fx_curve_edit_mode == chip.mode {
-                    ShakeCurveEditMode::None
-                } else {
-                    chip.mode
-                };
-
-            if settings_state.dice_fx_curve_edit_mode == ShakeCurveEditMode::Delete {
-                settings_state.dragging_dice_fx_curve_point_id = None;
-                settings_state.dragging_dice_fx_curve_bezier = None;
-            }
-            continue;
-        }
-
-        if let Ok(chip) = channel_chips.get(ev.entity) {
-            let channel = chip.channel;
-            match channel {
-                DiceFxCurveChannel::Mask => {
-                    settings_state.dice_fx_curve_add_mask = !settings_state.dice_fx_curve_add_mask
-                }
-                DiceFxCurveChannel::Noise => {
-                    settings_state.dice_fx_curve_add_noise = !settings_state.dice_fx_curve_add_noise
-                }
-                DiceFxCurveChannel::Ramp => {
-                    settings_state.dice_fx_curve_add_ramp = !settings_state.dice_fx_curve_add_ramp
-                }
-                DiceFxCurveChannel::Opacity => {
-                    settings_state.dice_fx_curve_add_opacity =
-                        !settings_state.dice_fx_curve_add_opacity
-                }
-                DiceFxCurveChannel::PlumeHeight => {
-                    settings_state.dice_fx_curve_add_plume_height =
-                        !settings_state.dice_fx_curve_add_plume_height
-                }
-                DiceFxCurveChannel::PlumeRadius => {
-                    settings_state.dice_fx_curve_add_plume_radius =
-                        !settings_state.dice_fx_curve_add_plume_radius
-                }
-            }
-
-            // Never allow all channels disabled.
-            if !settings_state.dice_fx_curve_add_mask
-                && !settings_state.dice_fx_curve_add_noise
-                && !settings_state.dice_fx_curve_add_ramp
-                && !settings_state.dice_fx_curve_add_opacity
-                && !settings_state.dice_fx_curve_add_plume_height
-                && !settings_state.dice_fx_curve_add_plume_radius
-            {
-                match channel {
-                    DiceFxCurveChannel::Mask => settings_state.dice_fx_curve_add_mask = true,
-                    DiceFxCurveChannel::Noise => settings_state.dice_fx_curve_add_noise = true,
-                    DiceFxCurveChannel::Ramp => settings_state.dice_fx_curve_add_ramp = true,
-                    DiceFxCurveChannel::Opacity => settings_state.dice_fx_curve_add_opacity = true,
-                    DiceFxCurveChannel::PlumeHeight => {
-                        settings_state.dice_fx_curve_add_plume_height = true
-                    }
-                    DiceFxCurveChannel::PlumeRadius => {
-                        settings_state.dice_fx_curve_add_plume_radius = true
-                    }
-                }
-            }
-
-            // If the selected point is on a now-disabled channel, deselect it.
-            if let Some(selected_id) = settings_state.selected_dice_fx_curve_point_id {
-                if let Some(ch) =
-                    find_fx_curve_point_channel(&settings_state.editing_custom_dice_fx, selected_id)
-                {
-                    if !dice_fx_channel_enabled(&settings_state, ch) {
-                        settings_state.selected_dice_fx_curve_point_id = None;
-                        if settings_state.dragging_dice_fx_curve_point_id == Some(selected_id) {
-                            settings_state.dragging_dice_fx_curve_point_id = None;
-                        }
-                        settings_state.dragging_dice_fx_curve_bezier = None;
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn sync_dice_fx_curve_chip_ui(
-    settings_state: Res<SettingsState>,
-    mut edit_mode_chips: Query<
-        (&DiceFxCurveEditModeChip, &mut MaterialChip),
-        Without<DiceFxCurveChannelChip>,
-    >,
-    mut channel_chips: Query<
-        (&DiceFxCurveChannelChip, &mut MaterialChip),
-        Without<DiceFxCurveEditModeChip>,
-    >,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-    if !settings_state.is_changed() {
-        return;
-    }
-
-    for (chip, mut material) in edit_mode_chips.iter_mut() {
-        material.selected = settings_state.dice_fx_curve_edit_mode == chip.mode;
-    }
-    for (chip, mut material) in channel_chips.iter_mut() {
-        material.selected = match chip.channel {
-            DiceFxCurveChannel::Mask => settings_state.dice_fx_curve_add_mask,
-            DiceFxCurveChannel::Noise => settings_state.dice_fx_curve_add_noise,
-            DiceFxCurveChannel::Ramp => settings_state.dice_fx_curve_add_ramp,
-            DiceFxCurveChannel::Opacity => settings_state.dice_fx_curve_add_opacity,
-            DiceFxCurveChannel::PlumeHeight => settings_state.dice_fx_curve_add_plume_height,
-            DiceFxCurveChannel::PlumeRadius => settings_state.dice_fx_curve_add_plume_radius,
-        };
-    }
-}
-
-pub fn handle_dice_fx_curve_graph_click_to_add_point(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut settings_state: ResMut<SettingsState>,
-    graph: Query<
-        (
-            &ComputedNode,
-            &UiGlobalTransform,
-            &ComputedUiTargetCamera,
-            &Node,
-        ),
-        With<DiceFxCurveGraphPlotRoot>,
-    >,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    cameras: Query<&Camera>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-    if !mouse.just_pressed(MouseButton::Left) {
-        return;
-    }
-
-    let mode = settings_state.dice_fx_curve_edit_mode;
-    if settings_state.dragging_dice_fx_curve_point_id.is_some()
-        || settings_state.dragging_dice_fx_curve_bezier.is_some()
-    {
-        return;
-    }
-
-    let Some((computed, transform, target_camera, node)) = graph.iter().next() else {
-        return;
-    };
-    if node.display == Display::None {
-        return;
-    }
-
-    let size_physical = computed.size();
-    let inv_sf = computed.inverse_scale_factor();
-    let size = size_physical * inv_sf;
-    let window = windows.iter().next();
-    let ui_camera = target_camera.get().and_then(|e| cameras.get(e).ok());
-
-    let cursor_local = if let Some(window) = window {
-        let cursor_in_ui_target = ui_target_cursor_physical_px(window, ui_camera);
-        cursor_in_ui_target.and_then(|c| {
-            window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed)
-        })
-    } else {
-        None
-    };
-    let Some(cursor_local) = cursor_local else {
-        return;
-    };
-    if cursor_local.x < 0.0
-        || cursor_local.y < 0.0
-        || cursor_local.x > size.x
-        || cursor_local.y > size.y
-    {
-        return;
-    }
-
-    let Some((t, v)) = dice_fx_graph_local_px_to_t_v(size, cursor_local) else {
-        return;
-    };
-
-    let add_mask = settings_state.dice_fx_curve_add_mask;
-    let add_noise = settings_state.dice_fx_curve_add_noise;
-    let add_ramp = settings_state.dice_fx_curve_add_ramp;
-    let add_opacity = settings_state.dice_fx_curve_add_opacity;
-    let add_plume_height = settings_state.dice_fx_curve_add_plume_height;
-    let add_plume_radius = settings_state.dice_fx_curve_add_plume_radius;
-
-    match mode {
-        ShakeCurveEditMode::Add => {
-            if let Some(id) = find_nearest_fx_curve_point_id(
-                &settings_state.editing_custom_dice_fx,
-                size,
-                cursor_local,
-                &settings_state,
-                16.0,
-            ) {
-                settings_state.selected_dice_fx_curve_point_id = Some(id);
-                settings_state.dragging_dice_fx_curve_point_id = Some(id);
-                return;
-            }
-
-            let new_selected = {
-                let cfg = &mut settings_state.editing_custom_dice_fx;
-                let mut new_selected: Option<u64> = None;
-                if add_mask {
-                    new_selected = Some(add_fx_curve_point(cfg, DiceFxCurveChannel::Mask, t, v));
-                }
-                if add_noise {
-                    new_selected = Some(add_fx_curve_point(cfg, DiceFxCurveChannel::Noise, t, v));
-                }
-                if add_ramp {
-                    new_selected = Some(add_fx_curve_point(cfg, DiceFxCurveChannel::Ramp, t, v));
-                }
-                if add_opacity {
-                    new_selected =
-                        Some(add_fx_curve_point(cfg, DiceFxCurveChannel::Opacity, t, v));
-                }
-                if add_plume_height {
-                    new_selected = Some(add_fx_curve_point(
-                        cfg,
-                        DiceFxCurveChannel::PlumeHeight,
-                        t,
-                        v,
-                    ));
-                }
-                if add_plume_radius {
-                    new_selected = Some(add_fx_curve_point(
-                        cfg,
-                        DiceFxCurveChannel::PlumeRadius,
-                        t,
-                        v,
-                    ));
-                }
-                new_selected
-            };
-
-            if let Some(id) = new_selected {
-                settings_state.selected_dice_fx_curve_point_id = Some(id);
-                settings_state.dragging_dice_fx_curve_point_id = Some(id);
-            }
-        }
-        ShakeCurveEditMode::Delete => {
-            let removed_id = {
-                let cfg = &mut settings_state.editing_custom_dice_fx;
-                let mut best: Option<(u64, f32)> = None;
-                let consider = |best: &mut Option<(u64, f32)>, id: u64, dist: f32| match best {
-                    None => *best = Some((id, dist)),
-                    Some((_, best_dist)) if dist < *best_dist => *best = Some((id, dist)),
-                    _ => {}
-                };
-
-                let threshold = 22.0_f32;
-                for ch in [
-                    DiceFxCurveChannel::Mask,
-                    DiceFxCurveChannel::Noise,
-                    DiceFxCurveChannel::Ramp,
-                    DiceFxCurveChannel::Opacity,
-                    DiceFxCurveChannel::PlumeHeight,
-                    DiceFxCurveChannel::PlumeRadius,
-                ] {
-                    let on = match ch {
-                        DiceFxCurveChannel::Mask => add_mask,
-                        DiceFxCurveChannel::Noise => add_noise,
-                        DiceFxCurveChannel::Ramp => add_ramp,
-                        DiceFxCurveChannel::Opacity => add_opacity,
-                        DiceFxCurveChannel::PlumeHeight => add_plume_height,
-                        DiceFxCurveChannel::PlumeRadius => add_plume_radius,
-                    };
-                    if !on {
-                        continue;
-                    }
-                    for p in dice_fx_curve_points(cfg, ch) {
-                        let Some(pos) = dice_fx_curve_t_v_to_local_px(size, p.t, p.value) else {
-                            continue;
-                        };
-                        let d = cursor_local.distance(pos);
-                        if d <= threshold {
-                            consider(&mut best, p.id, d);
-                        }
-                    }
-                }
-
-                if let Some((id, _)) = best {
-                    if remove_fx_curve_point_by_id(cfg, id) {
-                        Some(id)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            };
-
-            if let Some(id) = removed_id {
-                if settings_state.selected_dice_fx_curve_point_id == Some(id) {
-                    settings_state.selected_dice_fx_curve_point_id = None;
-                }
-                if settings_state.dragging_dice_fx_curve_point_id == Some(id) {
-                    settings_state.dragging_dice_fx_curve_point_id = None;
-                }
-            }
-        }
-        ShakeCurveEditMode::None => {
-            if let Some(id) = find_nearest_fx_curve_point_id(
-                &settings_state.editing_custom_dice_fx,
-                size,
-                cursor_local,
-                &settings_state,
-                16.0,
-            ) {
-                settings_state.selected_dice_fx_curve_point_id = Some(id);
-                settings_state.dragging_dice_fx_curve_point_id = Some(id);
-            } else {
-                settings_state.selected_dice_fx_curve_point_id = None;
-                settings_state.dragging_dice_fx_curve_point_id = None;
-                settings_state.dragging_dice_fx_curve_bezier = None;
-            }
-        }
-    }
-}
-
-pub fn handle_dice_fx_curve_point_press(
-    mut settings_state: ResMut<SettingsState>,
-    mut interactions: Query<(&Interaction, &DiceFxCurvePointHandle), Changed<Interaction>>,
-    graph: Query<&Node, With<DiceFxCurveGraphPlotRoot>>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-
-    let Some(node) = graph.iter().next() else {
-        return;
-    };
-    if node.display == Display::None {
-        return;
-    }
-
-    for (interaction, handle) in interactions.iter_mut() {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-
-        if settings_state.dice_fx_curve_edit_mode == ShakeCurveEditMode::Delete {
-            let id = handle.id;
-            let removed = {
-                let cfg = &mut settings_state.editing_custom_dice_fx;
-                remove_fx_curve_point_by_id(cfg, id)
-            };
-            if removed {
-                if settings_state.selected_dice_fx_curve_point_id == Some(id) {
-                    settings_state.selected_dice_fx_curve_point_id = None;
-                }
-                if settings_state.dragging_dice_fx_curve_point_id == Some(id) {
-                    settings_state.dragging_dice_fx_curve_point_id = None;
-                }
-                if settings_state.dragging_dice_fx_curve_bezier
-                    .map(|(pid, _)| pid)
-                    == Some(id)
-                {
-                    settings_state.dragging_dice_fx_curve_bezier = None;
-                }
-            }
-        } else {
-            settings_state.selected_dice_fx_curve_point_id = Some(handle.id);
-            settings_state.dragging_dice_fx_curve_point_id = Some(handle.id);
-            settings_state.dragging_dice_fx_curve_bezier = None;
-        }
-    }
-}
-
-pub fn drag_dice_fx_curve_point(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut settings_state: ResMut<SettingsState>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    graph: Query<
-        (
-            &ComputedNode,
-            &UiGlobalTransform,
-            &ComputedUiTargetCamera,
-            &Node,
-        ),
-        With<DiceFxCurveGraphPlotRoot>,
-    >,
-    cameras: Query<&Camera>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-    if settings_state.dice_fx_curve_edit_mode == ShakeCurveEditMode::Delete {
-        return;
-    }
-
-    let Some((computed, transform, target_camera, node)) = graph.iter().next() else {
-        return;
-    };
-    if node.display == Display::None {
-        return;
-    }
-
-    let Some(window) = windows.iter().next() else {
-        return;
-    };
-    let ui_camera = target_camera.get().and_then(|e| cameras.get(e).ok());
-
-    if mouse.just_released(MouseButton::Left) {
-        settings_state.dragging_dice_fx_curve_point_id = None;
-        return;
-    }
-
-    let Some(drag_id) = settings_state.dragging_dice_fx_curve_point_id else {
-        return;
-    };
-    if !mouse.pressed(MouseButton::Left) {
-        settings_state.dragging_dice_fx_curve_point_id = None;
-        return;
-    }
-
-    let size_physical = computed.size();
-    let inv_sf = computed.inverse_scale_factor();
-    let size = size_physical * inv_sf;
-    let cursor_in_ui_target = ui_target_cursor_physical_px(window, ui_camera);
-    let local = cursor_in_ui_target
-        .and_then(|c| window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed));
-    let Some(local) = local else {
-        return;
-    };
-    let Some((t, v)) = dice_fx_graph_local_px_to_t_v(size, local) else {
-        return;
-    };
-
-    let cfg = &mut settings_state.editing_custom_dice_fx;
-    if let Some(ch) = find_fx_curve_point_channel(cfg, drag_id) {
-        let pts = dice_fx_curve_points_mut(cfg, ch);
-        if let Some(i) = find_fx_curve_point_index(pts, drag_id) {
-            let old_t = pts[i].t;
-            let old_v = pts[i].value;
-            pts[i].t = t;
-            pts[i].value = v;
-
-            let dt = pts[i].t - old_t;
-            let dv = pts[i].value - old_v;
-            if let Some(h) = pts[i].in_handle {
-                pts[i].in_handle = Some([
-                    (h[0] + dt).clamp(0.0, 1.0),
-                    (h[1] + dv).clamp(0.0, 1.0),
-                ]);
-            }
-            if let Some(h) = pts[i].out_handle {
-                pts[i].out_handle = Some([
-                    (h[0] + dt).clamp(0.0, 1.0),
-                    (h[1] + dv).clamp(0.0, 1.0),
-                ]);
-            }
-            sort_fx_curve_points(pts);
-        }
-    }
-}
-
-pub fn handle_dice_fx_curve_bezier_handle_press(
-    mut settings_state: ResMut<SettingsState>,
-    mut interactions: Query<(&Interaction, &DiceFxCurveBezierHandle), Changed<Interaction>>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-    if settings_state.dice_fx_curve_edit_mode == ShakeCurveEditMode::Delete {
-        return;
-    }
-
-    for (interaction, handle) in interactions.iter_mut() {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-
-        settings_state.selected_dice_fx_curve_point_id = Some(handle.point_id);
-        settings_state.dragging_dice_fx_curve_point_id = None;
-        settings_state.dragging_dice_fx_curve_bezier = Some((handle.point_id, handle.kind));
-    }
-}
-
-pub fn drag_dice_fx_curve_bezier_handle(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut settings_state: ResMut<SettingsState>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    graph: Query<
-        (
-            &ComputedNode,
-            &UiGlobalTransform,
-            &ComputedUiTargetCamera,
-            &Node,
-        ),
-        With<DiceFxCurveGraphPlotRoot>,
-    >,
-    cameras: Query<&Camera>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-    if settings_state.dice_fx_curve_edit_mode == ShakeCurveEditMode::Delete {
-        return;
-    }
-
-    if mouse.just_released(MouseButton::Left) {
-        settings_state.dragging_dice_fx_curve_bezier = None;
-        return;
-    }
-
-    let Some((point_id, kind)) = settings_state.dragging_dice_fx_curve_bezier else {
-        return;
-    };
-    if !mouse.pressed(MouseButton::Left) {
-        settings_state.dragging_dice_fx_curve_bezier = None;
-        return;
-    }
-
-    let Some((computed, transform, target_camera, node)) = graph.iter().next() else {
-        return;
-    };
-    if node.display == Display::None {
-        return;
-    }
-
-    let Some(window) = windows.iter().next() else {
-        return;
-    };
-    let ui_camera = target_camera.get().and_then(|e| cameras.get(e).ok());
-
-    let size_physical = computed.size();
-    let inv_sf = computed.inverse_scale_factor();
-    let size = size_physical * inv_sf;
-    let cursor_in_ui_target = ui_target_cursor_physical_px(window, ui_camera);
-    let local = cursor_in_ui_target
-        .and_then(|c| window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed));
-    let Some(local) = local else {
-        return;
-    };
-    let Some((t, v)) = dice_fx_graph_local_px_to_t_v(size, local) else {
-        return;
-    };
-
-    let cfg = &mut settings_state.editing_custom_dice_fx;
-    let Some(ch) = find_fx_curve_point_channel(cfg, point_id) else {
-        return;
-    };
-    let pts = dice_fx_curve_points_mut(cfg, ch);
-    sort_fx_curve_points(pts);
-    let Some(i) = find_fx_curve_point_index(pts, point_id) else {
-        return;
-    };
-
-    let pt_t = pts[i].t;
-    let prev_t = if i > 0 { pts[i - 1].t } else { pt_t };
-    let next_t = if i + 1 < pts.len() { pts[i + 1].t } else { pt_t };
-
-    let handle_t = match kind {
-        ShakeCurveBezierHandleKind::In => t.clamp(prev_t.min(pt_t), pt_t.max(prev_t)),
-        ShakeCurveBezierHandleKind::Out => t.clamp(pt_t.min(next_t), next_t.max(pt_t)),
-    };
-    let handle_pos = [handle_t, v.clamp(0.0, 1.0)];
-    match kind {
-        ShakeCurveBezierHandleKind::In => pts[i].in_handle = Some(handle_pos),
-        ShakeCurveBezierHandleKind::Out => pts[i].out_handle = Some(handle_pos),
-    }
-}
-
-pub fn sync_dice_fx_curve_graph_ui(
-    mut commands: Commands,
-    theme: Res<MaterialTheme>,
-    settings_state: Res<SettingsState>,
-    graph: Query<(Entity, &ComputedNode), With<DiceFxCurveGraphPlotRoot>>,
-    mut dots: Query<
-        (&DiceFxCurveGraphDot, &mut Node),
-        (
-            Without<DiceFxCurvePointHandle>,
-            Without<DiceFxCurveBezierHandle>,
-        ),
-    >,
-    mut handles: Query<
-        (
-            Entity,
-            &DiceFxCurvePointHandle,
-            &mut Node,
-            &mut BackgroundColor,
-            &mut BorderColor,
-        ),
-        (
-            Without<DiceFxCurveGraphDot>,
-            Without<DiceFxCurveBezierHandle>,
-        ),
-    >,
-    mut bezier_handles: Query<
-        (
-            Entity,
-            &DiceFxCurveBezierHandle,
-            &mut Node,
-            &mut BackgroundColor,
-            &mut BorderColor,
-        ),
-        (
-            Without<DiceFxCurvePointHandle>,
-            Without<DiceFxCurveGraphDot>,
-        ),
-    >,
-    graph_children: Query<&Children>,
-) {
-    if !settings_state.show_modal {
-        return;
-    }
-
-    let Some((graph_entity, computed)) = graph.iter().next() else {
-        return;
-    };
-
-    let size_physical = computed.size();
-    let size = size_physical * computed.inverse_scale_factor();
-    if size.x <= 1.0 || size.y <= 1.0 {
-        return;
-    }
-
-    let cfg = &settings_state.editing_custom_dice_fx;
-
-    // Ensure handle entities exist for each point id; remove extras.
-    let mut existing_ids: std::collections::HashMap<u64, Entity> = std::collections::HashMap::new();
-    for (e, h, _node, _bg, _border) in handles.iter_mut() {
-        existing_ids.insert(h.id, e);
-    }
-
-    let mut desired_ids: std::collections::HashSet<u64> = std::collections::HashSet::new();
-    for ch in [
-        DiceFxCurveChannel::Mask,
-        DiceFxCurveChannel::Noise,
-        DiceFxCurveChannel::Ramp,
-        DiceFxCurveChannel::Opacity,
-        DiceFxCurveChannel::PlumeHeight,
-        DiceFxCurveChannel::PlumeRadius,
-    ] {
-        for p in dice_fx_curve_points(cfg, ch) {
-            desired_ids.insert(p.id);
-            if !existing_ids.contains_key(&p.id) {
-                commands.entity(graph_entity).with_children(|graph| {
-                    graph.spawn((
-                        Button,
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: Val::Px(0.0),
-                            top: Val::Px(0.0),
-                            width: Val::Px(14.0),
-                            height: Val::Px(14.0),
-                            ..default()
-                        },
-                        BackgroundColor(theme.surface_container_high),
-                        BorderRadius::all(Val::Px(7.0)),
-                        BorderColor::from(theme.outline_variant),
-                        Interaction::None,
-                        DiceFxCurvePointHandle { id: p.id },
-                    ));
-                });
-            }
-        }
-    }
-
-    for (e, h, _node, _bg, _border) in handles.iter_mut() {
-        if !desired_ids.contains(&h.id) {
-            commands.entity(e).despawn();
-        }
-    }
-
-    // Update handle positions/colors.
-    let selected = settings_state.selected_dice_fx_curve_point_id;
-    for (_e, h, mut node, mut bg, mut border) in handles.iter_mut() {
-        let Some(ch) = find_fx_curve_point_channel(cfg, h.id) else {
-            continue;
-        };
-        if !dice_fx_channel_enabled(&settings_state, ch) {
-            node.display = Display::None;
-            continue;
-        }
-
-        node.display = Display::Flex;
-
-        let ch_color = match ch {
-            DiceFxCurveChannel::Mask => theme.primary,
-            DiceFxCurveChannel::Noise => theme.secondary,
-            DiceFxCurveChannel::Ramp => theme.tertiary,
-            DiceFxCurveChannel::Opacity => theme.primary,
-            DiceFxCurveChannel::PlumeHeight => theme.secondary,
-            DiceFxCurveChannel::PlumeRadius => theme.tertiary,
-        };
-        *border = BorderColor::all(ch_color);
-
-        let Some(p) = dice_fx_curve_points(cfg, ch).iter().find(|p| p.id == h.id) else {
-            continue;
-        };
-        let Some(pos) = dice_fx_curve_t_v_to_local_px(size, p.t, p.value) else {
-            continue;
-        };
-        node.left = Val::Px((pos.x - 7.0).clamp(0.0, (size.x - 14.0).max(0.0)));
-        node.top = Val::Px((pos.y - 7.0).clamp(0.0, (size.y - 14.0).max(0.0)));
-        *bg = if selected == Some(h.id) {
-            BackgroundColor(ch_color)
-        } else {
-            BackgroundColor(theme.surface_container_high)
-        };
-    }
-
-    // Spawn/despawn and position Bezier handles for the selected point.
-    {
-        use std::collections::{HashMap, HashSet};
-
-        let mut existing: HashMap<(u64, ShakeCurveBezierHandleKind), Entity> = HashMap::new();
-        for (e, h, _node, _bg, _border) in bezier_handles.iter_mut() {
-            existing.insert((h.point_id, h.kind), e);
-        }
-
-        let mut desired: HashSet<(u64, ShakeCurveBezierHandleKind)> = HashSet::new();
-        if let Some(sel_id) = selected {
-            if let Some(ch) = find_fx_curve_point_channel(cfg, sel_id) {
-                if dice_fx_channel_enabled(&settings_state, ch) {
-                let pts = dice_fx_curve_points(cfg, ch);
-                if let Some(i) = pts.iter().position(|p| p.id == sel_id) {
-                    if i > 0 {
-                        desired.insert((sel_id, ShakeCurveBezierHandleKind::In));
-                    }
-                    if i + 1 < pts.len() {
-                        desired.insert((sel_id, ShakeCurveBezierHandleKind::Out));
-                    }
-
-                    let ch_color = match ch {
-                        DiceFxCurveChannel::Mask => theme.primary,
-                        DiceFxCurveChannel::Noise => theme.secondary,
-                        DiceFxCurveChannel::Ramp => theme.tertiary,
-                        DiceFxCurveChannel::Opacity => theme.primary,
-                        DiceFxCurveChannel::PlumeHeight => theme.secondary,
-                        DiceFxCurveChannel::PlumeRadius => theme.tertiary,
-                    };
-
-                    for (pid, kind) in desired.iter().copied() {
-                        if existing.contains_key(&(pid, kind)) {
-                            continue;
-                        }
-                        commands.entity(graph_entity).with_children(|graph| {
-                            graph.spawn((
-                                Button,
-                                Node {
-                                    position_type: PositionType::Absolute,
-                                    left: Val::Px(0.0),
-                                    top: Val::Px(0.0),
-                                    width: Val::Px(10.0),
-                                    height: Val::Px(10.0),
-                                    ..default()
-                                },
-                                BackgroundColor(theme.surface_container_high),
-                                BorderRadius::all(Val::Px(5.0)),
-                                BorderColor::all(ch_color),
-                                Interaction::None,
-                                DiceFxCurveBezierHandle {
-                                    point_id: pid,
-                                    kind,
-                                },
-                            ));
-                        });
-                    }
-                }
-                }
-            }
-        }
-
-        for (e, h, _node, _bg, _border) in bezier_handles.iter_mut() {
-            if !desired.contains(&(h.point_id, h.kind)) {
-                commands.entity(e).despawn();
-            }
-        }
-
-        if let Some(sel_id) = selected {
-            if let Some(ch) = find_fx_curve_point_channel(cfg, sel_id) {
-                if !dice_fx_channel_enabled(&settings_state, ch) {
-                    // Selected point isn't currently being edited/shown.
-                    return;
-                }
-                let pts = dice_fx_curve_points(cfg, ch);
-                if let Some(i) = pts.iter().position(|p| p.id == sel_id) {
-                    let p = &pts[i];
-                    let prev = if i > 0 { Some(&pts[i - 1]) } else { None };
-                    let next = if i + 1 < pts.len() { Some(&pts[i + 1]) } else { None };
-
-                    let ch_color = match ch {
-                        DiceFxCurveChannel::Mask => theme.primary,
-                        DiceFxCurveChannel::Noise => theme.secondary,
-                        DiceFxCurveChannel::Ramp => theme.tertiary,
-                        DiceFxCurveChannel::Opacity => theme.primary,
-                        DiceFxCurveChannel::PlumeHeight => theme.secondary,
-                        DiceFxCurveChannel::PlumeRadius => theme.tertiary,
-                    };
-
-                    let default_in = prev.map(|a| {
-                        let dt = (p.t - a.t).abs() * 0.25;
-                        Vec2::new((p.t - dt).clamp(a.t.min(p.t), a.t.max(p.t)), p.value)
-                    });
-                    let default_out = next.map(|b| {
-                        let dt = (b.t - p.t).abs() * 0.25;
-                        Vec2::new((p.t + dt).clamp(p.t.min(b.t), p.t.max(b.t)), p.value)
-                    });
-
-                    for (_e, h, mut node, mut bg, mut border) in bezier_handles.iter_mut() {
-                        if h.point_id != sel_id {
-                            continue;
-                        }
-
-                        let handle_pos = match h.kind {
-                            ShakeCurveBezierHandleKind::In => p
-                                .in_handle
-                                .map(|a| Vec2::new(a[0], a[1]))
-                                .or(default_in)
-                                .unwrap_or(Vec2::new(p.t, p.value)),
-                            ShakeCurveBezierHandleKind::Out => p
-                                .out_handle
-                                .map(|a| Vec2::new(a[0], a[1]))
-                                .or(default_out)
-                                .unwrap_or(Vec2::new(p.t, p.value)),
-                        };
-
-                        let Some(pos) =
-                            dice_fx_curve_t_v_to_local_px(size, handle_pos.x, handle_pos.y)
-                        else {
-                            continue;
-                        };
-                        node.left = Val::Px((pos.x - 5.0).clamp(0.0, (size.x - 10.0).max(0.0)));
-                        node.top = Val::Px((pos.y - 5.0).clamp(0.0, (size.y - 10.0).max(0.0)));
-                        *border = BorderColor::all(ch_color);
-                        *bg = BackgroundColor(theme.surface_container_high);
-                    }
-                }
-            }
-        }
-    }
-
-    // Update dot positions.
-    for (dot, mut node) in dots.iter_mut() {
-        if !dice_fx_channel_enabled(&settings_state, dot.channel) {
-            node.display = Display::None;
-            continue;
-        }
-
-        node.display = Display::Flex;
-        node.width = Val::Px(4.0);
-        node.height = Val::Px(4.0);
-
-        let n = 80usize;
-        let t = (dot.index as f32) / (n.saturating_sub(1) as f32).max(1.0);
-        let v = sample_fx_curve(dice_fx_curve_points(cfg, dot.channel), t).clamp(0.0, 1.0);
-        let Some(pos) = dice_fx_curve_t_v_to_local_px(size, t, v) else {
-            continue;
-        };
-        node.left = Val::Px((pos.x - 2.0).clamp(0.0, (size.x - 4.0).max(0.0)));
-        node.top = Val::Px((pos.y - 2.0).clamp(0.0, (size.y - 4.0).max(0.0)));
-    }
-
-    let _ = graph_children.get(graph_entity);
-}
-
 /// Handle Cancel button click
 pub fn handle_settings_cancel_click(
     mut click_events: MessageReader<ButtonClickEvent>,

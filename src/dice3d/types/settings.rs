@@ -14,233 +14,85 @@ use super::ui::{
 };
 
 // ============================================================================
-// Custom Dice FX Settings
+// Dice Roll FX Mapping (hardcoded effects, no customization)
 // ============================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum CustomDiceFxTriggerKind {
-    /// Fire when the sum of all dice values is >= `trigger_value`.
-    #[serde(rename = "total_at_least")]
-    TotalAtLeast,
-
-    /// Fire when every die in the roll is at its maximum face value.
-    #[serde(rename = "all_max")]
-    AllMax,
-
-    /// Fire when any die equals `trigger_value`.
-    #[serde(rename = "any_die_equals")]
-    AnyDieEquals,
+pub enum DiceRollFxKind {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "fire")]
+    Fire,
+    #[serde(rename = "electricity")]
+    Electricity,
+    #[serde(rename = "fireworks")]
+    Fireworks,
+    #[serde(rename = "explosion")]
+    Explosion,
+    #[serde(rename = "plasma")]
+    Plasma,
 }
 
-impl Default for CustomDiceFxTriggerKind {
+impl Default for DiceRollFxKind {
     fn default() -> Self {
-        Self::TotalAtLeast
+        Self::None
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FxCurvePointSetting {
-    pub id: u64,
-    /// Curve domain in [0..1] (input).
-    pub t: f32,
-    /// Curve range in [0..1] (output).
-    pub value: f32,
-
-    #[serde(default)]
-    pub in_handle: Option<[f32; 2]>,
-    #[serde(default)]
-    pub out_handle: Option<[f32; 2]>,
-}
-
-impl FxCurvePointSetting {
-    pub fn from_runtime(p: &super::ui::FxCurvePoint) -> Self {
-        Self {
-            id: p.id,
-            t: p.t,
-            value: p.value,
-            in_handle: p.in_handle.map(|v| [v.x, v.y]),
-            out_handle: p.out_handle.map(|v| [v.x, v.y]),
-        }
-    }
-
-    pub fn to_runtime(&self) -> super::ui::FxCurvePoint {
-        super::ui::FxCurvePoint {
-            id: self.id,
-            t: self.t,
-            value: self.value,
-            in_handle: self.in_handle.map(|a| Vec2::new(a[0], a[1])),
-            out_handle: self.out_handle.map(|a| Vec2::new(a[0], a[1])),
+impl DiceRollFxKind {
+    pub fn label(&self) -> &'static str {
+        match self {
+            DiceRollFxKind::None => "None",
+            DiceRollFxKind::Fire => "Fire",
+            DiceRollFxKind::Electricity => "Electricity",
+            DiceRollFxKind::Fireworks => "Fireworks",
+            DiceRollFxKind::Explosion => "Explosion",
+            DiceRollFxKind::Plasma => "Plasma",
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CustomDiceFxSetting {
+pub struct DiceRollFxMapping {
+    pub die_type: DiceType,
+    /// Index by rolled value. Entry 0 is unused (kept for convenience).
     #[serde(default)]
-    pub enabled: bool,
-
-    /// Source image copied into app data dir (absolute path).
-    #[serde(default)]
-    pub source_image_path: Option<String>,
-
-    /// Generated textures copied into app data dir (absolute paths).
-    #[serde(default)]
-    pub noise_image_path: Option<String>,
-    #[serde(default)]
-    pub ramp_image_path: Option<String>,
-    #[serde(default)]
-    pub mask_image_path: Option<String>,
-
-    #[serde(default)]
-    pub trigger_kind: CustomDiceFxTriggerKind,
-
-    /// Used by TotalAtLeast and AnyDieEquals.
-    #[serde(default = "default_custom_dice_fx_trigger_value")]
-    pub trigger_value: u32,
-
-    #[serde(default = "default_custom_dice_fx_duration_seconds")]
-    pub duration_seconds: f32,
-
-    /// Curves remap input->output for generated textures.
-    #[serde(default)]
-    pub curve_points_mask: Vec<FxCurvePointSetting>,
-    #[serde(default)]
-    pub curve_points_noise: Vec<FxCurvePointSetting>,
-    #[serde(default)]
-    pub curve_points_ramp: Vec<FxCurvePointSetting>,
-
-    /// Curve drives the surface shell opacity over time (0..1).
-    #[serde(default)]
-    pub curve_points_opacity: Vec<FxCurvePointSetting>,
-
-    /// Curve drives the fire/atomic plume height multiplier over time (0..1).
-    #[serde(default)]
-    pub curve_points_plume_height: Vec<FxCurvePointSetting>,
-
-    /// Curve drives the fire/atomic plume radius multiplier over time (0..1).
-    #[serde(default)]
-    pub curve_points_plume_radius: Vec<FxCurvePointSetting>,
-
-    #[serde(default)]
-    pub next_curve_point_id: u64,
+    pub effects_by_value: Vec<DiceRollFxKind>,
 }
 
-fn default_custom_dice_fx_trigger_value() -> u32 {
-    20
-}
+impl DiceRollFxMapping {
+    pub fn new(die_type: DiceType) -> Self {
+        let mut effects_by_value = vec![DiceRollFxKind::None; (die_type.max_value() + 1) as usize];
+        effects_by_value[0] = DiceRollFxKind::None;
+        Self { die_type, effects_by_value }
+    }
 
-fn default_custom_dice_fx_duration_seconds() -> f32 {
-    2.0
-}
+    pub fn get(&self, value: u32) -> DiceRollFxKind {
+        let idx = value as usize;
+        self.effects_by_value
+            .get(idx)
+            .copied()
+            .unwrap_or(DiceRollFxKind::None)
+    }
 
-impl Default for CustomDiceFxSetting {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            source_image_path: None,
-            noise_image_path: None,
-            ramp_image_path: None,
-            mask_image_path: None,
-            trigger_kind: CustomDiceFxTriggerKind::default(),
-            trigger_value: default_custom_dice_fx_trigger_value(),
-            duration_seconds: default_custom_dice_fx_duration_seconds(),
-            curve_points_mask: vec![
-                FxCurvePointSetting {
-                    id: 1,
-                    t: 0.0,
-                    value: 0.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-                FxCurvePointSetting {
-                    id: 2,
-                    t: 1.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-            ],
-            curve_points_noise: vec![
-                FxCurvePointSetting {
-                    id: 3,
-                    t: 0.0,
-                    value: 0.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-                FxCurvePointSetting {
-                    id: 4,
-                    t: 1.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-            ],
-            curve_points_ramp: vec![
-                FxCurvePointSetting {
-                    id: 5,
-                    t: 0.0,
-                    value: 0.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-                FxCurvePointSetting {
-                    id: 6,
-                    t: 1.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-            ],
-            curve_points_opacity: vec![
-                FxCurvePointSetting {
-                    id: 7,
-                    t: 0.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-                FxCurvePointSetting {
-                    id: 8,
-                    t: 1.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-            ],
-            curve_points_plume_height: vec![
-                FxCurvePointSetting {
-                    id: 9,
-                    t: 0.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-                FxCurvePointSetting {
-                    id: 10,
-                    t: 1.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-            ],
-            curve_points_plume_radius: vec![
-                FxCurvePointSetting {
-                    id: 11,
-                    t: 0.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-                FxCurvePointSetting {
-                    id: 12,
-                    t: 1.0,
-                    value: 1.0,
-                    in_handle: None,
-                    out_handle: None,
-                },
-            ],
-            next_curve_point_id: 13,
+    pub fn set(&mut self, value: u32, kind: DiceRollFxKind) {
+        let idx = value as usize;
+        if idx == 0 {
+            return;
+        }
+        if idx >= self.effects_by_value.len() {
+            self.effects_by_value.resize(idx + 1, DiceRollFxKind::None);
+        }
+        self.effects_by_value[idx] = kind;
+    }
+
+    pub fn normalize_len(&mut self) {
+        let want = (self.die_type.max_value() + 1) as usize;
+        if self.effects_by_value.len() != want {
+            self.effects_by_value.resize(want, DiceRollFxKind::None);
+        }
+        if !self.effects_by_value.is_empty() {
+            self.effects_by_value[0] = DiceRollFxKind::None;
         }
     }
 }
@@ -661,9 +513,11 @@ pub struct AppSettings {
     #[serde(default)]
     pub dice_scales: DiceScaleSettings,
 
-    /// Optional user-defined dice effect (runtime-loadable textures; no rebuild required).
+    /// Per-die/per-face mapping for which hardcoded FX should play on a specific roll value.
+    ///
+    /// Entries are optional; missing dice types default to "None" for all faces.
     #[serde(default)]
-    pub custom_dice_fx: Option<CustomDiceFxSetting>,
+    pub dice_roll_fx_mappings: Vec<DiceRollFxMapping>,
 
     /// Opacity for the dice surface FX shell (0..1).
     ///
@@ -678,24 +532,18 @@ pub struct AppSettings {
     /// Multiplier for the plume FX radius (fire/atomic).
     #[serde(default = "default_dice_fx_plume_radius_multiplier")]
     pub dice_fx_plume_radius_multiplier: f32,
-
-    /// Library of saved user-defined dice effects.
-    ///
-    /// The settings modal allows selecting and editing any entry in this list.
-    #[serde(default)]
-    pub custom_dice_fx_library: Vec<CustomDiceFxSetting>,
 }
 
 fn default_dice_fx_surface_opacity() -> f32 {
-    0.30
+    0.45
 }
 
 fn default_dice_fx_plume_height_multiplier() -> f32 {
-    1.0
+    1.25
 }
 
 fn default_dice_fx_plume_radius_multiplier() -> f32 {
-    1.0
+    1.15
 }
 
 /// Per-die scale settings.
@@ -857,17 +705,38 @@ impl Default for AppSettings {
             recent_theme_seeds: Vec::new(),
             dice_scales: DiceScaleSettings::default(),
 
-            custom_dice_fx: None,
+            dice_roll_fx_mappings: Vec::new(),
             dice_fx_surface_opacity: default_dice_fx_surface_opacity(),
             dice_fx_plume_height_multiplier: default_dice_fx_plume_height_multiplier(),
             dice_fx_plume_radius_multiplier: default_dice_fx_plume_radius_multiplier(),
-            custom_dice_fx_library: Vec::new(),
         }
     }
 }
 
 impl AppSettings {
     const SETTINGS_DB_KEY: &'static str = "app_settings";
+
+    pub fn roll_fx_for(&self, die_type: DiceType, value: u32) -> DiceRollFxKind {
+        if value == 0 {
+            return DiceRollFxKind::None;
+        }
+
+        self.dice_roll_fx_mappings
+            .iter()
+            .find(|m| m.die_type == die_type)
+            .map(|m| m.get(value))
+            .unwrap_or(DiceRollFxKind::None)
+    }
+
+    pub fn ensure_roll_fx_mapping_mut(&mut self, die_type: DiceType) -> &mut DiceRollFxMapping {
+        if let Some(idx) = self.dice_roll_fx_mappings.iter().position(|m| m.die_type == die_type) {
+            self.dice_roll_fx_mappings[idx].normalize_len();
+            return &mut self.dice_roll_fx_mappings[idx];
+        }
+        self.dice_roll_fx_mappings.push(DiceRollFxMapping::new(die_type));
+        let idx = self.dice_roll_fx_mappings.len() - 1;
+        &mut self.dice_roll_fx_mappings[idx]
+    }
 
     /// Load settings from SurrealDB.
     pub fn load() -> Self {
@@ -995,64 +864,13 @@ pub struct SettingsState {
     /// Temporary per-die scales being edited in the modal.
     pub editing_dice_scales: DiceScaleSettings,
 
-    /// Editing value for custom dice FX (applied on OK).
-    pub editing_custom_dice_fx: CustomDiceFxSetting,
+    /// Editing values for per-die/per-face roll FX mappings (applied on OK).
+    pub editing_dice_roll_fx_mappings: Vec<DiceRollFxMapping>,
 
     /// Editing values for global Dice FX visuals (applied on OK).
     pub editing_dice_fx_surface_opacity: f32,
     pub editing_dice_fx_plume_height_multiplier: f32,
     pub editing_dice_fx_plume_radius_multiplier: f32,
-
-    /// Editing library of saved custom dice FX settings.
-    pub editing_custom_dice_fx_library: Vec<CustomDiceFxSetting>,
-
-    /// Currently selected custom dice FX index in `editing_custom_dice_fx_library`.
-    pub selected_custom_dice_fx_library_index: Option<usize>,
-
-    /// Dice FX curve editor state (selected point, dragging, mode).
-    pub selected_dice_fx_curve_point_id: Option<u64>,
-    pub dragging_dice_fx_curve_point_id: Option<u64>,
-    pub dragging_dice_fx_curve_bezier: Option<(u64, ShakeCurveBezierHandleKind)>,
-    pub dice_fx_curve_edit_mode: ShakeCurveEditMode,
-
-    /// Which curves are enabled for Add/select (Mask/Noise/Ramp).
-    pub dice_fx_curve_add_mask: bool,
-    pub dice_fx_curve_add_noise: bool,
-    pub dice_fx_curve_add_ramp: bool,
-
-    /// Additional Dice FX curves (opacity + plume size).
-    pub dice_fx_curve_add_opacity: bool,
-    pub dice_fx_curve_add_plume_height: bool,
-    pub dice_fx_curve_add_plume_radius: bool,
-
-    /// Text buffers for custom FX fields.
-    pub dice_fx_trigger_value_input_text: String,
-    pub dice_fx_duration_input_text: String,
-
-    /// Display-only: where generated custom FX images are stored.
-    pub dice_fx_saved_dir_display_text: String,
-
-    /// Cached preview image handles for the Dice Effects UI.
-    pub dice_fx_preview_source: Option<Handle<Image>>,
-    pub dice_fx_preview_noise: Option<Handle<Image>>,
-    pub dice_fx_preview_mask: Option<Handle<Image>>,
-    pub dice_fx_preview_ramp: Option<Handle<Image>>,
-
-    /// Base (unmodified) preview images used to generate time-varying previews.
-    pub dice_fx_preview_base_source: Option<Handle<Image>>,
-    pub dice_fx_preview_base_noise: Option<Handle<Image>>,
-    pub dice_fx_preview_base_mask: Option<Handle<Image>>,
-    pub dice_fx_preview_base_ramp: Option<Handle<Image>>,
-
-    /// Preview time scrubber value in [0..1].
-    pub dice_fx_preview_time_t: f32,
-    pub dice_fx_preview_last_time_t: f32,
-
-    /// Cached preview paths (to detect changes and reload from disk).
-    pub dice_fx_preview_source_path: Option<String>,
-    pub dice_fx_preview_noise_path: Option<String>,
-    pub dice_fx_preview_mask_path: Option<String>,
-    pub dice_fx_preview_ramp_path: Option<String>,
 }
 
 impl Default for SettingsState {
@@ -1069,35 +887,11 @@ impl Default for SettingsState {
         let last_saved_shake_config = settings.shake_config.clone();
         let editing_dice_scales = settings.dice_scales.clone();
 
+        let editing_dice_roll_fx_mappings = settings.dice_roll_fx_mappings.clone();
+
         let editing_dice_fx_surface_opacity = settings.dice_fx_surface_opacity;
         let editing_dice_fx_plume_height_multiplier = settings.dice_fx_plume_height_multiplier;
         let editing_dice_fx_plume_radius_multiplier = settings.dice_fx_plume_radius_multiplier;
-
-        let mut editing_custom_dice_fx_library = settings.custom_dice_fx_library.clone();
-        if editing_custom_dice_fx_library.is_empty() {
-            editing_custom_dice_fx_library.push(CustomDiceFxSetting::default());
-        }
-
-        let (editing_custom_dice_fx, selected_custom_dice_fx_library_index) =
-            if let Some(active) = settings.custom_dice_fx.clone() {
-                // Prefer matching by source path when present; otherwise fall back to full equality.
-                let idx = active
-                    .source_image_path
-                    .as_deref()
-                    .and_then(|p| {
-                        editing_custom_dice_fx_library
-                            .iter()
-                            .position(|e| e.source_image_path.as_deref() == Some(p))
-                    })
-                    .or_else(|| editing_custom_dice_fx_library.iter().position(|e| e == &active))
-                    .unwrap_or_else(|| {
-                        editing_custom_dice_fx_library.push(active.clone());
-                        editing_custom_dice_fx_library.len() - 1
-                    });
-                (active, Some(idx))
-            } else {
-                (editing_custom_dice_fx_library[0].clone(), Some(0))
-            };
 
         Self {
             settings,
@@ -1125,40 +919,10 @@ impl Default for SettingsState {
             last_saved_shake_config,
             editing_dice_scales,
 
-            editing_custom_dice_fx,
+            editing_dice_roll_fx_mappings,
             editing_dice_fx_surface_opacity,
             editing_dice_fx_plume_height_multiplier,
             editing_dice_fx_plume_radius_multiplier,
-            editing_custom_dice_fx_library,
-            selected_custom_dice_fx_library_index,
-            selected_dice_fx_curve_point_id: None,
-            dragging_dice_fx_curve_point_id: None,
-            dragging_dice_fx_curve_bezier: None,
-            dice_fx_curve_edit_mode: ShakeCurveEditMode::None,
-            dice_fx_curve_add_mask: true,
-            dice_fx_curve_add_noise: false,
-            dice_fx_curve_add_ramp: false,
-            dice_fx_curve_add_opacity: false,
-            dice_fx_curve_add_plume_height: false,
-            dice_fx_curve_add_plume_radius: false,
-            dice_fx_trigger_value_input_text: "20".to_string(),
-            dice_fx_duration_input_text: "2.0".to_string(),
-
-            dice_fx_saved_dir_display_text: String::new(),
-            dice_fx_preview_source: None,
-            dice_fx_preview_noise: None,
-            dice_fx_preview_mask: None,
-            dice_fx_preview_ramp: None,
-            dice_fx_preview_base_source: None,
-            dice_fx_preview_base_noise: None,
-            dice_fx_preview_base_mask: None,
-            dice_fx_preview_base_ramp: None,
-            dice_fx_preview_time_t: 0.0,
-            dice_fx_preview_last_time_t: -1.0,
-            dice_fx_preview_source_path: None,
-            dice_fx_preview_noise_path: None,
-            dice_fx_preview_mask_path: None,
-            dice_fx_preview_ramp_path: None,
         }
     }
 }
@@ -1249,6 +1013,13 @@ pub struct SettingsCancelButton;
 /// Marker for the switch that controls "default roll uses shake" in the Dice tab.
 #[derive(Component)]
 pub struct DefaultRollUsesShakeSwitch;
+
+/// Marker for a per-die/per-face roll-FX mapping select.
+#[derive(Component, Clone, Copy)]
+pub struct DiceRollFxMappingSelect {
+    pub die_type: DiceType,
+    pub value: u32,
+}
 
 /// Marker for dice scale slider.
 #[derive(Component, Clone, Copy)]

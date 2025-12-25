@@ -1,19 +1,12 @@
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy_material_ui::prelude::*;
 use bevy_material_ui::tokens::CornerRadius;
 
 use crate::dice3d::systems::settings::spawn_dice_scale_slider;
 use crate::dice3d::types::{
-    DefaultRollUsesShakeSwitch, DiceScaleSettings, DiceType, DiceFxCurveChannel,
-    DiceFxCurveChannelChip, DiceFxCurveEditModeChip, DiceFxCurveGraphDot,
-    DiceFxCurveGraphPlotRoot, DiceFxCurveGraphRoot, DiceFxCurvePointHandle,
-    DiceFxDurationTextInput, DiceFxTriggerValueTextInput,
-    DiceFxPreviewImageKind, DiceFxPreviewImageNode, DiceFxPreviewTimeLabel,
-    DiceFxPreviewTimeSlider, DiceFxUploadImageButton, SettingsState,
-    DiceFxParamKind, DiceFxParamSlider, DiceFxParamValueLabel,
-    ShakeCurveEditMode,
+    DefaultRollUsesShakeSwitch, DiceFxParamKind, DiceFxParamSlider, DiceFxParamValueLabel,
+    DiceRollFxKind, DiceRollFxMappingSelect, DiceScaleSettings, DiceType, SettingsState,
 };
 
 pub fn build_dice_tab(
@@ -24,7 +17,6 @@ pub fn build_dice_tab(
     default_roll_uses_shake: bool,
     dice_scales: &DiceScaleSettings,
     preview_image: Option<Handle<Image>>,
-    blank_image: Option<Handle<Image>>,
     settings_state: &SettingsState,
 ) {
     parent.spawn((
@@ -355,7 +347,7 @@ pub fn build_dice_tab(
         });
 
     // ---------------------------------------------------------------------
-    // Dice Effects (custom, runtime-loadable)
+    // Dice Roll Effects (hardcoded FX, mapped per die face value)
     // ---------------------------------------------------------------------
 
     parent.spawn(Node {
@@ -364,7 +356,7 @@ pub fn build_dice_tab(
     });
 
     parent.spawn((
-        Text::new("Dice Effects"),
+        Text::new("Dice Roll Effects"),
         TextFont {
             font_size: 18.0,
             ..default()
@@ -373,9 +365,7 @@ pub fn build_dice_tab(
     ));
 
     parent.spawn((
-        Text::new(
-            "Upload an image to generate mask/noise/ramp, then configure when the effect triggers.",
-        ),
+        Text::new("Choose which effect to play for each die face value."),
         TextFont {
             font_size: 13.0,
             ..default()
@@ -383,669 +373,109 @@ pub fn build_dice_tab(
         TextColor(theme.on_surface_variant),
     ));
 
-    // Saved effects dropdown (select previously created shader effects)
-    parent.spawn(Node::default()).with_children(|slot| {
-        fn effect_label(i: usize, src_path: &Option<String>) -> String {
-            if let Some(p) = src_path.as_deref() {
-                if let Some(name) = std::path::Path::new(p).file_name().and_then(|s| s.to_str()) {
-                    return format!("{}", name);
-                }
-            }
-            format!("Effect {}", i + 1)
+    fn fx_kind_options() -> Vec<SelectOption> {
+        vec![
+            SelectOption::new(DiceRollFxKind::None.label()).value("none"),
+            SelectOption::new(DiceRollFxKind::Fire.label()).value("fire"),
+            SelectOption::new(DiceRollFxKind::Electricity.label()).value("electricity"),
+            SelectOption::new(DiceRollFxKind::Fireworks.label()).value("fireworks"),
+            SelectOption::new(DiceRollFxKind::Explosion.label()).value("explosion"),
+            SelectOption::new(DiceRollFxKind::Plasma.label()).value("plasma"),
+        ]
+    }
+
+    fn kind_to_index(kind: DiceRollFxKind) -> usize {
+        match kind {
+            DiceRollFxKind::None => 0,
+            DiceRollFxKind::Fire => 1,
+            DiceRollFxKind::Electricity => 2,
+            DiceRollFxKind::Fireworks => 3,
+            DiceRollFxKind::Explosion => 4,
+            DiceRollFxKind::Plasma => 5,
+        }
+    }
+
+    fn editing_roll_fx_for(settings_state: &SettingsState, die_type: DiceType, value: u32) -> DiceRollFxKind {
+        if value == 0 {
+            return DiceRollFxKind::None;
         }
 
-        let mut options: Vec<SelectOption> = Vec::new();
-        for (i, fx) in settings_state.editing_custom_dice_fx_library.iter().enumerate() {
-            options.push(SelectOption::new(effect_label(i, &fx.source_image_path)).value(i.to_string()));
-        }
-        if options.is_empty() {
-            options.push(SelectOption::new("No saved effects").value("none"));
-        }
+        settings_state
+            .editing_dice_roll_fx_mappings
+            .iter()
+            .find(|m| m.die_type == die_type)
+            .map(|m| m.get(value))
+            .unwrap_or(DiceRollFxKind::None)
+    }
 
-        let selected = settings_state
-            .selected_custom_dice_fx_library_index
-            .unwrap_or(0)
-            .min(options.len().saturating_sub(1));
+    let dice_types = [DiceType::D4, DiceType::D6, DiceType::D8, DiceType::D10, DiceType::D12, DiceType::D20];
+    let options = fx_kind_options();
 
-        let builder = SelectBuilder::new(options)
-            .outlined()
-            .label("Saved dice effects")
-            .selected(selected)
-            .width(Val::Percent(100.0));
+    for die_type in dice_types {
+        parent.spawn(Node {
+            height: Val::Px(10.0),
+            ..default()
+        });
 
-        slot.spawn_select_with(theme, builder);
-    });
-
-    // Output directory
-    if !settings_state.dice_fx_saved_dir_display_text.is_empty() {
         parent.spawn((
-            Text::new(format!(
-                "Saved to: {}",
-                settings_state.dice_fx_saved_dir_display_text
-            )),
+            Text::new(die_type.name()),
             TextFont {
-                font_size: 12.0,
+                font_size: 14.0,
                 ..default()
             },
             TextColor(theme.on_surface_variant),
         ));
+
+        parent
+            .spawn(Node {
+                flex_direction: FlexDirection::Row,
+                flex_wrap: FlexWrap::Wrap,
+                column_gap: Val::Px(22.0),
+                row_gap: Val::Px(18.0),
+                width: Val::Percent(100.0),
+                min_width: Val::Px(0.0),
+                ..default()
+            })
+            .with_children(|wrap| {
+                for value in 1..=die_type.max_value() {
+                    let selected = kind_to_index(editing_roll_fx_for(settings_state, die_type, value));
+
+                    wrap
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::Center,
+                            column_gap: Val::Px(10.0),
+                            padding: UiRect::all(Val::Px(8.0)),
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            row.spawn((
+                                Text::new(format!("{}:", value)),
+                                TextFont {
+                                    font_size: 12.0,
+                                    ..default()
+                                },
+                                TextColor(theme.on_surface_variant),
+                            ));
+
+                            row.spawn((
+                                Node {
+                                    width: Val::Px(150.0),
+                                    height: Val::Px(32.0),
+                                    ..default()
+                                },
+                                DiceRollFxMappingSelect { die_type, value },
+                            ))
+                            .with_children(|slot| {
+                                let builder = SelectBuilder::new(options.clone())
+                                    .outlined()
+                                    .label("")
+                                    .selected(selected)
+                                    .width(Val::Px(150.0));
+                                slot.spawn_select_with(theme, builder);
+                            });
+                        });
+                }
+            });
     }
-
-    // Upload button
-    parent
-        .spawn(Node {
-            width: Val::Px(200.0),
-            height: Val::Px(36.0),
-            ..default()
-        })
-        .with_children(|slot| {
-            slot.spawn((
-                MaterialButtonBuilder::new("Upload image")
-                    .outlined()
-                    .build(theme),
-                DiceFxUploadImageButton,
-            ))
-            .with_children(|btn| {
-                btn.spawn((
-                    Text::new("Upload image"),
-                    TextFont {
-                        font_size: 16.0,
-                        ..default()
-                    },
-                    TextColor(theme.primary),
-                    ButtonLabel,
-                ));
-            });
-        });
-
-    // Image previews (Source/Noise/Mask/Ramp)
-    let blank = blank_image.clone();
-    parent
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            flex_wrap: FlexWrap::Wrap,
-            column_gap: Val::Px(12.0),
-            row_gap: Val::Px(12.0),
-            width: Val::Percent(100.0),
-            min_width: Val::Px(0.0),
-            ..default()
-        })
-        .with_children(|row| {
-            fn spawn_preview(
-                row: &mut ChildSpawnerCommands,
-                theme: &MaterialTheme,
-                label: &str,
-                kind: DiceFxPreviewImageKind,
-                blank: Option<Handle<Image>>,
-                width: f32,
-                height: f32,
-            ) {
-                row.spawn(Node {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(6.0),
-                    ..default()
-                })
-                .with_children(|col| {
-                    col.spawn((
-                        Text::new(label),
-                        TextFont {
-                            font_size: 12.0,
-                            ..default()
-                        },
-                        TextColor(theme.on_surface_variant),
-                    ));
-
-                    col.spawn((
-                        Node {
-                            width: Val::Px(width),
-                            height: Val::Px(height),
-                            border: UiRect::all(Val::Px(1.0)),
-                            overflow: Overflow::clip(),
-                            ..default()
-                        },
-                        BackgroundColor(theme.surface_container),
-                        BorderColor::all(theme.outline_variant),
-                        BorderRadius::all(Val::Px(8.0)),
-                    ))
-                    .with_children(|box_| {
-                        if let Some(blank) = blank {
-                            box_.spawn((
-                                bevy::ui::widget::ImageNode::new(blank),
-                                Node {
-                                    width: Val::Percent(100.0),
-                                    height: Val::Percent(100.0),
-                                    ..default()
-                                },
-                                DiceFxPreviewImageNode { kind },
-                            ));
-                        }
-                    });
-                });
-            }
-
-            spawn_preview(
-                row,
-                theme,
-                "Source",
-                DiceFxPreviewImageKind::Source,
-                blank.clone(),
-                140.0,
-                90.0,
-            );
-            spawn_preview(
-                row,
-                theme,
-                "Mask",
-                DiceFxPreviewImageKind::Mask,
-                blank.clone(),
-                140.0,
-                90.0,
-            );
-            spawn_preview(
-                row,
-                theme,
-                "Noise",
-                DiceFxPreviewImageKind::Noise,
-                blank.clone(),
-                140.0,
-                90.0,
-            );
-            spawn_preview(
-                row,
-                theme,
-                "Ramp",
-                DiceFxPreviewImageKind::Ramp,
-                blank.clone(),
-                140.0,
-                42.0,
-            );
-        });
-
-    // Time scrubber for previewing curve impact over duration.
-    parent
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(6.0),
-            width: Val::Percent(100.0),
-            ..default()
-        })
-        .with_children(|col| {
-            col.spawn((
-                Text::new("Preview time (0..duration)"),
-                TextFont {
-                    font_size: 12.0,
-                    ..default()
-                },
-                TextColor(theme.on_surface_variant),
-            ));
-
-            col.spawn((
-                Text::new(""),
-                TextFont {
-                    font_size: 12.0,
-                    ..default()
-                },
-                TextColor(theme.on_surface_variant),
-                DiceFxPreviewTimeLabel,
-            ));
-
-            col.spawn(Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(30.0),
-                ..default()
-            })
-            .with_children(|slot| {
-                let slider = MaterialSlider::new(0.0, 1.0)
-                    .with_value(settings_state.dice_fx_preview_time_t.clamp(0.0, 1.0))
-                    .track_height(6.0)
-                    .thumb_radius(8.0);
-                spawn_slider_control_with(slot, theme, slider, DiceFxPreviewTimeSlider);
-            });
-        });
-
-    // Trigger select
-    parent.spawn(Node::default()).with_children(|slot| {
-        let trigger_options = vec![
-            SelectOption::new("Total ≥ value").value("total_at_least"),
-            SelectOption::new("All dice are max").value("all_max"),
-            SelectOption::new("Any die equals value").value("any_die_equals"),
-        ];
-
-        let selected = match settings_state.editing_custom_dice_fx.trigger_kind {
-            crate::dice3d::types::CustomDiceFxTriggerKind::TotalAtLeast => 0,
-            crate::dice3d::types::CustomDiceFxTriggerKind::AllMax => 1,
-            crate::dice3d::types::CustomDiceFxTriggerKind::AnyDieEquals => 2,
-        };
-
-        let builder = SelectBuilder::new(trigger_options)
-            .outlined()
-            .label("Custom dice effect trigger")
-            .selected(selected)
-            .width(Val::Percent(100.0));
-        slot.spawn_select_with(theme, builder);
-    });
-
-    // Trigger value + duration
-    parent
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(12.0),
-            width: Val::Percent(100.0),
-            min_width: Val::Px(0.0),
-            ..default()
-        })
-        .with_children(|row| {
-            row.spawn(Node {
-                flex_grow: 1.0,
-                min_width: Val::Px(0.0),
-                ..default()
-            })
-            .with_children(|slot| {
-                let builder = TextFieldBuilder::new()
-                    .outlined()
-                    .label("Trigger value")
-                    .value(settings_state.dice_fx_trigger_value_input_text.clone())
-                    .supporting_text("Used by Total ≥ value and Any die equals value")
-                    .width(Val::Percent(100.0));
-                spawn_text_field_control_with(slot, theme, builder, DiceFxTriggerValueTextInput);
-            });
-
-            row.spawn(Node {
-                flex_grow: 1.0,
-                min_width: Val::Px(0.0),
-                ..default()
-            })
-            .with_children(|slot| {
-                let builder = TextFieldBuilder::new()
-                    .outlined()
-                    .label("Effect duration (seconds)")
-                    .value(settings_state.dice_fx_duration_input_text.clone())
-                    .supporting_text("How long the effect stays active")
-                    .width(Val::Percent(100.0));
-                spawn_text_field_control_with(slot, theme, builder, DiceFxDurationTextInput);
-            });
-        });
-
-    parent.spawn((
-        Text::new(
-            "Curve graph area (click to add; drag points/Bezier handles). Choose Add/Delete, then click.",
-        ),
-        TextFont {
-            font_size: 14.0,
-            ..default()
-        },
-        TextColor(theme.on_surface_variant),
-    ));
-
-    // Curve chips (Add/Delete + Mask/Noise/Ramp)
-    parent
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            flex_wrap: FlexWrap::Wrap,
-            row_gap: Val::Px(8.0),
-            column_gap: Val::Px(8.0),
-            ..default()
-        })
-        .with_children(|row| {
-            // Add/Delete
-            row.spawn(
-                ChipBuilder::filter("Add")
-                    .selected(settings_state.dice_fx_curve_edit_mode == ShakeCurveEditMode::Add)
-                    .value("dice_fx_curve_mode_add")
-                    .build(theme),
-            )
-            .insert(DiceFxCurveEditModeChip {
-                mode: ShakeCurveEditMode::Add,
-            })
-            .with_children(|chip| {
-                chip.spawn((
-                    ChipLabel,
-                    Text::new("Add"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
-            });
-
-            row.spawn(
-                ChipBuilder::filter("Delete")
-                    .selected(settings_state.dice_fx_curve_edit_mode == ShakeCurveEditMode::Delete)
-                    .value("dice_fx_curve_mode_delete")
-                    .build(theme),
-            )
-            .insert(DiceFxCurveEditModeChip {
-                mode: ShakeCurveEditMode::Delete,
-            })
-            .with_children(|chip| {
-                chip.spawn((
-                    ChipLabel,
-                    Text::new("Delete"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
-            });
-
-            // Channels
-            row.spawn(
-                ChipBuilder::filter("Mask")
-                    .selected(settings_state.dice_fx_curve_add_mask)
-                    .value("dice_fx_curve_mask")
-                    .build(theme),
-            )
-            .insert(DiceFxCurveChannelChip {
-                channel: DiceFxCurveChannel::Mask,
-            })
-            .with_children(|chip| {
-                chip.spawn((
-                    ChipLabel,
-                    Text::new("Mask"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
-            });
-
-            row.spawn(
-                ChipBuilder::filter("Noise")
-                    .selected(settings_state.dice_fx_curve_add_noise)
-                    .value("dice_fx_curve_noise")
-                    .build(theme),
-            )
-            .insert(DiceFxCurveChannelChip {
-                channel: DiceFxCurveChannel::Noise,
-            })
-            .with_children(|chip| {
-                chip.spawn((
-                    ChipLabel,
-                    Text::new("Noise"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
-            });
-
-            row.spawn(
-                ChipBuilder::filter("Ramp")
-                    .selected(settings_state.dice_fx_curve_add_ramp)
-                    .value("dice_fx_curve_ramp")
-                    .build(theme),
-            )
-            .insert(DiceFxCurveChannelChip {
-                channel: DiceFxCurveChannel::Ramp,
-            })
-            .with_children(|chip| {
-                chip.spawn((
-                    ChipLabel,
-                    Text::new("Ramp"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
-            });
-
-            row.spawn(
-                ChipBuilder::filter("Opacity")
-                    .selected(settings_state.dice_fx_curve_add_opacity)
-                    .value("dice_fx_curve_opacity")
-                    .build(theme),
-            )
-            .insert(DiceFxCurveChannelChip {
-                channel: DiceFxCurveChannel::Opacity,
-            })
-            .with_children(|chip| {
-                chip.spawn((
-                    ChipLabel,
-                    Text::new("Opacity"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
-            });
-
-            row.spawn(
-                ChipBuilder::filter("Plume H")
-                    .selected(settings_state.dice_fx_curve_add_plume_height)
-                    .value("dice_fx_curve_plume_height")
-                    .build(theme),
-            )
-            .insert(DiceFxCurveChannelChip {
-                channel: DiceFxCurveChannel::PlumeHeight,
-            })
-            .with_children(|chip| {
-                chip.spawn((
-                    ChipLabel,
-                    Text::new("Plume H"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
-            });
-
-            row.spawn(
-                ChipBuilder::filter("Plume R")
-                    .selected(settings_state.dice_fx_curve_add_plume_radius)
-                    .value("dice_fx_curve_plume_radius")
-                    .build(theme),
-            )
-            .insert(DiceFxCurveChannelChip {
-                channel: DiceFxCurveChannel::PlumeRadius,
-            })
-            .with_children(|chip| {
-                chip.spawn((
-                    ChipLabel,
-                    Text::new("Plume R"),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
-            });
-        });
-
-    // Graph
-    parent
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                min_width: Val::Px(0.0),
-                height: Val::Px(220.0),
-                min_height: Val::Px(220.0),
-                flex_shrink: 0.0,
-                position_type: PositionType::Relative,
-                border: UiRect::all(Val::Px(1.0)),
-                overflow: Overflow::clip(),
-                ..default()
-            },
-            BackgroundColor(theme.surface_container_highest),
-            BorderColor::from(theme.outline_variant),
-            BorderRadius::all(Val::Px(8.0)),
-            DiceFxCurveGraphRoot,
-        ))
-        .with_children(|graph| {
-            graph
-                .spawn((
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(8.0),
-                        right: Val::Px(8.0),
-                        top: Val::Px(8.0),
-                        bottom: Val::Px(8.0),
-                        overflow: Overflow::clip(),
-                        ..default()
-                    },
-                    DiceFxCurveGraphPlotRoot,
-                ))
-                .with_children(|plot| {
-                    // Grid lines (subtle), matching the Shake Curve editor.
-                    let grid_color = theme.outline_variant.with_alpha(0.35);
-                    let half_grid_color = theme.outline_variant.with_alpha(0.22);
-
-                    // 100% line (slightly inset so max values are fully visible)
-                    plot.spawn((
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: Val::Px(0.0),
-                            right: Val::Px(0.0),
-                            top: Val::Px(7.0),
-                            height: Val::Px(1.0),
-                            ..default()
-                        },
-                        FocusPolicy::Pass,
-                        BackgroundColor(grid_color),
-                    ));
-
-                    // 75% line
-                    plot.spawn((
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: Val::Px(0.0),
-                            right: Val::Px(0.0),
-                            top: Val::Percent(25.0),
-                            height: Val::Px(1.0),
-                            ..default()
-                        },
-                        FocusPolicy::Pass,
-                        BackgroundColor(half_grid_color),
-                    ));
-
-                    // 50% midline
-                    plot.spawn((
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: Val::Px(0.0),
-                            right: Val::Px(0.0),
-                            top: Val::Percent(50.0),
-                            height: Val::Px(2.0),
-                            ..default()
-                        },
-                        FocusPolicy::Pass,
-                        BackgroundColor(theme.outline_variant.with_alpha(0.45)),
-                    ));
-
-                    // 25% line
-                    plot.spawn((
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: Val::Px(0.0),
-                            right: Val::Px(0.0),
-                            top: Val::Percent(75.0),
-                            height: Val::Px(1.0),
-                            ..default()
-                        },
-                        FocusPolicy::Pass,
-                        BackgroundColor(half_grid_color),
-                    ));
-
-                    // 0% line (slightly inset so min values are fully visible)
-                    plot.spawn((
-                        Node {
-                            position_type: PositionType::Absolute,
-                            left: Val::Px(0.0),
-                            right: Val::Px(0.0),
-                            bottom: Val::Px(7.0),
-                            height: Val::Px(1.0),
-                            ..default()
-                        },
-                        FocusPolicy::Pass,
-                        BackgroundColor(grid_color),
-                    ));
-
-                    // Sample dots
-                    const DOTS: usize = 80;
-                    for channel in [
-                        DiceFxCurveChannel::Mask,
-                        DiceFxCurveChannel::Noise,
-                        DiceFxCurveChannel::Ramp,
-                        DiceFxCurveChannel::Opacity,
-                        DiceFxCurveChannel::PlumeHeight,
-                        DiceFxCurveChannel::PlumeRadius,
-                    ] {
-                        let color = match channel {
-                            DiceFxCurveChannel::Mask => theme.primary,
-                            DiceFxCurveChannel::Noise => theme.secondary,
-                            DiceFxCurveChannel::Ramp => theme.tertiary,
-                            DiceFxCurveChannel::Opacity => theme.error,
-                            DiceFxCurveChannel::PlumeHeight => theme.on_surface,
-                            DiceFxCurveChannel::PlumeRadius => theme.on_surface_variant,
-                        };
-
-                        for i in 0..DOTS {
-                            plot.spawn((
-                                Node {
-                                    position_type: PositionType::Absolute,
-                                    left: Val::Px(0.0),
-                                    top: Val::Px(0.0),
-                                    width: Val::Px(3.0),
-                                    height: Val::Px(3.0),
-                                    ..default()
-                                },
-                                BackgroundColor(color),
-                                BorderRadius::all(Val::Px(2.0)),
-                                DiceFxCurveGraphDot { channel, index: i },
-                            ));
-                        }
-                    }
-
-                    // Handles for existing points across all curves
-                    for p in settings_state
-                        .editing_custom_dice_fx
-                        .curve_points_mask
-                        .iter()
-                        .chain(settings_state.editing_custom_dice_fx.curve_points_noise.iter())
-                        .chain(settings_state.editing_custom_dice_fx.curve_points_ramp.iter())
-                        .chain(settings_state.editing_custom_dice_fx.curve_points_opacity.iter())
-                        .chain(
-                            settings_state
-                                .editing_custom_dice_fx
-                                .curve_points_plume_height
-                                .iter(),
-                        )
-                        .chain(
-                            settings_state
-                                .editing_custom_dice_fx
-                                .curve_points_plume_radius
-                                .iter(),
-                        )
-                    {
-                        plot.spawn((
-                            Button,
-                            Node {
-                                position_type: PositionType::Absolute,
-                                left: Val::Px(0.0),
-                                top: Val::Px(0.0),
-                                width: Val::Px(14.0),
-                                height: Val::Px(14.0),
-                                ..default()
-                            },
-                            BackgroundColor(theme.surface_container_high),
-                            BorderRadius::all(Val::Px(7.0)),
-                            BorderColor::from(theme.outline_variant),
-                            Interaction::None,
-                            DiceFxCurvePointHandle { id: p.id },
-                        ));
-                    }
-                });
-        });
-
-    // Extra breathing room so the graph can be scrolled fully into view.
-    parent.spawn(Node {
-        height: Val::Px(24.0),
-        ..default()
-    });
 }

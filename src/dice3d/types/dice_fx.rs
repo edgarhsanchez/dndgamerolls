@@ -27,12 +27,15 @@ pub struct DieLastRoll {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DiceFxState {
     pub fire: bool,
-    pub atomic: bool,
     pub electric: bool,
-    pub custom: bool,
 
-    pub custom_started_at: f32,
-    pub custom_duration: f32,
+    pub fireworks: bool,
+    pub explosion: bool,
+
+    /// Time (seconds since startup) when the current FX instance began.
+    pub started_at: f32,
+    /// Duration seconds before FX auto-expires. Use <= 0 to disable expiry.
+    pub duration: f32,
 }
 
 /// Marker for the surface FX shell mesh attached to a die.
@@ -45,6 +48,7 @@ pub struct DiceFxFirePlume;
 
 /// Marker for the atomic plume mesh attached to a die.
 #[derive(Component)]
+
 pub struct DiceFxAtomicPlume;
 
 /// Component to store a material handle for FX child entities.

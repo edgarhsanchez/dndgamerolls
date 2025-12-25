@@ -17,15 +17,16 @@
 
 struct DiceSurfaceFxParams {
     time: f32,
+    started_at: f32,
+    duration: f32,
     fire: f32,
-    atomic_fx: f32,
     electric: f32,
 
+    fireworks: f32,
+    explosion: f32,
+
     origin_ws: vec3<f32>,
-    custom: f32,
-    custom_noise: f32,
-    custom_mask: f32,
-    custom_hue: f32,
+    _pad0: f32,
 };
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(100)
@@ -46,21 +47,6 @@ var fire_mask_tex: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(106)
 var fire_mask_samp: sampler;
 
-@group(#{MATERIAL_BIND_GROUP}) @binding(107)
-var atomic_noise_tex: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(108)
-var atomic_noise_samp: sampler;
-
-@group(#{MATERIAL_BIND_GROUP}) @binding(109)
-var atomic_ramp_tex: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(110)
-var atomic_ramp_samp: sampler;
-
-@group(#{MATERIAL_BIND_GROUP}) @binding(111)
-var atomic_mask_tex: texture_2d<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(112)
-var atomic_mask_samp: sampler;
-
 @group(#{MATERIAL_BIND_GROUP}) @binding(113)
 var electric_noise_tex: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(114)
@@ -77,47 +63,19 @@ var electric_mask_tex: texture_2d<f32>;
 var electric_mask_samp: sampler;
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(119)
-var custom_noise_tex: texture_2d<f32>;
+var atomic_noise_tex: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(120)
-var custom_noise_samp: sampler;
+var atomic_noise_samp: sampler;
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(121)
-var custom_ramp_tex: texture_2d<f32>;
+var atomic_ramp_tex: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(122)
-var custom_ramp_samp: sampler;
+var atomic_ramp_samp: sampler;
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(123)
-var custom_mask_tex: texture_2d<f32>;
+var atomic_mask_tex: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(124)
-var custom_mask_samp: sampler;
-
-fn hue_rotate(rgb: vec3<f32>, hue01: f32) -> vec3<f32> {
-    let a = hue01 * 6.28318530718;
-    let c = cos(a);
-    let s = sin(a);
-
-    let m00 = 0.213 + c * 0.787 - s * 0.213;
-    let m01 = 0.715 - c * 0.715 - s * 0.715;
-    let m02 = 0.072 - c * 0.072 + s * 0.928;
-
-    let m10 = 0.213 - c * 0.213 + s * 0.143;
-    let m11 = 0.715 + c * 0.285 + s * 0.140;
-    let m12 = 0.072 - c * 0.072 - s * 0.283;
-
-    let m20 = 0.213 - c * 0.213 - s * 0.787;
-    let m21 = 0.715 - c * 0.715 + s * 0.715;
-    let m22 = 0.072 + c * 0.928 + s * 0.072;
-
-    return clamp(
-        vec3<f32>(
-            m00 * rgb.x + m01 * rgb.y + m02 * rgb.z,
-            m10 * rgb.x + m11 * rgb.y + m12 * rgb.z,
-            m20 * rgb.x + m21 * rgb.y + m22 * rgb.z,
-        ),
-        vec3<f32>(0.0),
-        vec3<f32>(1.0),
-    );
-}
+var atomic_mask_samp: sampler;
 
 fn sample_ramp(tex: texture_2d<f32>, samp: sampler, t: f32) -> vec3<f32> {
     let u = clamp(t, 0.0, 1.0);
@@ -141,6 +99,11 @@ fn fragment(
     let right = vec3<f32>(1.0, 0.0, 0.0);
     let fwd = vec3<f32>(0.0, 0.0, 1.0);
 
+    let local_t = max(0.0, fx.time - fx.started_at);
+    let dur = max(0.001, fx.duration);
+    let u = clamp(local_t / dur, 0.0, 1.0);
+    let fade = pow(1.0 - u, 1.5);
+
     // Electric: crackle streaks around the surface, driven by noise+mask textures.
     let e = clamp(fx.electric, 0.0, 1.0);
     let e_uv = fract(vec2<f32>(dot(p, right), dot(p, fwd)) * 0.65 + vec2<f32>(fx.time * 0.12, -fx.time * 0.08));
@@ -148,7 +111,8 @@ fn fragment(
     let e_mask = textureSample(electric_mask_tex, electric_mask_samp, e_uv * 1.3).r;
     let e_lines = smoothstep(0.55, 0.95, e_noise) * smoothstep(0.25, 0.95, e_mask);
     let e_fres = pow(1.0 - abs(dot(n, normalize(vec3<f32>(0.3, 1.0, 0.2)))), 2.0);
-    let e_intensity = e * (0.75 * e_lines + 0.55 * e_fres);
+    let e_pulse = 0.75 + 0.25 * sin(fx.time * 16.0 + e_noise * 8.0);
+    let e_intensity = e * (0.80 * e_lines + 0.60 * e_fres) * e_pulse;
 
     // Fire: warm shimmer glow (surface-only; plume is a separate mesh), driven by noise+mask.
     let f = clamp(fx.fire, 0.0, 1.0);
@@ -158,42 +122,37 @@ fn fragment(
     let f_shape = smoothstep(0.15, 0.95, f_noise) * smoothstep(0.10, 0.90, f_mask);
     let f_intensity = f * (0.28 + 0.85 * f_shape);
 
-    // Atomic: intense glow pulse, driven by noise+mask.
-    let a = clamp(fx.atomic_fx, 0.0, 1.0);
-    let pulse = 0.6 + 0.4 * sin(fx.time * 9.0);
-    let a_uv = fract(vec2<f32>(dot(p, right), dot(p, fwd)) * 0.40 + vec2<f32>(fx.time * 0.06, -fx.time * 0.04));
-    let a_noise = textureSample(atomic_noise_tex, atomic_noise_samp, a_uv).r;
-    let a_mask = textureSample(atomic_mask_tex, atomic_mask_samp, a_uv * 1.2).r;
-    let a_shape = smoothstep(0.20, 0.95, a_noise) * smoothstep(0.10, 0.95, a_mask);
-    let a_intensity = a * (0.55 + 1.05 * pulse) * (0.35 + 0.65 * a_shape);
+    // Fireworks: short burst of bright sparkles.
+    let fw = clamp(fx.fireworks, 0.0, 1.0);
+    let fw_uv = fract(vec2<f32>(dot(p, right), dot(p, fwd)) * 1.15 + vec2<f32>(fx.time * 0.25, -fx.time * 0.21));
+    let fw_noise = textureSample(atomic_noise_tex, atomic_noise_samp, fw_uv).r;
+    let fw_mask = textureSample(atomic_mask_tex, atomic_mask_samp, fw_uv * 1.6).r;
+    let fw_sparks = smoothstep(0.90, 0.999, fw_noise) * smoothstep(0.45, 0.98, fw_mask);
+    let fw_flicker = 0.55 + 0.45 * sin(fx.time * 30.0 + fw_noise * 14.0);
+    let fw_attack = smoothstep(0.00, 0.08, u);
+    let fw_intensity = fw * fw_sparks * fw_flicker * fw_attack * fade * 2.0;
 
-    // Custom: user-provided textures using the same basic patterning as electric.
-    let c = clamp(fx.custom, 0.0, 1.0);
-    let c_uv = fract(vec2<f32>(dot(p, right), dot(p, fwd)) * 0.55 + vec2<f32>(fx.time * 0.10, -fx.time * 0.06));
-    let c_noise_raw = textureSample(custom_noise_tex, custom_noise_samp, c_uv).r;
-    let c_mask_raw = textureSample(custom_mask_tex, custom_mask_samp, c_uv * 1.25).r;
-
-    // Curve-driven shaping over time.
-    let cn = clamp(fx.custom_noise, 0.0, 1.0);
-    let cm = clamp(fx.custom_mask, 0.0, 1.0);
-    let c_noise = smoothstep(mix(0.35, 0.55, cn), mix(0.80, 0.98, cn), c_noise_raw);
-    let c_mask = smoothstep(mix(0.10, 0.35, cm), mix(0.80, 0.98, cm), c_mask_raw);
-
-    let c_lines = c_noise * c_mask;
-    let c_fres = pow(1.0 - abs(dot(n, normalize(vec3<f32>(0.2, 1.0, 0.15)))), 2.0);
-    let c_intensity = c * (0.80 * c_lines + 0.45 * c_fres);
+    // Explosion: hot flash that quickly decays, plus a subtle expanding ring.
+    let ex = clamp(fx.explosion, 0.0, 1.0);
+    let ex_uv = fract(vec2<f32>(dot(p, right), dot(p, fwd)) * 0.75 + vec2<f32>(fx.time * 0.12, -fx.time * 0.09));
+    let ex_noise = textureSample(atomic_noise_tex, atomic_noise_samp, ex_uv).r;
+    let ex_mask = textureSample(atomic_mask_tex, atomic_mask_samp, ex_uv * 1.25).r;
+    let ex_shape = smoothstep(0.10, 0.98, ex_noise) * smoothstep(0.15, 0.98, ex_mask);
+    let ex_flash = pow(fade, 2.0);
+    let ex_ring_r = u * 0.85;
+    let ex_ring = exp(-pow(abs(length(p) - ex_ring_r) * 5.5, 2.0));
+    let ex_intensity = ex * (ex_shape * ex_flash * 3.2 + ex_ring * fade * 1.6);
 
     let electric_color = sample_ramp(electric_ramp_tex, electric_ramp_samp, e_noise);
     let fire_color = sample_ramp(fire_ramp_tex, fire_ramp_samp, f_noise);
-    let atomic_color = sample_ramp(atomic_ramp_tex, atomic_ramp_samp, a_noise);
-    let custom_color_raw = sample_ramp(custom_ramp_tex, custom_ramp_samp, c_noise_raw);
-    let custom_color = hue_rotate(custom_color_raw, clamp(fx.custom_hue, 0.0, 1.0));
+    let fireworks_color = sample_ramp(atomic_ramp_tex, atomic_ramp_samp, fw_noise);
+    let explosion_color = sample_ramp(atomic_ramp_tex, atomic_ramp_samp, ex_noise);
 
     let emissive_rgb =
-        electric_color * e_intensity * 4.0 +
-        fire_color * f_intensity * 3.2 +
-        atomic_color * a_intensity * 5.5 +
-        custom_color * c_intensity * 4.2;
+        electric_color * e_intensity * 4.4 +
+        fire_color * f_intensity * 3.6 +
+        fireworks_color * fw_intensity * 7.2 +
+        explosion_color * ex_intensity * 7.0;
 
     pbr_input.material.emissive += vec4<f32>(emissive_rgb, 0.0);
 

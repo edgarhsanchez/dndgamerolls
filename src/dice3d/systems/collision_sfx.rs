@@ -102,10 +102,14 @@ pub fn play_dice_container_collision_sfx(
         // - `strength_ref`: roughly the velocity magnitude that should sound "full volume".
         // - `min_volume`: audible floor.
         let strength_ref = 4.5_f32;
-        let min_volume = 0.05_f32;
+        let min_volume = 0.08_f32;
         let max_volume = 1.0_f32;
         let t = (strength / strength_ref).clamp(0.0, 1.0);
         let volume = min_volume + (max_volume - min_volume) * t.powf(0.7);
+
+        // Global gain bump: this SFX is easy to end up too quiet on some Windows setups.
+        // Keep a clamp to avoid clipping when collisions are strong.
+        let volume = (volume * 1.6).clamp(0.0, 1.0);
 
         commands.spawn((
             AudioPlayer(sound),

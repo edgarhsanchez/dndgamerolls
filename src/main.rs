@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 use bevy::winit::WinitWindows;
+use bevy_hanabi::prelude::HanabiPlugin;
 use bevy_material_ui::prelude::*;
 use bevy_rapier3d::prelude::*;
 use clap::{Parser, Subcommand};
@@ -26,8 +27,6 @@ use dndgamerolls::dice3d::{
     collect_dice_spawn_points_from_gltf,
     drag_shake_curve_bezier_handle,
     drag_shake_curve_point,
-    drag_dice_fx_curve_bezier_handle,
-    drag_dice_fx_curve_point,
     ensure_dice_box_lid_animation_assets,
     ensure_buttons_have_interaction,
     // Legacy SQLite -> SurrealDB conversion (character screen)
@@ -41,17 +40,7 @@ use dndgamerolls::dice3d::{
     handle_color_text_input,
     handle_dice_scale_slider_changes,
     handle_dice_fx_param_slider_changes,
-    handle_dice_fx_curve_bezier_handle_press,
-    handle_dice_fx_curve_chip_clicks,
-    handle_dice_fx_curve_graph_click_to_add_point,
-    handle_dice_fx_curve_point_press,
-    handle_dice_fx_duration_text_input,
-    handle_dice_fx_preview_time_slider_changes,
-    handle_dice_fx_trigger_select_change,
-    handle_dice_fx_trigger_value_text_input,
-    handle_dice_fx_saved_effect_select_change,
-    handle_dice_fx_upload_image_click,
-    sync_dice_fx_preview_images,
+    handle_dice_roll_fx_mapping_select_change,
     fix_dice_scale_slider_thumb_hitbox,
     init_dice_scale_preview_render_target,
     init_settings_ui_images,
@@ -131,8 +120,6 @@ use dndgamerolls::dice3d::{
     sync_character_screen_roll_result_texts,
     sync_dice_container_mode_text,
     sync_dice_container_toggle_icon,
-    sync_dice_fx_curve_chip_ui,
-    sync_dice_fx_curve_graph_ui,
     sync_shake_curve_chip_ui,
     sync_shake_curve_graph_ui,
     tint_recent_theme_dropdown_items,
@@ -512,6 +499,7 @@ fn run_3d_mode(cli: Cli) {
                     ..default()
                 }),
         )
+            .add_plugins(HanabiPlugin)
         .add_plugins(bevy::pbr::MaterialPlugin::<DiceBoxHighlightMaterial>::default())
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(MaterialUiPlugin)
@@ -737,19 +725,12 @@ fn run_3d_mode(cli: Cli) {
                             handle_color_slider_changes,
                             handle_dice_scale_slider_changes,
                             handle_dice_fx_param_slider_changes,
+                            handle_dice_roll_fx_mapping_select_change,
                             handle_color_text_input,
                             handle_shake_duration_text_input,
-                            handle_dice_fx_upload_image_click,
-                            handle_dice_fx_saved_effect_select_change,
-                            sync_dice_fx_preview_images,
-                            handle_dice_fx_preview_time_slider_changes,
-                            handle_dice_fx_trigger_select_change,
-                            handle_dice_fx_trigger_value_text_input,
-                            handle_dice_fx_duration_text_input,
                         ),
                         (
                             handle_shake_curve_chip_clicks,
-                            handle_dice_fx_curve_chip_clicks,
                             (
                                 handle_shake_curve_point_press,
                                 handle_shake_curve_bezier_handle_press,
@@ -760,16 +741,6 @@ fn run_3d_mode(cli: Cli) {
                             )
                                 .chain(),
                             sync_shake_curve_chip_ui,
-                            (
-                                handle_dice_fx_curve_point_press,
-                                handle_dice_fx_curve_bezier_handle_press,
-                                handle_dice_fx_curve_graph_click_to_add_point,
-                                drag_dice_fx_curve_bezier_handle,
-                                drag_dice_fx_curve_point,
-                                sync_dice_fx_curve_graph_ui,
-                            )
-                                .chain(),
-                            sync_dice_fx_curve_chip_ui,
                         ),
                     ),
                     (

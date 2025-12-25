@@ -107,7 +107,6 @@ pub fn apply_dice_fx_from_roll_complete(
     settings_state: Res<SettingsState>,
     hanabi_fx: Res<DiceHanabiFxAssets>,
     asset_server: Res<AssetServer>,
-    global_transforms: Query<&GlobalTransform>,
 ) {
     for event in ev.read() {
         let started_at = time.elapsed_secs();
@@ -186,17 +185,13 @@ pub fn apply_dice_fx_from_roll_complete(
                     ));
                 }
                 if explosion {
-                    if let Ok(gt) = global_transforms.get(r.entity) {
-                        let sound: Handle<AudioSource> = asset_server.load(DICE_FX_EXPLOSION_SFX_PATH);
-                        commands.spawn((
-                            AudioPlayer(sound),
-                            PlaybackSettings::DESPAWN
-                                .with_spatial(true)
-                                .with_volume(Volume::Linear(0.8)),
-                            Transform::from_translation(gt.translation()),
-                            GlobalTransform::default(),
-                        ));
-                    }
+                    let sound: Handle<AudioSource> = asset_server.load(DICE_FX_EXPLOSION_SFX_PATH);
+                    commands.spawn((
+                        AudioPlayer(sound),
+                        PlaybackSettings::DESPAWN
+                            .with_spatial(false)
+                            .with_volume(Volume::Linear(1.0)),
+                    ));
                 }
             } else {
                 commands.entity(r.entity).remove::<DiceFxState>();

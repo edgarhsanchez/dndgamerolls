@@ -62,62 +62,104 @@ pub fn play_dice_container_collision_sfx(
             continue;
         };
 
-        let (die_entity, _container_entity) =
-            if dice_query.get(e1).is_ok() && container_query.get(e2).is_ok() {
-                (e1, e2)
-            } else if dice_query.get(e2).is_ok() && container_query.get(e1).is_ok() {
-                (e2, e1)
-            } else {
+        let die1 = dice_query.get(e1).is_ok();
+        let die2 = dice_query.get(e2).is_ok();
+        let cont1 = container_query.get(e1).is_ok();
+        let cont2 = container_query.get(e2).is_ok();
+
+        // We play "roll" SFX for:
+        // - Die vs container (box/cup)
+        // - Die vs die (common during rolls)
+        let (primary_die, other_die, _pos) = if die1 && cont2 {
+            let Ok(die_gt) = global_transforms.get(e1) else {
+                continue;
+            };
+            (e1, None, die_gt.translation())
+        } else if die2 && cont1 {
+            let Ok(die_gt) = global_transforms.get(e2) else {
+                continue;
+            };
+            (e2, None, die_gt.translation())
+        } else if die1 && die2 {
+            // To avoid double-playing for the same die-die contact event, pick a stable "primary" die.
+            let primary = if e1.index() <= e2.index() { e1 } else { e2 };
+            let other = if primary == e1 { e2 } else { e1 };
+
+            let Ok(gt1) = global_transforms.get(e1) else {
+                continue;
+            };
+            let Ok(gt2) = global_transforms.get(e2) else {
                 continue;
             };
 
-        // Emit from the die's world position (good approximation of the impact location).
-        let Ok(die_gt) = global_transforms.get(die_entity) else {
+            (primary, Some(other), (gt1.translation() + gt2.translation()) * 0.5)
+        } else {
             continue;
         };
-        let pos = die_gt.translation();
 
-        if let Some(last_s) = debounce.last_played_s.get(&die_entity) {
+        if let Some(last_s) = debounce.last_played_s.get(&primary_die) {
             if now_s - *last_s < debounce.min_interval_s {
                 continue;
             }
         }
 
-        let sound = match *style {
-            DiceContainerStyle::Box => sfx.box_.clone(),
-            DiceContainerStyle::Cup => sfx.cup.clone(),
+        let (sound, variant_gain, variant_name) = match *style {
+            // The wooden box sample tends to read quieter than the glass cup sample.
+            DiceContainerStyle::Box => (sfx.box_.clone(), 2.2_f32, "box"),
+            DiceContainerStyle::Cup => (sfx.cup.clone(), 1.6_f32, "cup"),
         };
 
-        debounce.last_played_s.insert(die_entity, now_s);
+        debounce.last_played_s.insert(primary_die, now_s);
 
         // Approximate collision "strength" from the die's current velocities.
         // This is cheaper than force/impulse events and works well for audio scaling.
-        let strength = die_velocity
-            .get(die_entity)
-            .map(|v| v.linvel.length() + 0.15 * v.angvel.length())
-            .unwrap_or(0.0);
+        let strength_for = |e: Entity| {
+            die_velocity
+                .get(e)
+                .map(|v| v.linvel.length() + 0.15 * v.angvel.length())
+                .unwrap_or(0.0)
+        };
+
+        let mut strength = strength_for(primary_die);
+        if let Some(other) = other_die {
+            strength += strength_for(other);
+        }
 
         // Map strength -> volume. Keep a small floor so quiet collisions are still audible.
         // Tunables:
         // - `strength_ref`: roughly the velocity magnitude that should sound "full volume".
         // - `min_volume`: audible floor.
-        let strength_ref = 4.5_f32;
+        // Slightly lower reference so typical die-die contacts are audible.
+        let strength_ref = 3.6_f32;
         let min_volume = 0.08_f32;
         let max_volume = 1.0_f32;
         let t = (strength / strength_ref).clamp(0.0, 1.0);
         let volume = min_volume + (max_volume - min_volume) * t.powf(0.7);
 
-        // Global gain bump: this SFX is easy to end up too quiet on some Windows setups.
+        // Global gain bump: collision SFX are easy to end up too quiet on some Windows setups.
         // Keep a clamp to avoid clipping when collisions are strong.
-        let volume = (volume * 1.6).clamp(0.0, 1.0);
+        let volume = (volume * variant_gain).clamp(0.0, 1.0);
 
+        #[cfg(debug_assertions)]
+        {
+            // Helps diagnose cases where the style is unexpectedly Cup (or vice versa).
+            debug!(
+                "collision_sfx: variant={} die={:?} other_die={:?} strength={:.2} vol={:.2}",
+                variant_name,
+                primary_die,
+                other_die,
+                strength,
+                volume
+            );
+        }
+
+        // Non-spatial: collision SFX were easy to miss when the camera/listener is far
+        // from the container (attenuation can make them effectively silent).
         commands.spawn((
             AudioPlayer(sound),
             PlaybackSettings::DESPAWN
-                .with_spatial(true)
+                .with_spatial(false)
                 .with_volume(Volume::Linear(volume)),
-            Transform::from_translation(pos),
-            GlobalTransform::default(),
         ));
     }
 }

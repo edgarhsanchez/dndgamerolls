@@ -6,10 +6,32 @@ This directory contains screenshots and examples of the DnD Game Rolls applicati
 
 ![3D Dice Results](dice3d/dice3d-results.png)
 
+## UI Screenshots
+
+### Dice Roller
+
+| Dice Roller Tab | Cup Container |
+|:--------------:|:-------------:|
+| ![Dice Roller Tab](diceroller_tab.png) | ![Dice Roller Cup](dice_roller_cup.png) |
+
+| Fine Control Settings | No Limit on Dice |
+|:--------------------:|:----------------:|
+| ![Fine Control Settings](dice_roller_settings_fine_control.png) | ![No Limit on Dice](no_limit_on_dice.png) |
+
+### Character Sheet
+
+![Character Setup](character_setup_character.png)
+
 ## Directory Structure
 
 ```
 screenshots/
+├── basic_play.mp4                 # Short gameplay clip
+├── character_setup_character.png  # Character sheet / setup
+├── diceroller_tab.png             # Main dice roller tab
+├── dice_roller_cup.png            # Cup container mode
+├── dice_roller_settings_fine_control.png # Fine control settings UI
+├── no_limit_on_dice.png           # Stress test / many dice
 ├── cli/                           # CLI dice roller examples
 │   ├── README.md
 │   ├── stats.txt                  # Character stats display
@@ -46,8 +68,7 @@ screenshots/
 - [x] `attack-dagger.txt` - Attack roll
 
 ### dice3d (need PNG screenshots)
-- [ ] `rolling.png` - Dice in motion
-- [ ] `results.png` - Settled with results
-- [ ] `command-input.png` - Command input UI
-- [ ] `history.png` - Command history panel
-- [ ] `multi-dice.png` - Multiple dice types
+- [x] `dice3d-rolling.png` - Dice in motion
+- [x] `dice3d-results.png` - Settled with results
+- [x] `dice3d-command-input.png` - Command input UI
+- [x] `dice3d-history.png` - Command history panel

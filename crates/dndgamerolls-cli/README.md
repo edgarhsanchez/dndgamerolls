@@ -31,7 +31,9 @@ dndrolls --dice d20 --disadvantage
 
 ### Character-Based Rolls
 
-Create a `dnd_stats.json` file with your character stats (see example below), then:
+By default, the CLI loads character data from the local SurrealDB database (`characters.surrealdb`) used by the 3D app.
+
+You can also provide a JSON file as one-off input (see example format below):
 
 ```bash
 # Roll a skill check
@@ -57,7 +59,10 @@ dndrolls --dice d20 --checkon perception
 ### Options
 
 - `-d, --dice <DICE>` - Dice to roll (e.g., "2d6", "1d20", "d8")
-- `-f, --file <FILE>` - Path to character stats JSON file (default: dnd_stats.json)
+- `-f, --file <FILE>` - Path to character stats JSON file (optional; if omitted, loads from SQLite)
+- `-f, --file <FILE>` - Path to character stats JSON file (optional; if omitted, loads from local SurrealDB)
+- `--character <NAME>` - Select a character by name from the local database (ignored when --file is provided)
+- `--character-id <ID>` - Select a character by id from the local database (ignored when --file is provided)
 - `--checkon <NAME>` - Apply modifier from skill, ability, or save
 - `-m, --modifier <NUM>` - Custom modifier to add
 - `-a, --advantage` - Roll with advantage

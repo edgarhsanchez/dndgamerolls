@@ -22,9 +22,11 @@ The app may make a network request to GitHub to fetch the public contributors li
 
 The only data stored by this application is:
 
-- **Character data** - Stored locally on your computer (in a SQLite database for the 3D app, and/or as `.json` files when using file-based flows).
+- **Character data** - Stored locally on your computer in an embedded SurrealDB (SurrealKV) database.
+	- Older installs may have a legacy SQLite database which the app can migrate.
+	- If you use CLI `--file`, character JSON stays local on your machine.
 
-- **Application settings** - Stored locally on your device (in SQLite; older installs may have a legacy `settings.json` that is migrated).
+- **Application settings** - Stored locally on your device in the embedded SurrealDB database.
 
 All character data and settings remain entirely on your computer and are never transmitted anywhere.
 

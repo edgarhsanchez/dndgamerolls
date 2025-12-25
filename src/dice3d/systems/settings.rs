@@ -5,9 +5,13 @@
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::{ComputedUiTargetCamera, UiGlobalTransform};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
+use bevy::camera::RenderTarget;
+use bevy::camera::visibility::RenderLayers;
 
 use bevy::window::PrimaryWindow;
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::theme::ThemeMode;
 use std::cmp::Ordering;
 
 use crate::dice3d::types::*;
@@ -16,7 +20,275 @@ use bevy_material_ui::prelude::SwitchChangeEvent;
 use super::settings_tabs;
 
 const SETTINGS_DIALOG_WIDTH: f32 = 780.0;
-const SETTINGS_DIALOG_HEIGHT: f32 = 720.0;
+const SETTINGS_DIALOG_HEIGHT: f32 = 860.0;
+const SETTINGS_DIALOG_MIN_WIDTH: f32 = 560.0;
+const SETTINGS_DIALOG_MIN_HEIGHT: f32 = 560.0;
+
+const DICE_SCALE_PREVIEW_LAYER: u8 = 31;
+const DICE_SCALE_PREVIEW_WIDTH: u32 = 360;
+const DICE_SCALE_PREVIEW_HEIGHT: u32 = 220;
+
+#[derive(Resource, Clone)]
+pub struct DiceScalePreviewRenderTarget {
+    pub image: Handle<Image>,
+}
+
+#[derive(Resource, Clone)]
+pub struct SettingsUiImages {
+    pub blank: Handle<Image>,
+}
+
+#[derive(Resource, Default)]
+pub struct DiceScalePreviewScene {
+    pub root: Option<Entity>,
+    pub camera: Option<Entity>,
+    pub light: Option<Entity>,
+    pub d4: Option<Entity>,
+    pub d6: Option<Entity>,
+    pub d8: Option<Entity>,
+    pub d10: Option<Entity>,
+    pub d12: Option<Entity>,
+    pub d20: Option<Entity>,
+}
+
+#[derive(Component, Clone, Copy)]
+pub struct DiceScalePreviewDie {
+    pub die_type: DiceType,
+}
+
+pub fn init_dice_scale_preview_render_target(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let size = Extent3d {
+        width: DICE_SCALE_PREVIEW_WIDTH,
+        height: DICE_SCALE_PREVIEW_HEIGHT,
+        depth_or_array_layers: 1,
+    };
+
+    let mut image = Image {
+        texture_descriptor: bevy::render::render_resource::TextureDescriptor {
+            label: Some("dice_scale_preview_render_target"),
+            size,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8UnormSrgb,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: TextureUsages::TEXTURE_BINDING
+                | TextureUsages::COPY_DST
+                | TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        },
+        ..default()
+    };
+
+    image.resize(size);
+
+    let handle = images.add(image);
+    commands.insert_resource(DiceScalePreviewRenderTarget { image: handle });
+    commands.insert_resource(DiceScalePreviewScene::default());
+}
+
+pub fn init_settings_ui_images(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    let size = Extent3d {
+        width: 1,
+        height: 1,
+        depth_or_array_layers: 1,
+    };
+
+    let mut image = Image {
+        texture_descriptor: bevy::render::render_resource::TextureDescriptor {
+            label: Some("settings_ui_blank_image"),
+            size,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8UnormSrgb,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        ..default()
+    };
+
+    image.resize(size);
+    image.data = Some(vec![0, 0, 0, 0]);
+
+    commands.insert_resource(SettingsUiImages {
+        blank: images.add(image),
+    });
+}
+
+pub fn manage_dice_scale_preview_scene(
+    mut commands: Commands,
+    settings_state: Res<SettingsState>,
+    preview_target: Option<Res<DiceScalePreviewRenderTarget>>,
+    mut preview_scene: ResMut<DiceScalePreviewScene>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let Some(preview_target) = preview_target else {
+        return;
+    };
+
+    let modal_open = settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings;
+
+    // Despawn if the modal is closed.
+    if !modal_open {
+        if let Some(e) = preview_scene.d4.take() {
+            commands.entity(e).despawn();
+        }
+        if let Some(e) = preview_scene.d6.take() {
+            commands.entity(e).despawn();
+        }
+        if let Some(e) = preview_scene.d8.take() {
+            commands.entity(e).despawn();
+        }
+        if let Some(e) = preview_scene.d10.take() {
+            commands.entity(e).despawn();
+        }
+        if let Some(e) = preview_scene.d12.take() {
+            commands.entity(e).despawn();
+        }
+        if let Some(e) = preview_scene.d20.take() {
+            commands.entity(e).despawn();
+        }
+        if let Some(e) = preview_scene.camera.take() {
+            commands.entity(e).despawn();
+        }
+        if let Some(e) = preview_scene.light.take() {
+            commands.entity(e).despawn();
+        }
+        if let Some(root) = preview_scene.root.take() {
+            commands.entity(root).despawn();
+        }
+        return;
+    }
+
+    if preview_scene.root.is_some() {
+        return;
+    }
+
+    let preview_layer = RenderLayers::layer(DICE_SCALE_PREVIEW_LAYER as usize);
+
+    // Root
+    let root = commands
+        .spawn((
+            Transform::default(),
+            Visibility::Visible,
+            preview_layer.clone(),
+        ))
+        .id();
+
+    // Spawn preview content as children of the root.
+    let mut camera_id: Option<Entity> = None;
+    let mut light_id: Option<Entity> = None;
+    let mut d4_id: Option<Entity> = None;
+    let mut d6_id: Option<Entity> = None;
+    let mut d8_id: Option<Entity> = None;
+    let mut d10_id: Option<Entity> = None;
+    let mut d12_id: Option<Entity> = None;
+    let mut d20_id: Option<Entity> = None;
+
+    commands.entity(root).with_children(|parent| {
+        // Light
+        let light = parent
+            .spawn((
+                PointLight {
+                    intensity: 2500.0,
+                    range: 50.0,
+                    shadows_enabled: false,
+                    ..default()
+                },
+                Transform::from_xyz(6.0, 8.0, 6.0),
+                preview_layer.clone(),
+            ))
+            .id();
+        light_id = Some(light);
+
+        // Camera (render to texture)
+        let camera = parent
+            .spawn((
+                Camera3d::default(),
+                Camera {
+                    target: RenderTarget::Image(preview_target.image.clone().into()),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 5.5, 10.5)
+                    .looking_at(Vec3::new(0.0, 1.3, 0.0), Vec3::Y),
+                preview_layer.clone(),
+            ))
+            .id();
+        camera_id = Some(camera);
+
+        let spacing = 2.4;
+
+        let mut spawn_die = |die_type: DiceType, x: f32| -> Entity {
+            let (mesh, _collider, _normals) =
+                crate::dice3d::meshes::create_die_mesh_and_collider(die_type);
+            let mesh_handle = meshes.add(mesh);
+            let material = materials.add(StandardMaterial {
+                base_color: Color::srgb(0.85, 0.9, 1.0),
+                alpha_mode: AlphaMode::Opaque,
+                perceptual_roughness: 0.25,
+                metallic: 0.0,
+                reflectance: 0.2,
+                ..default()
+            });
+
+            parent
+                .spawn((
+                    Mesh3d(mesh_handle),
+                    MeshMaterial3d(material),
+                    Transform::from_xyz(x, 1.0, 0.0)
+                        .with_rotation(Quat::from_euler(EulerRot::XYZ, 0.6, 0.7, 0.0)),
+                    DiceScalePreviewDie { die_type },
+                    preview_layer.clone(),
+                ))
+                .id()
+        };
+
+        d4_id = Some(spawn_die(DiceType::D4, -2.5 * spacing));
+        d6_id = Some(spawn_die(DiceType::D6, -1.5 * spacing));
+        d8_id = Some(spawn_die(DiceType::D8, -0.5 * spacing));
+        d10_id = Some(spawn_die(DiceType::D10, 0.5 * spacing));
+        d12_id = Some(spawn_die(DiceType::D12, 1.5 * spacing));
+        d20_id = Some(spawn_die(DiceType::D20, 2.5 * spacing));
+    });
+
+    preview_scene.root = Some(root);
+    preview_scene.light = light_id;
+    preview_scene.camera = camera_id;
+    preview_scene.d4 = d4_id;
+    preview_scene.d6 = d6_id;
+    preview_scene.d8 = d8_id;
+    preview_scene.d10 = d10_id;
+    preview_scene.d12 = d12_id;
+    preview_scene.d20 = d20_id;
+}
+
+pub fn sync_dice_scale_preview_dice(
+    settings_state: Res<SettingsState>,
+    preview_scene: Res<DiceScalePreviewScene>,
+    mut dice_query: Query<(&DiceScalePreviewDie, &mut Transform)>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    if preview_scene.root.is_none() {
+        return;
+    }
+
+    // Live-preview uses the editing values (not persisted) so users see changes while dragging.
+    let scales = &settings_state.editing_dice_scales;
+    for (die, mut transform) in dice_query.iter_mut() {
+        let s = scales.scale_for(die.die_type) * die.die_type.uniform_size_scale_factor();
+        transform.scale = Vec3::splat(s);
+    }
+}
 
 /// Persist settings changes to SQLite.
 ///
@@ -37,8 +309,98 @@ pub fn persist_settings_to_db(
 
     match settings_state.settings.save_to_db(&db) {
         Ok(()) => settings_state.is_modified = false,
-        Err(e) => warn!("Failed to persist settings to SQLite: {}", e),
+        Err(e) => warn!("Failed to persist settings to SurrealDB: {}", e),
     }
+}
+
+/// Load persisted settings after the database resource has been initialized.
+///
+/// This avoids opening the on-disk datastore twice at startup (which can fail on
+/// Windows/MSIX due to file locking or permission constraints).
+pub fn load_settings_state_from_db(
+    mut settings_state: ResMut<SettingsState>,
+    db: Option<Res<CharacterDatabase>>,
+    mut theme: ResMut<MaterialTheme>,
+) {
+    let Some(db) = db else {
+        warn!("No CharacterDatabase resource; using default settings");
+        return;
+    };
+
+    if db.db_path.as_os_str().is_empty() {
+        warn!("CharacterDatabase is in-memory; settings will not persist across restarts");
+        return;
+    }
+
+    match AppSettings::load_from_db(&db) {
+        Ok(Some(loaded)) => {
+            info!(
+                "Loaded settings from SurrealDB at {:?} (background={})",
+                db.db_path,
+                loaded.background_color.to_hex()
+            );
+
+            settings_state.settings = loaded.clone();
+            settings_state.is_modified = false;
+
+            settings_state.character_sheet_editing_die = loaded.character_sheet_default_die;
+            settings_state.quick_roll_editing_die = loaded.quick_roll_default_die;
+            settings_state.default_roll_uses_shake_editing = loaded.default_roll_uses_shake;
+
+            settings_state.editing_color = loaded.background_color.clone();
+            settings_state.editing_highlight_color = loaded.dice_box_highlight_color.clone();
+            settings_state.editing_shake_config = loaded.shake_config.to_runtime();
+            settings_state.last_saved_shake_config = loaded.shake_config.clone();
+
+            settings_state.editing_dice_scales = loaded.dice_scales.clone();
+            settings_state.editing_dice_roll_fx_mappings = loaded.dice_roll_fx_mappings.clone();
+            settings_state.editing_dice_fx_surface_opacity = loaded.dice_fx_surface_opacity;
+            settings_state.editing_dice_fx_plume_height_multiplier =
+                loaded.dice_fx_plume_height_multiplier;
+            settings_state.editing_dice_fx_plume_radius_multiplier =
+                loaded.dice_fx_plume_radius_multiplier;
+
+            settings_state.color_input_text.clear();
+            settings_state.highlight_input_text.clear();
+
+            // Apply theme override (if any) before UI setup.
+            apply_theme_override(&settings_state.settings, &mut theme);
+        }
+        Ok(None) => {
+            info!(
+                "No persisted settings found in SurrealDB at {:?}; using defaults",
+                db.db_path
+            );
+        }
+        Err(e) => {
+            warn!(
+                "Failed to load settings from SurrealDB at {:?}: {}; using defaults",
+                db.db_path, e
+            );
+        }
+    }
+}
+
+fn apply_theme_override(settings: &AppSettings, theme: &mut MaterialTheme) {
+    let mode = theme.mode;
+
+    let default_for_mode = || match mode {
+        ThemeMode::Dark => MaterialTheme::dark(),
+        ThemeMode::Light => MaterialTheme::light(),
+    };
+
+    let Some(seed_hex) = settings.theme_seed_hex.as_deref() else {
+        *theme = default_for_mode();
+        return;
+    };
+
+    let Some(mut parsed) = ColorSetting::parse(seed_hex) else {
+        *theme = default_for_mode();
+        return;
+    };
+
+    parsed.a = 1.0;
+    *theme = MaterialTheme::from_seed(parsed.to_color(), mode);
 }
 
 /// Spawn the settings (gear) icon button in the dice roller view.
@@ -90,6 +452,7 @@ fn spawn_settings_modal(
     theme: &MaterialTheme,
     settings_state: &SettingsState,
     shake_config: &ContainerShakeConfig,
+    dice_scale_preview_image: Option<Handle<Image>>,
 ) {
     let options = [
         DiceTypeSetting::D4,
@@ -124,11 +487,12 @@ fn spawn_settings_modal(
             Node {
                 display: Display::None, // synced by DialogPlugin
                 position_type: PositionType::Absolute,
-                width: Val::Px(SETTINGS_DIALOG_WIDTH),
-                height: Val::Px(SETTINGS_DIALOG_HEIGHT),
-                min_width: Val::Px(SETTINGS_DIALOG_WIDTH),
+                // Responsive sizing: use most of the window, but cap to a nice desktop size.
+                width: Val::Percent(92.0),
+                height: Val::Percent(92.0),
+                min_width: Val::Px(SETTINGS_DIALOG_MIN_WIDTH),
+                min_height: Val::Px(SETTINGS_DIALOG_MIN_HEIGHT),
                 max_width: Val::Px(SETTINGS_DIALOG_WIDTH),
-                min_height: Val::Px(SETTINGS_DIALOG_HEIGHT),
                 max_height: Val::Px(SETTINGS_DIALOG_HEIGHT),
                 padding: UiRect::all(Val::Px(Spacing::EXTRA_LARGE)),
                 flex_direction: FlexDirection::Column,
@@ -263,6 +627,9 @@ fn spawn_settings_modal(
                     .spawn(Node {
                         width: Val::Percent(100.0),
                         flex_grow: 1.0,
+                        // Needed so absolutely-positioned tab panels have a well-defined
+                        // containing block to fill.
+                        position_type: PositionType::Relative,
                         min_width: Val::Px(0.0),
                         min_height: Val::Px(0.0),
                         overflow: Overflow::clip(),
@@ -281,6 +648,9 @@ fn spawn_settings_modal(
                                     select_options.clone(),
                                     selected_index,
                                     settings_state.default_roll_uses_shake_editing,
+                                    &settings_state.editing_dice_scales,
+                                    dice_scale_preview_image.clone(),
+                                    settings_state,
                                 );
                             },
                         );
@@ -296,6 +666,8 @@ fn spawn_settings_modal(
                                     theme,
                                     editing_color,
                                     editing_highlight_color,
+                                    &settings_state.theme_seed_input_text,
+                                    &settings_state.settings.recent_theme_seeds,
                                 );
                             },
                         );
@@ -445,6 +817,57 @@ pub(crate) fn spawn_color_slider(
         });
 }
 
+/// Helper to spawn a dice scale slider row.
+pub(crate) fn spawn_dice_scale_slider(
+    parent: &mut ChildSpawnerCommands,
+    die_type: DiceType,
+    label: &str,
+    value: f32,
+    theme: &MaterialTheme,
+) {
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(10.0),
+            height: Val::Px(30.0),
+            ..default()
+        })
+        .with_children(|row| {
+            row.spawn((
+                Text::new(label),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(theme.on_surface_variant),
+            ));
+
+            row.spawn(Node {
+                width: Val::Px(260.0),
+                height: Val::Px(30.0),
+                ..default()
+            })
+            .with_children(|slot| {
+                let slider = MaterialSlider::new(DiceScaleSettings::MIN_SCALE, DiceScaleSettings::MAX_SCALE)
+                    .with_value(value.clamp(DiceScaleSettings::MIN_SCALE, DiceScaleSettings::MAX_SCALE))
+                    .track_height(6.0)
+                    .thumb_radius(8.0);
+                spawn_slider_control_with(slot, theme, slider, DiceScaleSlider { die_type });
+            });
+
+            row.spawn((
+                Text::new(format!("{:.2}", value)),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(theme.on_surface_variant),
+                DiceScaleValueLabel { die_type },
+            ));
+        });
+}
+
 // ============================================================================
 // Interaction Systems
 // ============================================================================
@@ -455,6 +878,9 @@ pub fn handle_settings_button_click(
     button_query: Query<(), With<SettingsButton>>,
     mut settings_state: ResMut<SettingsState>,
     shake_config: Res<ContainerShakeConfig>,
+    _theme: Res<MaterialTheme>,
+    _db: Option<Res<CharacterDatabase>>,
+    _images: ResMut<Assets<Image>>,
 ) {
     for event in click_events.read() {
         if button_query.get(event.entity).is_err() {
@@ -474,12 +900,22 @@ pub fn handle_settings_button_click(
         settings_state.default_roll_uses_shake_editing =
             settings_state.settings.default_roll_uses_shake;
 
+        settings_state.editing_dice_scales = settings_state.settings.dice_scales.clone();
+
+        settings_state.editing_dice_roll_fx_mappings =
+            settings_state.settings.dice_roll_fx_mappings.clone();
+
+        settings_state.editing_dice_fx_surface_opacity = settings_state.settings.dice_fx_surface_opacity;
+        settings_state.editing_dice_fx_plume_height_multiplier =
+            settings_state.settings.dice_fx_plume_height_multiplier;
+        settings_state.editing_dice_fx_plume_radius_multiplier =
+            settings_state.settings.dice_fx_plume_radius_multiplier;
+
         // Copy current shake settings into an editable staging area.
         settings_state.editing_shake_config = shake_config.clone();
 
         // Keep autosave snapshot aligned so opening the modal doesn't immediately rewrite.
-        settings_state.last_saved_shake_config_json =
-            serde_json::to_string(&settings_state.settings.shake_config).unwrap_or_default();
+        settings_state.last_saved_shake_config = settings_state.settings.shake_config.clone();
 
         settings_state.shake_duration_input_text = format!(
             "{:.3}",
@@ -488,6 +924,22 @@ pub fn handle_settings_button_click(
                 .duration_seconds
                 .max(0.0)
         );
+
+        // Theme seed staging.
+        settings_state.theme_seed_input_text = settings_state
+            .settings
+            .theme_seed_hex
+            .clone()
+            .unwrap_or_default();
+        settings_state.editing_theme_seed_override = settings_state
+            .settings
+            .theme_seed_hex
+            .as_deref()
+            .and_then(ColorSetting::parse)
+            .map(|mut c| {
+                c.a = 1.0;
+                c
+            });
     }
 }
 
@@ -508,16 +960,13 @@ pub fn autosave_and_apply_shake_config(
 
     // Convert the editing config into the persisted representation.
     let persisted = ShakeConfigSetting::from_runtime(&settings_state.editing_shake_config);
-    let Ok(json) = serde_json::to_string(&persisted) else {
-        return;
-    };
 
-    if json == settings_state.last_saved_shake_config_json {
+    if persisted == settings_state.last_saved_shake_config {
         return;
     }
 
     settings_state.settings.shake_config = persisted;
-    settings_state.last_saved_shake_config_json = json;
+    settings_state.last_saved_shake_config = settings_state.settings.shake_config.clone();
 
     // Apply to runtime immediately so the shake feature uses the latest curve without
     // requiring an explicit OK click.
@@ -539,8 +988,8 @@ pub fn manage_settings_modal(
     mut commands: Commands,
     settings_state: Res<SettingsState>,
     theme: Res<MaterialTheme>,
+    preview_target: Option<Res<DiceScalePreviewRenderTarget>>,
     modal_query: Query<Entity, With<SettingsModalOverlay>>,
-    children_query: Query<&Children>,
 ) {
     if !settings_state.is_changed() {
         return;
@@ -556,16 +1005,12 @@ pub fn manage_settings_modal(
                 &theme,
                 &settings_state,
                 &settings_state.editing_shake_config,
+                preview_target.map(|r| r.image.clone()),
             );
         }
     } else {
         // Despawn modal
         for entity in modal_query.iter() {
-            if let Ok(children) = children_query.get(entity) {
-                for child in children.iter() {
-                    commands.entity(child).despawn();
-                }
-            }
             commands.entity(entity).despawn();
         }
     }
@@ -578,6 +1023,8 @@ pub fn handle_settings_ok_click(
     mut settings_state: ResMut<SettingsState>,
     mut clear_color: ResMut<ClearColor>,
     mut shake_config: ResMut<ContainerShakeConfig>,
+    mut theme: ResMut<MaterialTheme>,
+    db: Option<Res<CharacterDatabase>>,
 ) {
     for event in click_events.read() {
         if ok_query.get(event.entity).is_err() {
@@ -590,6 +1037,24 @@ pub fn handle_settings_ok_click(
 
         settings_state.settings.quick_roll_default_die = settings_state.quick_roll_editing_die;
 
+        // Apply per-die scale overrides.
+        settings_state.settings.dice_scales = settings_state.editing_dice_scales.clone();
+
+        // Apply Dice FX visual parameters.
+        settings_state.settings.dice_fx_surface_opacity =
+            settings_state.editing_dice_fx_surface_opacity.clamp(0.0, 1.0);
+        settings_state.settings.dice_fx_plume_height_multiplier =
+            settings_state.editing_dice_fx_plume_height_multiplier.clamp(0.25, 3.0);
+        settings_state.settings.dice_fx_plume_radius_multiplier =
+            settings_state.editing_dice_fx_plume_radius_multiplier.clamp(0.25, 3.0);
+
+        // Apply per-die/per-face Dice Roll FX mappings.
+        let mut mappings = settings_state.editing_dice_roll_fx_mappings.clone();
+        for m in &mut mappings {
+            m.normalize_len();
+        }
+        settings_state.settings.dice_roll_fx_mappings = mappings;
+
         settings_state.settings.default_roll_uses_shake =
             settings_state.default_roll_uses_shake_editing;
 
@@ -599,12 +1064,344 @@ pub fn handle_settings_ok_click(
         // Apply shake settings from the editor
         *shake_config = settings_state.editing_shake_config.clone();
 
+        // Theme: persist override if valid.
+        let input = settings_state.theme_seed_input_text.trim();
+        if input.is_empty() {
+            settings_state.settings.theme_seed_hex = None;
+        } else if let Some(mut parsed) = ColorSetting::parse(input) {
+            parsed.a = 1.0;
+            let canonical = parsed.to_hex();
+            settings_state.settings.theme_seed_hex = Some(canonical.clone());
+
+            settings_state
+                .settings
+                .recent_theme_seeds
+                .retain(|s| !s.eq_ignore_ascii_case(&canonical));
+            settings_state
+                .settings
+                .recent_theme_seeds
+                .insert(0, canonical);
+
+            const MAX_RECENT: usize = 10;
+            settings_state
+                .settings
+                .recent_theme_seeds
+                .truncate(MAX_RECENT);
+        }
+
+        // Ensure runtime theme matches the persisted selection.
+        apply_theme_override(&settings_state.settings, &mut theme);
+
         settings_state.is_modified = true;
+
+        // Persist immediately so OK behaves like an explicit save.
+        // (We still keep `is_modified` as a fallback for the once-per-frame flusher.)
+        if let Some(db) = db.as_deref() {
+            match settings_state.settings.save_to_db(db) {
+                Ok(()) => {
+                    settings_state.is_modified = false;
+                    info!(
+                        "Saved settings to SurrealDB at {:?} (background={})",
+                        db.db_path,
+                        settings_state.settings.background_color.to_hex()
+                    );
+                }
+                Err(e) => warn!("Failed to persist settings to SurrealDB: {}", e),
+            }
+        } else {
+            warn!("CharacterDatabase resource not available; settings not persisted");
+        }
 
         // Close modal
         settings_state.show_modal = false;
         settings_state.modal_kind = crate::dice3d::types::ActiveModalKind::None;
     }
+}
+
+/// Handle per-die scale slider changes in the settings modal.
+pub fn handle_dice_scale_slider_changes(
+    mut events: MessageReader<SliderChangeEvent>,
+    slider_query: Query<&DiceScaleSlider>,
+    mut settings_state: ResMut<SettingsState>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        let Ok(slider) = slider_query.get(event.entity) else {
+            continue;
+        };
+
+        // Allow every die to be sized freely within the global bounds.
+        // (Preview and in-scene updates use the editing values; OK persists them.)
+        let value = event
+            .value
+            .clamp(DiceScaleSettings::MIN_SCALE, DiceScaleSettings::MAX_SCALE);
+        settings_state
+            .editing_dice_scales
+            .set_scale_for(slider.die_type, value);
+    }
+}
+
+/// Handle Dice FX parameter slider changes in the settings modal.
+pub fn handle_dice_fx_param_slider_changes(
+    mut events: MessageReader<SliderChangeEvent>,
+    slider_query: Query<&DiceFxParamSlider>,
+    mut settings_state: ResMut<SettingsState>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        let Ok(slider) = slider_query.get(event.entity) else {
+            continue;
+        };
+
+        match slider.kind {
+            DiceFxParamKind::SurfaceOpacity => {
+                settings_state.editing_dice_fx_surface_opacity = event.value.clamp(0.0, 1.0);
+            }
+            DiceFxParamKind::PlumeHeight => {
+                settings_state.editing_dice_fx_plume_height_multiplier = event.value.clamp(0.25, 3.0);
+            }
+            DiceFxParamKind::PlumeRadius => {
+                settings_state.editing_dice_fx_plume_radius_multiplier = event.value.clamp(0.25, 3.0);
+            }
+        }
+    }
+}
+
+/// Handle Dice Roll FX mapping dropdown changes (per die type, per rolled value).
+pub fn handle_dice_roll_fx_mapping_select_change(
+    mut events: MessageReader<SelectChangeEvent>,
+    tag_query: Query<&DiceRollFxMappingSelect>,
+    parents: Query<&ChildOf>,
+    mut settings_state: ResMut<SettingsState>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    fn parse_kind(value: &str) -> DiceRollFxKind {
+        match value {
+            "fire" => DiceRollFxKind::Fire,
+            "electricity" => DiceRollFxKind::Electricity,
+            "fireworks" => DiceRollFxKind::Fireworks,
+            "explosion" => DiceRollFxKind::Explosion,
+            "plasma" => DiceRollFxKind::Plasma,
+            _ => DiceRollFxKind::None,
+        }
+    }
+
+    fn ensure_mapping_mut(
+        mappings: &mut Vec<DiceRollFxMapping>,
+        die_type: DiceType,
+    ) -> &mut DiceRollFxMapping {
+        if let Some(i) = mappings.iter().position(|m| m.die_type == die_type) {
+            return &mut mappings[i];
+        }
+
+        mappings.push(DiceRollFxMapping::new(die_type));
+        mappings.last_mut().expect("just pushed DiceRollFxMapping")
+    }
+
+    fn find_tag_entity(
+        start: Entity,
+        tag_query: &Query<&DiceRollFxMappingSelect>,
+        parents: &Query<&ChildOf>,
+    ) -> Option<Entity> {
+        let mut cur = start;
+        for _ in 0..16 {
+            if tag_query.get(cur).is_ok() {
+                return Some(cur);
+            }
+            let Ok(parent) = parents.get(cur) else {
+                break;
+            };
+            cur = parent.0;
+        }
+        None
+    }
+
+    for ev in events.read() {
+        let Some(tag_entity) = find_tag_entity(ev.entity, &tag_query, &parents) else {
+            continue;
+        };
+        let Ok(tag) = tag_query.get(tag_entity) else {
+            continue;
+        };
+
+        let Some(value) = ev.option.value.as_deref() else {
+            continue;
+        };
+
+        let kind = parse_kind(value);
+        let mapping = ensure_mapping_mut(&mut settings_state.editing_dice_roll_fx_mappings, tag.die_type);
+        mapping.set(tag.value, kind);
+    }
+}
+
+/// Sync dice scale sliders + value labels from the current editing state.
+pub fn update_dice_scale_ui(
+    settings_state: Res<SettingsState>,
+    mut slider_query: Query<(&DiceScaleSlider, &mut MaterialSlider)>,
+    mut label_query: Query<(&DiceScaleValueLabel, &mut Text)>,
+) {
+    if !settings_state.is_changed() {
+        return;
+    }
+
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for (slider, mut material_slider) in slider_query.iter_mut() {
+        material_slider.value = settings_state
+            .editing_dice_scales
+            .scale_for(slider.die_type);
+    }
+
+    for (label, mut text) in label_query.iter_mut() {
+        let v = settings_state
+            .editing_dice_scales
+            .scale_for(label.die_type);
+        *text = Text::new(format!("{:.2}", v));
+    }
+}
+
+/// Sync Dice FX parameter sliders + value labels from the current editing state.
+pub fn update_dice_fx_param_ui(
+    settings_state: Res<SettingsState>,
+    mut slider_query: Query<(&DiceFxParamSlider, &mut MaterialSlider)>,
+    mut label_query: Query<(&DiceFxParamValueLabel, &mut Text)>,
+) {
+    if !settings_state.is_changed() {
+        return;
+    }
+
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for (slider, mut material_slider) in slider_query.iter_mut() {
+        material_slider.value = match slider.kind {
+            DiceFxParamKind::SurfaceOpacity => settings_state.editing_dice_fx_surface_opacity.clamp(0.0, 1.0),
+            DiceFxParamKind::PlumeHeight => settings_state.editing_dice_fx_plume_height_multiplier.clamp(0.25, 3.0),
+            DiceFxParamKind::PlumeRadius => settings_state.editing_dice_fx_plume_radius_multiplier.clamp(0.25, 3.0),
+        };
+    }
+
+    for (label, mut text) in label_query.iter_mut() {
+        let v = match label.kind {
+            DiceFxParamKind::SurfaceOpacity => settings_state.editing_dice_fx_surface_opacity,
+            DiceFxParamKind::PlumeHeight => settings_state.editing_dice_fx_plume_height_multiplier,
+            DiceFxParamKind::PlumeRadius => settings_state.editing_dice_fx_plume_radius_multiplier,
+        };
+        *text = Text::new(format!("{:.2}", v));
+    }
+}
+
+/// Ensure the slider thumb is always inside the slider entity's hit-test area.
+///
+/// The underlying slider places the thumb centered on the track endpoints.
+/// At the exact min/max, that can place part of the thumb outside the slider's
+/// clickable node, making it hard to grab. Adding padding equal to the thumb
+/// radius keeps the thumb inside the hit-test area.
+pub fn fix_dice_scale_slider_thumb_hitbox(
+    settings_state: Res<SettingsState>,
+    mut sliders: Query<(&MaterialSlider, &mut Node), With<DiceScaleSlider>>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for (slider, mut node) in sliders.iter_mut() {
+        let r = slider.thumb_radius;
+        // Horizontal sliders need left/right padding; vertical sliders need top/bottom.
+        // This keeps the thumb entirely inside the slider node.
+        match slider.orientation {
+            SliderOrientation::Horizontal => {
+                node.padding = UiRect {
+                    left: Val::Px(r),
+                    right: Val::Px(r),
+                    top: Val::Px(0.0),
+                    bottom: Val::Px(0.0),
+                };
+            }
+            SliderOrientation::Vertical => {
+                node.padding = UiRect {
+                    left: Val::Px(0.0),
+                    right: Val::Px(0.0),
+                    top: Val::Px(r),
+                    bottom: Val::Px(r),
+                };
+            }
+        }
+    }
+}
+
+/// Apply persisted dice scale settings to any existing dice entities.
+///
+/// This runs whenever the persisted `settings.dice_scales` value changes (e.g. via OK).
+pub fn apply_dice_scale_settings_to_existing_dice(
+    settings_state: Res<SettingsState>,
+    mut dice_query: Query<(&Die, &mut Transform)>,
+    mut last_applied: Local<Option<DiceScaleSettings>>,
+) {
+    let current = settings_state.settings.dice_scales.clone();
+
+    if last_applied.as_ref() == Some(&current) {
+        return;
+    }
+
+    for (die, mut transform) in dice_query.iter_mut() {
+        let s = current.scale_for(die.die_type) * die.die_type.uniform_size_scale_factor();
+        transform.scale = Vec3::splat(s);
+    }
+
+    *last_applied = Some(current);
+}
+
+/// Live-apply editing dice scale settings while the settings modal is open.
+///
+/// This makes slider changes immediately visible on any dice already in the scene.
+pub fn apply_editing_dice_scales_to_existing_dice_while_open(
+    settings_state: Res<SettingsState>,
+    mut dice_query: Query<(&Die, &mut Transform)>,
+    mut last_applied: Local<Option<DiceScaleSettings>>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        *last_applied = None;
+        return;
+    }
+
+    let current = settings_state.editing_dice_scales.clone();
+    if last_applied.as_ref() == Some(&current) {
+        return;
+    }
+
+    for (die, mut transform) in dice_query.iter_mut() {
+        let s = current.scale_for(die.die_type) * die.die_type.uniform_size_scale_factor();
+        transform.scale = Vec3::splat(s);
+    }
+
+    *last_applied = Some(current);
 }
 
 /// Handle switch changes in the dice roller settings modal.
@@ -632,6 +1429,7 @@ pub fn handle_default_roll_uses_shake_switch_change(
 pub fn handle_quick_roll_die_type_select_change(
     mut events: MessageReader<SelectChangeEvent>,
     mut settings_state: ResMut<SettingsState>,
+    selects: Query<&MaterialSelect>,
 ) {
     if !(settings_state.show_modal
         && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
@@ -649,8 +1447,52 @@ pub fn handle_quick_roll_die_type_select_change(
     ];
 
     for event in events.read() {
+        // Ignore selects not related to Quick Rolls.
+        if let Ok(select) = selects.get(event.entity) {
+            if select.label.as_deref() != Some("Quick roll die") {
+                continue;
+            }
+        }
+
         if let Some(setting) = options.get(event.index).copied() {
             settings_state.quick_roll_editing_die = setting;
+        }
+    }
+}
+
+/// Handle selection changes for the theme seed dropdown.
+pub fn handle_theme_seed_select_change(
+    mut events: MessageReader<SelectChangeEvent>,
+    selects: Query<&MaterialSelect>,
+    mut settings_state: ResMut<SettingsState>,
+    mut theme: ResMut<MaterialTheme>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        let Ok(select) = selects.get(event.entity) else {
+            continue;
+        };
+        if select.label.as_deref() != Some("Recent themes") {
+            continue;
+        }
+
+        let chosen = event
+            .option
+            .value
+            .clone()
+            .unwrap_or_else(|| event.option.label.clone());
+        settings_state.theme_seed_input_text = chosen.clone();
+
+        if let Some(mut parsed) = ColorSetting::parse(chosen.as_str()) {
+            parsed.a = 1.0;
+            let seed = parsed.to_color();
+            settings_state.editing_theme_seed_override = Some(parsed);
+            *theme = MaterialTheme::from_seed(seed, theme.mode);
         }
     }
 }
@@ -987,8 +1829,9 @@ pub fn handle_shake_curve_graph_click_to_add_point(
     // Use window physical cursor mapping (robust under DPI scaling).
     let cursor_local = if let Some(window) = window {
         let cursor_in_ui_target = ui_target_cursor_physical_px(window, ui_camera);
-        cursor_in_ui_target
-            .and_then(|c| window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed))
+        cursor_in_ui_target.and_then(|c| {
+            window_physical_cursor_to_ui_node_local_logical_px(c, transform, computed)
+        })
     } else {
         None
     };
@@ -1731,15 +2574,31 @@ pub fn sync_shake_curve_graph_ui(
     let _ = graph_children.get(graph_entity);
 }
 
+// ============================================================================
+// Dice FX curve editor (Mask/Noise/Ramp) - mirrors shake curve UX
+// ============================================================================
 /// Handle Cancel button click
 pub fn handle_settings_cancel_click(
     mut click_events: MessageReader<ButtonClickEvent>,
     cancel_query: Query<(), With<SettingsCancelButton>>,
     mut settings_state: ResMut<SettingsState>,
+    mut theme: ResMut<MaterialTheme>,
+    mut dice_query: Query<(&Die, &mut Transform)>,
 ) {
     for event in click_events.read() {
         if cancel_query.get(event.entity).is_err() {
             continue;
+        }
+
+        // Revert any live theme preview changes.
+        apply_theme_override(&settings_state.settings, &mut theme);
+
+        // Revert any live dice scale preview changes.
+        let scales = settings_state.settings.dice_scales.clone();
+        for (die, mut transform) in dice_query.iter_mut() {
+            transform.scale = Vec3::splat(
+                scales.scale_for(die.die_type) * die.die_type.uniform_size_scale_factor(),
+            );
         }
 
         // Discard changes and close modal
@@ -1847,6 +2706,7 @@ pub fn update_color_ui(
     mut input_queries: ParamSet<(
         Query<&mut MaterialTextField, With<ColorTextInput>>,
         Query<&mut MaterialTextField, With<HighlightColorTextInput>>,
+        Query<&mut MaterialTextField, With<ThemeSeedTextInput>>,
     )>,
 ) {
     if !settings_state.is_changed() {
@@ -1903,10 +2763,12 @@ pub fn update_color_ui(
             field.error_text = None;
         } else {
             field.error = true;
-            field.error_text = Some("Invalid color format".to_string());
+            field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
         }
-        field.supporting_text =
-            Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+        field.supporting_text = Some(
+            "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                .to_string(),
+        );
     }
 
     // Sync highlight text field value (avoid stomping while the user is typing)
@@ -1922,10 +2784,36 @@ pub fn update_color_ui(
             field.error_text = None;
         } else {
             field.error = true;
-            field.error_text = Some("Invalid color format".to_string());
+            field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
         }
-        field.supporting_text =
-            Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+        field.supporting_text = Some(
+            "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                .to_string(),
+        );
+    }
+
+    // Sync theme seed text field
+    for mut field in input_queries.p2().iter_mut() {
+        if field.focused {
+            continue;
+        }
+
+        field.value = settings_state.theme_seed_input_text.clone();
+        field.has_content = !field.value.is_empty();
+
+        let trimmed = field.value.trim();
+        if trimmed.is_empty() || ColorSetting::parse(trimmed).is_some() {
+            field.error = false;
+            field.error_text = None;
+        } else {
+            field.error = true;
+            field.error_text = Some("Invalid color (hex or name)".to_string());
+        }
+
+        field.supporting_text = Some(
+            "#RRGGBB, #AARRGGBB (alpha ignored), or a name like red/green/blue (converts to hex on commit)"
+                .to_string(),
+        );
     }
 }
 
@@ -1937,7 +2825,9 @@ pub fn handle_color_text_input(
     mut field_queries: ParamSet<(
         Query<&mut MaterialTextField, With<ColorTextInput>>,
         Query<&mut MaterialTextField, With<HighlightColorTextInput>>,
+        Query<&mut MaterialTextField, With<ThemeSeedTextInput>>,
     )>,
+    mut theme: ResMut<MaterialTheme>,
 ) {
     if !settings_state.show_modal {
         return;
@@ -1952,11 +2842,13 @@ pub fn handle_color_text_input(
                 settings_state.editing_color = parsed;
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text =
-                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+                field.supporting_text = Some(
+                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                        .to_string(),
+                );
             } else {
                 field.error = true;
-                field.error_text = Some("Invalid color format".to_string());
+                field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
             }
 
             continue;
@@ -1969,32 +2861,67 @@ pub fn handle_color_text_input(
                 settings_state.editing_highlight_color = parsed;
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text =
-                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+                field.supporting_text = Some(
+                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                        .to_string(),
+                );
             } else {
                 field.error = true;
-                field.error_text = Some("Invalid color format".to_string());
+                field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
+            }
+
+            continue;
+        }
+
+        if let Ok(mut field) = field_queries.p2().get_mut(ev.entity) {
+            settings_state.theme_seed_input_text = ev.value.clone();
+
+            let trimmed = settings_state.theme_seed_input_text.trim();
+            if trimmed.is_empty() {
+                settings_state.editing_theme_seed_override = None;
+                field.error = false;
+                field.error_text = None;
+
+                let mode = theme.mode;
+                *theme = match mode {
+                    ThemeMode::Dark => MaterialTheme::dark(),
+                    ThemeMode::Light => MaterialTheme::light(),
+                };
+            } else if let Some(mut parsed) = ColorSetting::parse(trimmed) {
+                parsed.a = 1.0;
+                let seed = parsed.to_color();
+                settings_state.editing_theme_seed_override = Some(parsed);
+                field.error = false;
+                field.error_text = None;
+
+                *theme = MaterialTheme::from_seed(seed, theme.mode);
+            } else {
+                field.error = true;
+                field.error_text = Some("Invalid color (hex or name)".to_string());
             }
         }
     }
 
-    // On submit (Enter), normalize to canonical hex if valid
+    // On submit (Enter), validate and apply preview.
+    // We intentionally keep the user's entered text (e.g. "rebeccapurple") in the field
+    // and only use the parsed color for preview / persistence.
     for ev in submit_events.read() {
         if let Ok(mut field) = field_queries.p0().get_mut(ev.entity) {
             if let Some(parsed) = ColorSetting::parse(&ev.value) {
-                let canonical_hex = parsed.to_hex();
                 settings_state.editing_color = parsed;
-                settings_state.color_input_text = canonical_hex;
+                settings_state.color_input_text = ev.value.clone();
 
                 field.value = settings_state.color_input_text.clone();
                 field.has_content = !field.value.is_empty();
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text =
-                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+                field.supporting_text = Some(
+                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                        .to_string(),
+                );
             } else {
                 field.error = true;
-                field.error_text = Some("Invalid color format".to_string());
+                field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
             }
 
             continue;
@@ -2002,19 +2929,58 @@ pub fn handle_color_text_input(
 
         if let Ok(mut field) = field_queries.p1().get_mut(ev.entity) {
             if let Some(parsed) = ColorSetting::parse(&ev.value) {
-                let canonical_hex = parsed.to_hex();
                 settings_state.editing_highlight_color = parsed;
-                settings_state.highlight_input_text = canonical_hex;
+                settings_state.highlight_input_text = ev.value.clone();
 
                 field.value = settings_state.highlight_input_text.clone();
                 field.has_content = !field.value.is_empty();
                 field.error = false;
                 field.error_text = None;
-                field.supporting_text =
-                    Some("#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, or 1,0.5,0.3,0.2".to_string());
+                field.supporting_text = Some(
+                    "#AARRGGBB, A:1 R:0.5 G:0.3 B:0.2, 1,0.5,0.3,0.2, or a name like rebeccapurple/light gray"
+                        .to_string(),
+                );
             } else {
                 field.error = true;
-                field.error_text = Some("Invalid color format".to_string());
+                field.error_text = Some("Invalid color (hex, labeled, csv, or name)".to_string());
+            }
+
+            continue;
+        }
+
+        if let Ok(mut field) = field_queries.p2().get_mut(ev.entity) {
+            let trimmed = ev.value.trim();
+            if trimmed.is_empty() {
+                settings_state.theme_seed_input_text.clear();
+                settings_state.editing_theme_seed_override = None;
+
+                field.value.clear();
+                field.has_content = false;
+                field.error = false;
+                field.error_text = None;
+
+                let mode = theme.mode;
+                *theme = match mode {
+                    ThemeMode::Dark => MaterialTheme::dark(),
+                    ThemeMode::Light => MaterialTheme::light(),
+                };
+            } else if let Some(mut parsed) = ColorSetting::parse(trimmed) {
+                parsed.a = 1.0;
+                let seed = parsed.to_color();
+
+                // Keep the user's entered text (e.g. "red") in the field.
+                settings_state.theme_seed_input_text = trimmed.to_string();
+                settings_state.editing_theme_seed_override = Some(parsed);
+
+                field.value = settings_state.theme_seed_input_text.clone();
+                field.has_content = true;
+                field.error = false;
+                field.error_text = None;
+
+                *theme = MaterialTheme::from_seed(seed, theme.mode);
+            } else {
+                field.error = true;
+                field.error_text = Some("Invalid color (hex or name)".to_string());
             }
         }
     }
@@ -2088,4 +3054,9 @@ pub fn apply_initial_settings(
     mut clear_color: ResMut<ClearColor>,
 ) {
     clear_color.0 = settings_state.settings.background_color.to_color();
+
+    info!(
+        "Applied startup background color: {}",
+        settings_state.settings.background_color.to_hex()
+    );
 }

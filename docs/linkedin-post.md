@@ -41,6 +41,11 @@ Attach these screenshots from the repository:
 1. `screenshots/dice3d/dice3d-results.png` - Main showcase image
 2. `screenshots/dice3d/dice3d-rolling.png` - Action shot of dice bouncing
 
+Optional (newer UI screenshots):
+- `screenshots/diceroller_tab.png` - Main dice roller tab
+- `screenshots/dice_roller_cup.png` - Cup container mode
+- `screenshots/character_setup_character.png` - Character sheet / setup
+
 ## Alternative Shorter Version
 
 ---

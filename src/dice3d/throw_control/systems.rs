@@ -8,7 +8,8 @@ use bevy::prelude::*;
 
 use bevy_material_ui::prelude::SliderChangeEvent;
 
-use crate::dice3d::types::{ContainerShakeAnimation, SettingsState};
+use crate::dice3d::types::DiceContainerStyle;
+use crate::dice3d::types::{ContainerShakeAnimation, SettingsState, UiPointerCapture};
 
 fn ray_intersects_aabb(ray_origin: Vec3, ray_dir: Vec3, aabb_min: Vec3, aabb_max: Vec3) -> bool {
     // Slab method.
@@ -57,6 +58,8 @@ pub fn update_throw_from_mouse(
     command_input: Res<crate::dice3d::types::CommandInput>,
     ui_state: Res<crate::dice3d::types::UiState>,
     settings_state: Res<crate::dice3d::types::SettingsState>,
+    ui_pointer_capture: Res<UiPointerCapture>,
+    container_style: Res<DiceContainerStyle>,
 ) {
     // Don't update when in command input mode or not on dice roller tab
     if command_input.active || ui_state.active_tab != crate::dice3d::types::AppTab::DiceRoller {
@@ -65,6 +68,12 @@ pub fn update_throw_from_mouse(
 
     // Modal dialog open: treat as not hovering the box.
     if settings_state.show_modal {
+        throw_state.mouse_over_box = false;
+        return;
+    }
+
+    // UI is capturing pointer: prevent click-through into the 3D box.
+    if ui_pointer_capture.mouse_captured {
         throw_state.mouse_over_box = false;
         return;
     }
@@ -89,21 +98,36 @@ pub fn update_throw_from_mouse(
 
     let ray_dir: Vec3 = *ray.direction;
 
-    // First: detect whether the cursor ray intersects the dice box volume.
-    // This makes any part of the box (including walls) count as "hovering the box".
-    // Expand slightly so the visible wall thickness is included.
+    // First: detect whether the cursor ray intersects the dice container volume.
+    // Expand slightly so wall thickness is included.
     let click_margin = 0.2;
-    let box_min = Vec3::new(
-        BOX_MIN_X - click_margin,
-        BOX_FLOOR_Y,
-        BOX_MIN_Z - click_margin,
-    );
-    let box_max = Vec3::new(
-        BOX_MAX_X + click_margin,
-        BOX_TOP_Y,
-        BOX_MAX_Z + click_margin,
-    );
-    let is_over_box_volume = ray_intersects_aabb(ray.origin, ray_dir, box_min, box_max);
+    let (container_min, container_max) = match *container_style {
+        DiceContainerStyle::Box => (
+            Vec3::new(
+                BOX_MIN_X - click_margin,
+                BOX_FLOOR_Y,
+                BOX_MIN_Z - click_margin,
+            ),
+            Vec3::new(
+                BOX_MAX_X + click_margin,
+                BOX_TOP_Y,
+                BOX_MAX_Z + click_margin,
+            ),
+        ),
+        DiceContainerStyle::Cup => (
+            Vec3::new(
+                -super::CUP_RADIUS - click_margin,
+                BOX_FLOOR_Y,
+                -super::CUP_RADIUS - click_margin,
+            ),
+            Vec3::new(
+                super::CUP_RADIUS + click_margin,
+                BOX_TOP_Y,
+                super::CUP_RADIUS + click_margin,
+            ),
+        ),
+    };
+    let is_over_box_volume = ray_intersects_aabb(ray.origin, ray_dir, container_min, container_max);
 
     // Next: find intersection with the box floor plane (Y = BOX_FLOOR_Y)
     // Ray: P = origin + t * direction
@@ -128,18 +152,30 @@ pub fn update_throw_from_mouse(
     // Calculate intersection point
     let intersection = ray.origin + ray.direction * t;
 
-    // Check if intersection is within the box footprint.
-    // (Target point is still driven by the floor projection.)
-    let is_in_box = ThrowControlState::is_point_in_box(intersection);
-
-    // Clamp to box boundaries for target point
-    let target = ThrowControlState::clamp_to_box_floor(intersection);
+    // Check footprint + compute target point on the floor.
+    let (is_in_footprint, target, max_distance) = match *container_style {
+        DiceContainerStyle::Box => {
+            let is_in = ThrowControlState::is_point_in_box(intersection);
+            let tgt = ThrowControlState::clamp_to_box_floor(intersection);
+            (is_in, tgt, (BOX_MAX_X - BOX_MIN_X).abs() * 0.5)
+        }
+        DiceContainerStyle::Cup => {
+            let p = Vec2::new(intersection.x, intersection.z);
+            let r = super::CUP_RADIUS.max(0.0001);
+            let len = p.length();
+            let is_in = len <= r;
+            let clamped = if len > r { (p / len) * r } else { p };
+            let tgt = Vec3::new(clamped.x, BOX_FLOOR_Y, clamped.y);
+            (is_in, tgt, r)
+        }
+    };
 
     // Update state
     throw_state.target_point = target;
     // Hover/click should work on the floor and the walls.
-    throw_state.mouse_over_box = is_over_box_volume || is_in_box;
-    throw_state.throw_strength = ThrowControlState::calculate_strength_from_distance(target);
+    throw_state.mouse_over_box = is_over_box_volume || is_in_footprint;
+    throw_state.throw_strength =
+        (Vec2::new(target.x, target.z).length() / max_distance.max(0.0001)).clamp(0.0, 1.0);
 }
 
 /// System to update the 3D arrow indicator position and rotation

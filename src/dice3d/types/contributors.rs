@@ -1,25 +1,12 @@
 //! Contributors data types
 //!
-//! This module contains types for loading and displaying GitHub contributors.
-//! Contributors are fetched directly from the GitHub API at runtime.
+//! This module contains types for loading and displaying contributors.
+//!
+//! To satisfy the project constraint of "no JSON", contributor data is loaded from
+//! a bundled RON asset (see `assets/contributors.ron`).
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-
-/// GitHub API response for a contributor
-#[derive(Debug, Clone, Deserialize)]
-struct GitHubContributor {
-    login: String,
-    avatar_url: String,
-    html_url: String,
-    contributions: u32,
-}
-
-/// GitHub API response for user details
-#[derive(Debug, Clone, Deserialize)]
-struct GitHubUser {
-    name: Option<String>,
-}
 
 /// A single contributor entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,103 +49,19 @@ const REPO_OWNER: &str = "edgarhsanchez";
 const REPO_NAME: &str = "dndgamerolls";
 
 impl ContributorsData {
-    /// Load contributors from GitHub API
+    /// Load contributors from the bundled asset.
     pub fn load() -> Self {
-        println!("Fetching contributors from GitHub API...");
-
-        match Self::fetch_from_github() {
-            Ok(data) => {
-                println!(
-                    "Successfully loaded {} contributors from GitHub",
-                    data.contributors.len()
-                );
-                data
-            }
+        let text = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/contributors.ron"
+        ));
+        match ron::from_str::<ContributorsData>(text) {
+            Ok(data) => data,
             Err(e) => {
-                eprintln!("Failed to fetch contributors from GitHub: {}", e);
+                eprintln!("Failed to parse contributors asset: {}", e);
                 Self::default_contributors()
             }
         }
-    }
-
-    /// Fetch contributors from GitHub API
-    fn fetch_from_github() -> Result<Self, String> {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("DnDGameRolls/1.0")
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
-        // Fetch contributors list
-        let contributors_url = format!(
-            "https://api.github.com/repos/{}/{}/contributors?per_page=100",
-            REPO_OWNER, REPO_NAME
-        );
-
-        let response = client
-            .get(&contributors_url)
-            .send()
-            .map_err(|e| format!("Failed to fetch contributors: {}", e))?;
-
-        if !response.status().is_success() {
-            return Err(format!("GitHub API returned status: {}", response.status()));
-        }
-
-        let github_contributors: Vec<GitHubContributor> = response
-            .json()
-            .map_err(|e| format!("Failed to parse contributors JSON: {}", e))?;
-
-        // Convert to our format and fetch display names
-        let mut contributors: Vec<Contributor> = Vec::new();
-
-        for gc in github_contributors {
-            // Try to fetch the user's display name
-            let name = Self::fetch_user_name(&client, &gc.login);
-
-            // Determine role (creator gets special role)
-            let role = if gc.login.to_lowercase() == REPO_OWNER.to_lowercase() {
-                Some("Creator".to_string())
-            } else {
-                None
-            };
-
-            contributors.push(Contributor {
-                login: gc.login,
-                name,
-                avatar_url: format!("{}&s=64", gc.avatar_url), // Request 64px size
-                profile_url: gc.html_url,
-                contributions: gc.contributions,
-                role,
-            });
-        }
-
-        // Get current timestamp (simple format without chrono dependency)
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| format!("fetched at unix:{}", d.as_secs()))
-            .unwrap_or_else(|_| "now".to_string());
-
-        Ok(Self {
-            last_updated: now,
-            repository: format!("{}/{}", REPO_OWNER, REPO_NAME),
-            contributors,
-        })
-    }
-
-    /// Fetch a user's display name from GitHub API
-    fn fetch_user_name(client: &reqwest::blocking::Client, login: &str) -> Option<String> {
-        let user_url = format!("https://api.github.com/users/{}", login);
-
-        match client.get(&user_url).send() {
-            Ok(response) if response.status().is_success() => {
-                if let Ok(user) = response.json::<GitHubUser>() {
-                    return user.name;
-                }
-            }
-            _ => {}
-        }
-
-        None
     }
 
     /// Default contributors when API is unavailable

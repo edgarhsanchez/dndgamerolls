@@ -171,12 +171,7 @@ pub fn handle_tab_clicks(
     mut tab_events: MessageReader<TabChangeEvent>,
     mut ui_state: ResMut<UiState>,
     app_tab_query: Query<&AppTabButton>,
-    settings_state: Res<SettingsState>,
 ) {
-    if settings_state.show_modal {
-        return;
-    }
-
     for event in tab_events.read() {
         // Check if this is an app-level tab by looking up the entity
         if let Ok(app_tab) = app_tab_query.get(event.tab_entity) {

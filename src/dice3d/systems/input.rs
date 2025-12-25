@@ -15,9 +15,47 @@ use super::dice_box_controls::start_container_shake;
 
 use super::setup::{calculate_dice_position, spawn_die};
 
+/// Update `UiPointerCapture` so 3D input systems can avoid click-through.
+pub fn update_ui_pointer_capture(
+    ui_state: Res<UiState>,
+    settings_state: Res<crate::dice3d::types::SettingsState>,
+    mut capture: ResMut<UiPointerCapture>,
+    interactions: Query<&Interaction>,
+    slider_group_drag: Query<&SliderGroupDragState>,
+    quick_roll_drag: Query<&QuickRollPanelDragState>,
+    history_drag: Query<&CommandHistoryPanelDragState>,
+    results_drag: Query<&ResultsPanelDragState>,
+    box_controls_drag: Query<&DiceBoxControlsPanelDragState>,
+) {
+    // Only relevant on the dice roller tab.
+    if ui_state.active_tab != AppTab::DiceRoller {
+        capture.mouse_captured = false;
+        return;
+    }
+
+    // Modal already blocks world interaction; treat as captured.
+    if settings_state.show_modal {
+        capture.mouse_captured = true;
+        return;
+    }
+
+    let any_dragging = slider_group_drag.iter().any(|s| s.dragging)
+        || quick_roll_drag.iter().any(|s| s.dragging)
+        || history_drag.iter().any(|s| s.dragging)
+        || results_drag.iter().any(|s| s.dragging)
+        || box_controls_drag.iter().any(|s| s.dragging);
+
+    let any_ui_interaction = interactions
+        .iter()
+        .any(|i| *i == Interaction::Hovered || *i == Interaction::Pressed);
+
+    capture.mouse_captured = any_dragging || any_ui_interaction;
+}
+
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct CommandInputParams<'w, 's> {
     pub commands: Commands<'w, 's>,
+    pub db: Res<'w, CharacterDatabase>,
     pub settings_state: Res<'w, crate::dice3d::types::SettingsState>,
     pub command_history: ResMut<'w, CommandHistory>,
     pub dice_config: ResMut<'w, DiceConfig>,
@@ -25,6 +63,9 @@ pub struct CommandInputParams<'w, 's> {
     pub roll_state: ResMut<'w, RollState>,
     pub character_data: Res<'w, CharacterData>,
     pub ui_state: Res<'w, UiState>,
+
+    pub container_style: Res<'w, DiceContainerStyle>,
+    pub lid_ctrl: ResMut<'w, DiceBoxLidAnimationController>,
 
     pub meshes: ResMut<'w, Assets<Mesh>>,
     pub materials: ResMut<'w, Assets<StandardMaterial>>,
@@ -39,6 +80,7 @@ pub struct CommandInputParams<'w, 's> {
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct CommandHistoryRerollParams<'w, 's> {
     pub commands: Commands<'w, 's>,
+    pub db: Res<'w, CharacterDatabase>,
     pub ui_state: Res<'w, UiState>,
     pub settings_state: Res<'w, crate::dice3d::types::SettingsState>,
     pub command_history: ResMut<'w, CommandHistory>,
@@ -46,6 +88,9 @@ pub struct CommandHistoryRerollParams<'w, 's> {
     pub dice_results: ResMut<'w, DiceResults>,
     pub roll_state: ResMut<'w, RollState>,
     pub character_data: Res<'w, CharacterData>,
+
+    pub container_style: Res<'w, DiceContainerStyle>,
+    pub lid_ctrl: ResMut<'w, DiceBoxLidAnimationController>,
 
     pub meshes: ResMut<'w, Assets<Mesh>>,
     pub materials: ResMut<'w, Assets<StandardMaterial>>,
@@ -60,6 +105,7 @@ pub struct CommandHistoryRerollParams<'w, 's> {
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct QuickRollParams<'w, 's> {
     pub commands: Commands<'w, 's>,
+    pub db: Res<'w, CharacterDatabase>,
     pub dice_config: ResMut<'w, DiceConfig>,
     pub character_data: Res<'w, CharacterData>,
     pub roll_state: ResMut<'w, RollState>,
@@ -88,6 +134,8 @@ pub fn handle_input(
     mut dice_results: ResMut<DiceResults>,
     mut dice_query: Query<(&mut Transform, &mut Velocity), (With<Die>, Without<DiceBox>)>,
     dice_config: Res<DiceConfig>,
+    container_style: Res<DiceContainerStyle>,
+    mut lid_ctrl: ResMut<DiceBoxLidAnimationController>,
     command_field: Query<&MaterialTextField, With<CommandInputField>>,
     throw_state: Res<ThrowControlState>,
 
@@ -114,6 +162,16 @@ pub fn handle_input(
     }
 
     if mouse.just_pressed(MouseButton::Left) && throw_state.mouse_over_box && !roll_state.rolling {
+        if *container_style == DiceContainerStyle::Box {
+            if lid_ctrl.pending_roll.is_none() {
+                lid_ctrl.pending_roll = Some(PendingRollRequest::RerollExisting);
+
+                #[cfg(debug_assertions)]
+                info!("Queued pending_roll: RerollExisting (mouse click)");
+            }
+            return;
+        }
+
         roll_state.rolling = true;
         dice_results.results.clear();
 
@@ -221,50 +279,71 @@ pub fn handle_command_input(
         if let Some(new_config) = parse_command(&cmd, &params.character_data) {
             // Add to command history (only unique commands)
             params.command_history.add_command(cmd.clone());
+            let _ = params
+                .db
+                .save_command_history(&params.command_history.commands);
 
-            // Remove old dice
-            for entity in params.dice_query.iter() {
-                params.commands.entity(entity).despawn();
-            }
+            // Box style: gate roll start behind lid closing.
+            if *params.container_style == DiceContainerStyle::Box {
+                *params.dice_config = new_config.clone();
+                params.dice_results.results.clear();
 
-            // Update config
-            *params.dice_config = new_config;
-            params.dice_results.results.clear();
-
-            let use_shake = params.settings_state.settings.default_roll_uses_shake;
-
-            // Spawn new dice
-            let mut spawned: Vec<Entity> = Vec::new();
-            for (i, die_type) in params.dice_config.dice_to_roll.iter().enumerate() {
-                let position = calculate_dice_position(i, params.dice_config.dice_to_roll.len());
-                let e = spawn_die(
-                    &mut params.commands,
-                    &mut params.meshes,
-                    &mut params.materials,
-                    *die_type,
-                    position,
-                );
-                spawned.push(e);
-            }
-
-            if use_shake {
-                for e in spawned {
-                    params.commands.entity(e).insert(Velocity {
-                        linvel: Vec3::ZERO,
-                        angvel: Vec3::ZERO,
-                    });
+                if params.lid_ctrl.pending_roll.is_none() {
+                    params.lid_ctrl.pending_roll =
+                        Some(PendingRollRequest::StartNewRoll { config: new_config });
+                }
+            } else {
+                // Remove old dice
+                for entity in params.dice_query.iter() {
+                    params.commands.entity(entity).despawn();
                 }
 
-                let _started = start_container_shake(
-                    &params.shake_state,
-                    &params.shake_config,
-                    &mut params.shake_anim,
-                    &params.container_query,
-                );
-            }
+                // Update config
+                *params.dice_config = new_config;
+                params.dice_results.results.clear();
 
-            // Start rolling immediately
-            params.roll_state.rolling = true;
+                let use_shake = params.settings_state.settings.default_roll_uses_shake;
+
+                // Spawn new dice
+                let mut spawned: Vec<Entity> = Vec::new();
+                for (i, die_type) in params.dice_config.dice_to_roll.iter().enumerate() {
+                    let position =
+                        calculate_dice_position(i, params.dice_config.dice_to_roll.len());
+                    let die_scale = params
+                        .settings_state
+                        .settings
+                        .dice_scales
+                        .scale_for(*die_type);
+                    let e = spawn_die(
+                        &mut params.commands,
+                        &mut params.meshes,
+                        &mut params.materials,
+                        *die_type,
+                        die_scale,
+                        position,
+                    );
+                    spawned.push(e);
+                }
+
+                if use_shake {
+                    for e in spawned {
+                        params.commands.entity(e).insert(Velocity {
+                            linvel: Vec3::ZERO,
+                            angvel: Vec3::ZERO,
+                        });
+                    }
+
+                    let _started = start_container_shake(
+                        &params.shake_state,
+                        &params.shake_config,
+                        &mut params.shake_anim,
+                        &params.container_query,
+                    );
+                }
+
+                // Start rolling immediately
+                params.roll_state.rolling = true;
+            }
         }
 
         // Clear + blur the field after submit.
@@ -306,6 +385,18 @@ pub fn handle_command_history_item_clicks(
         params.command_history.selected_index = Some(item.index);
 
         if let Some(new_config) = parse_command(&cmd, &params.character_data) {
+            // Box style: gate roll start behind lid closing.
+            if *params.container_style == DiceContainerStyle::Box {
+                *params.dice_config = new_config.clone();
+                params.dice_results.results.clear();
+
+                if params.lid_ctrl.pending_roll.is_none() {
+                    params.lid_ctrl.pending_roll =
+                        Some(PendingRollRequest::StartNewRoll { config: new_config });
+                }
+                continue;
+            }
+
             // Remove old dice
             for entity in params.dice_query.iter() {
                 params.commands.entity(entity).despawn();
@@ -321,11 +412,17 @@ pub fn handle_command_history_item_clicks(
             let mut spawned: Vec<Entity> = Vec::new();
             for (i, die_type) in params.dice_config.dice_to_roll.iter().enumerate() {
                 let position = calculate_dice_position(i, params.dice_config.dice_to_roll.len());
+                let die_scale = params
+                    .settings_state
+                    .settings
+                    .dice_scales
+                    .scale_for(*die_type);
                 let e = spawn_die(
                     &mut params.commands,
                     &mut params.meshes,
                     &mut params.materials,
                     *die_type,
+                    die_scale,
                     position,
                 );
                 spawned.push(e);
@@ -456,6 +553,8 @@ pub fn handle_quick_roll_clicks(
     mut click_events: MessageReader<ButtonClickEvent>,
     quick_roll_query: Query<&QuickRollButton>,
     mut params: QuickRollParams,
+    container_style: Res<DiceContainerStyle>,
+    mut lid_ctrl: ResMut<DiceBoxLidAnimationController>,
 ) {
     if params.settings_state.show_modal {
         return;
@@ -485,16 +584,7 @@ pub fn handle_quick_roll_clicks(
                     .character_data
                     .get_ability_modifier(ability_name)
                     .unwrap_or(0);
-                let display_name = format!(
-                    "{} check",
-                    ability_name
-                        .chars()
-                        .next()
-                        .unwrap_or_default()
-                        .to_ascii_uppercase()
-                        .to_string()
-                        + &ability_name[1..]
-                );
+                let display_name = format!("{} check", capitalize_first(ability_name));
                 (mod_val, display_name)
             }
             QuickRollType::SavingThrow(ability_name) => {
@@ -502,16 +592,7 @@ pub fn handle_quick_roll_clicks(
                     .character_data
                     .get_saving_throw_modifier(ability_name)
                     .unwrap_or(0);
-                let display_name = format!(
-                    "{} save",
-                    ability_name
-                        .chars()
-                        .next()
-                        .unwrap_or_default()
-                        .to_ascii_uppercase()
-                        .to_string()
-                        + &ability_name[1..]
-                );
+                let display_name = format!("{} save", capitalize_first(ability_name));
                 (mod_val, display_name)
             }
         };
@@ -521,6 +602,29 @@ pub fn handle_quick_roll_clicks(
             .settings
             .quick_roll_default_die
             .to_dice_type();
+
+        if *container_style == DiceContainerStyle::Box {
+            if lid_ctrl.pending_roll.is_none() {
+                lid_ctrl.pending_roll = Some(PendingRollRequest::QuickRollSingleDie {
+                    die_type,
+                    modifier,
+                    modifier_name: modifier_name.clone(),
+                });
+
+                #[cfg(debug_assertions)]
+                info!(
+                    "Queued pending_roll: QuickRollSingleDie(die={:?}, mod={}, name={})",
+                    die_type, modifier, modifier_name
+                );
+            }
+            continue;
+        }
+
+        let die_scale = params
+            .settings_state
+            .settings
+            .dice_scales
+            .scale_for(die_type);
 
         // Remove old dice (Quick Rolls always uses exactly one die)
         for entity in params.dice_query.iter() {
@@ -542,6 +646,9 @@ pub fn handle_quick_roll_clicks(
             sign,
             modifier
         ));
+        let _ = params
+            .db
+            .save_command_history(&params.command_history.commands);
 
         // Trigger the roll
         params.roll_state.rolling = true;
@@ -553,6 +660,7 @@ pub fn handle_quick_roll_clicks(
             &mut params.meshes,
             &mut params.materials,
             die_type,
+            die_scale,
             calculate_dice_position(0, 1),
         );
 
@@ -572,7 +680,7 @@ pub fn handle_quick_roll_clicks(
             rng.gen_range(0.0..std::f32::consts::TAU),
             rng.gen_range(0.0..std::f32::consts::TAU),
         ))
-        .with_scale(Vec3::splat(die_type.scale()));
+        .with_scale(Vec3::splat(die_scale));
 
         let velocity = if use_shake {
             Velocity {
@@ -605,4 +713,12 @@ pub fn handle_quick_roll_clicks(
             );
         }
     }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    first.to_uppercase().collect::<String>() + chars.as_str()
 }

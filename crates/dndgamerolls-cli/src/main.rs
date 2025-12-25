@@ -5,9 +5,24 @@
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use rand::Rng;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::fs;
+use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+use surrealdb::engine::local::SurrealKv;
+use surrealdb::sql::Value as SurrealValue;
+use surrealdb::Surreal;
+
+fn surreal_value_to_json(value: SurrealValue) -> Result<JsonValue, String> {
+    serde_json::to_value(value).map_err(|e| format!("Failed to encode JSON: {e}"))
+}
+
+fn from_surreal_value<T: DeserializeOwned>(value: SurrealValue) -> Result<T, String> {
+    let json = surreal_value_to_json(value)?;
+    serde_json::from_value(json).map_err(|e| format!("Failed to decode JSON: {e}"))
+}
 
 /// DnD Game Rolls - CLI dice roller
 #[derive(Parser)]
@@ -21,9 +36,13 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Path to the character stats JSON file
-    #[arg(short = 'f', long = "file", default_value = "dnd_stats.json")]
-    character_file: PathBuf,
+    /// Select a character by name from the local database (SurrealDB)
+    #[arg(long, conflicts_with = "character_id")]
+    character: Option<String>,
+
+    /// Select a character by id from the local database (SurrealDB)
+    #[arg(long)]
+    character_id: Option<i64>,
 
     /// Dice to roll (e.g., "2d6", "1d20", "d8"). Can specify multiple.
     #[arg(short, long, value_parser = parse_dice_arg)]
@@ -187,9 +206,10 @@ struct Character {
     #[serde(rename = "proficiencyBonus")]
     proficiency_bonus: i32,
     #[serde(rename = "savingThrows")]
-    saving_throws: SavingThrows,
-    skills: Skills,
-    equipment: Equipment,
+    saving_throws: HashMap<String, SavingThrow>,
+    skills: HashMap<String, Skill>,
+    #[serde(default)]
+    equipment: Option<Equipment>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -228,8 +248,8 @@ struct Combat {
     #[serde(rename = "armorClass")]
     armor_class: i32,
     initiative: i32,
-    #[serde(rename = "hitPoints")]
-    hit_points: HitPoints,
+    #[serde(rename = "hitPoints", default)]
+    hit_points: Option<HitPoints>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -239,43 +259,9 @@ struct HitPoints {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct SavingThrows {
-    strength: SavingThrow,
-    dexterity: SavingThrow,
-    constitution: SavingThrow,
-    intelligence: SavingThrow,
-    wisdom: SavingThrow,
-    charisma: SavingThrow,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
 struct SavingThrow {
     proficient: bool,
     modifier: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Skills {
-    acrobatics: Skill,
-    #[serde(rename = "animalHandling")]
-    animal_handling: Skill,
-    arcana: Skill,
-    athletics: Skill,
-    deception: Skill,
-    history: Skill,
-    insight: Skill,
-    intimidation: Skill,
-    investigation: Skill,
-    medicine: Skill,
-    nature: Skill,
-    perception: Skill,
-    performance: Skill,
-    persuasion: Skill,
-    religion: Skill,
-    #[serde(rename = "sleightOfHand")]
-    sleight_of_hand: Skill,
-    stealth: Skill,
-    survival: Skill,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -283,7 +269,9 @@ struct Skill {
     proficient: bool,
     modifier: i32,
     #[serde(default)]
-    expertise: bool,
+    expertise: Option<bool>,
+    #[serde(rename = "proficiencyType", default)]
+    proficiency_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -316,15 +304,10 @@ fn main() {
 
     // Handle subcommands
     if let Some(command) = &cli.command {
-        let character = match load_character(&cli.character_file) {
+        let character = match load_character(cli.character.as_deref(), cli.character_id) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!(
-                    "{} Failed to load character file '{}': {}",
-                    "Error:".red().bold(),
-                    cli.character_file.display(),
-                    e
-                );
+                eprintln!("{} Failed to load character: {}", "Error:".red().bold(), e);
                 std::process::exit(1);
             }
         };
@@ -360,7 +343,7 @@ fn main() {
             }
             Commands::Skill { name } => {
                 if let Some((skill_name, skill)) = get_skill_by_name(&character.skills, name) {
-                    let proficiency_str = if skill.expertise {
+                    let proficiency_str = if skill.expertise.unwrap_or(false) {
                         " (Expertise)"
                     } else if skill.proficient {
                         " (Proficient)"
@@ -384,20 +367,28 @@ fn main() {
             }
             Commands::Save { ability } => {
                 let ability_lower = ability.to_lowercase();
-                let (save_name, save) = match ability_lower.as_str() {
-                    "str" | "strength" => ("Strength", &character.saving_throws.strength),
-                    "dex" | "dexterity" => ("Dexterity", &character.saving_throws.dexterity),
-                    "con" | "constitution" => {
-                        ("Constitution", &character.saving_throws.constitution)
-                    }
-                    "int" | "intelligence" => {
-                        ("Intelligence", &character.saving_throws.intelligence)
-                    }
-                    "wis" | "wisdom" => ("Wisdom", &character.saving_throws.wisdom),
-                    "cha" | "charisma" => ("Charisma", &character.saving_throws.charisma),
+                let (save_name, key) = match ability_lower.as_str() {
+                    "str" | "strength" => ("Strength", "strength"),
+                    "dex" | "dexterity" => ("Dexterity", "dexterity"),
+                    "con" | "constitution" => ("Constitution", "constitution"),
+                    "int" | "intelligence" => ("Intelligence", "intelligence"),
+                    "wis" | "wisdom" => ("Wisdom", "wisdom"),
+                    "cha" | "charisma" => ("Charisma", "charisma"),
                     _ => {
                         eprintln!("{} Unknown ability '{}'", "Error:".red().bold(), ability);
                         eprintln!("Use: str, dex, con, int, wis, cha");
+                        std::process::exit(1);
+                    }
+                };
+
+                let save = match character.saving_throws.get(key) {
+                    Some(s) => s,
+                    None => {
+                        eprintln!(
+                            "{} Saving throw '{}' not found in character",
+                            "Error:".red().bold(),
+                            save_name
+                        );
                         std::process::exit(1);
                     }
                 };
@@ -411,8 +402,15 @@ fn main() {
             }
             Commands::Attack { weapon } => {
                 let weapon_lower = weapon.to_lowercase();
-                if let Some(wpn) = character
-                    .equipment
+                let Some(equipment) = character.equipment.as_ref() else {
+                    eprintln!(
+                        "{} No equipment/weapon data found for this character",
+                        "Error:".red().bold()
+                    );
+                    std::process::exit(1);
+                };
+
+                if let Some(wpn) = equipment
                     .weapons
                     .iter()
                     .find(|w| w.name.to_lowercase() == weapon_lower)
@@ -421,7 +419,7 @@ fn main() {
                 } else {
                     eprintln!("{} Weapon '{}' not found", "Error:".red().bold(), weapon);
                     eprintln!("Available weapons:");
-                    for wpn in &character.equipment.weapons {
+                    for wpn in &equipment.weapons {
                         eprintln!("  - {}", wpn.name);
                     }
                     std::process::exit(1);
@@ -464,7 +462,7 @@ fn run_dice_roll(cli: &Cli) {
 
     // Apply checkon modifier from character file
     if let Some(check) = &cli.checkon {
-        if let Ok(character) = load_character(&cli.character_file) {
+        if let Ok(character) = load_character(cli.character.as_deref(), cli.character_id) {
             let check_lower = check.to_lowercase();
 
             if let Some((_, skill)) = get_skill_by_name(&character.skills, &check_lower) {
@@ -485,6 +483,9 @@ fn run_dice_roll(cli: &Cli) {
                 if let Some(mod_val) = ability_mod {
                     total_modifier += mod_val;
                     modifier_name = format!("{} check", check);
+                } else if let Some(save) = character.saving_throws.get(&check_lower) {
+                    total_modifier += save.modifier;
+                    modifier_name = format!("{} save", check);
                 } else {
                     modifier_name = check.clone();
                     eprintln!("Warning: '{}' not found in character sheet", check);
@@ -492,7 +493,7 @@ fn run_dice_roll(cli: &Cli) {
             }
         } else {
             modifier_name = check.clone();
-            eprintln!("Warning: Could not load character file for modifier lookup");
+            eprintln!("Warning: Could not load character for modifier lookup");
         }
     }
 
@@ -813,34 +814,142 @@ fn display_roll_result(
 // Character Functions
 // ============================================================================
 
-fn load_character(path: &PathBuf) -> Result<Character, Box<dyn std::error::Error>> {
-    let content = fs::read_to_string(path)?;
-    let character: Character = serde_json::from_str(&content)?;
-    Ok(character)
+fn load_character(
+    character_name: Option<&str>,
+    character_id: Option<i64>,
+) -> Result<Character, Box<dyn std::error::Error>> {
+    const NS: &str = "dndgamerolls";
+    const DB: &str = "dndgamerolls";
+
+    #[derive(Debug, Deserialize)]
+    struct Record<T> {
+        #[allow(dead_code)]
+        id: Option<JsonValue>,
+        #[serde(flatten)]
+        data: T,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct CharacterDoc {
+        #[allow(dead_code)]
+        sid: i64,
+        #[allow(dead_code)]
+        name: String,
+        #[allow(dead_code)]
+        class: String,
+        #[allow(dead_code)]
+        race: String,
+        #[allow(dead_code)]
+        level: i32,
+        sheet: Character,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ListRow {
+        id: i64,
+        name: String,
+    }
+
+    let db_path = get_surreal_path()?;
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let rt = tokio::runtime::Runtime::new()?;
+    let db = rt.block_on(async {
+        Surreal::new::<SurrealKv>(db_path.to_string_lossy().to_string()).await
+    })?;
+    rt.block_on(async {
+        db.use_ns(NS).use_db(DB).await?;
+        Ok::<(), surrealdb::Error>(())
+    })?;
+
+    let target_id = if let Some(id) = character_id {
+        id
+    } else {
+        let mut response = rt.block_on(async {
+            db.query("SELECT sid AS id, name FROM character ORDER BY name")
+                .await
+        })?;
+        let raw_rows: Vec<SurrealValue> = response.take(0)?;
+        let mut rows: Vec<ListRow> = Vec::with_capacity(raw_rows.len());
+        for raw in raw_rows {
+            rows.push(
+                from_surreal_value(raw)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+            );
+        }
+
+        if rows.is_empty() {
+            return Err("No characters found in local database".into());
+        }
+
+        if let Some(name) = character_name {
+            match rows.iter().find(|r| r.name.eq_ignore_ascii_case(name)) {
+                Some(r) => r.id,
+                None => {
+                    let hint = format!(
+                        "Character '{}' not found. Available (id:name): {}",
+                        name,
+                        rows.iter()
+                            .take(10)
+                            .map(|r| format!("{}:{}", r.id, r.name))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                    return Err(std::io::Error::new(std::io::ErrorKind::NotFound, hint).into());
+                }
+            }
+        } else {
+            rows[0].id
+        }
+    };
+
+    let raw_record: Option<SurrealValue> =
+        rt.block_on(async { db.select(("character", target_id)).await })?;
+    let record: Option<Record<CharacterDoc>> = match raw_record {
+        Some(v) => Some(
+            from_surreal_value(v)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+        ),
+        None => None,
+    };
+    let Some(record) = record else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("Character with id {} not found", target_id),
+        )
+        .into());
+    };
+
+    Ok(record.data.sheet)
 }
 
-fn get_skill_by_name<'a>(skills: &'a Skills, name: &str) -> Option<(&'static str, &'a Skill)> {
+fn get_skill_by_name<'a>(
+    skills: &'a HashMap<String, Skill>,
+    name: &str,
+) -> Option<(&'static str, &'a Skill)> {
     let name_lower = name.to_lowercase().replace(' ', "");
 
     match name_lower.as_str() {
-        "acrobatics" => Some(("Acrobatics", &skills.acrobatics)),
-        "animalhandling" | "animal" => Some(("Animal Handling", &skills.animal_handling)),
-        "arcana" => Some(("Arcana", &skills.arcana)),
-        "athletics" => Some(("Athletics", &skills.athletics)),
-        "deception" => Some(("Deception", &skills.deception)),
-        "history" => Some(("History", &skills.history)),
-        "insight" => Some(("Insight", &skills.insight)),
-        "intimidation" => Some(("Intimidation", &skills.intimidation)),
-        "investigation" => Some(("Investigation", &skills.investigation)),
-        "medicine" => Some(("Medicine", &skills.medicine)),
-        "nature" => Some(("Nature", &skills.nature)),
-        "perception" => Some(("Perception", &skills.perception)),
-        "performance" => Some(("Performance", &skills.performance)),
-        "persuasion" => Some(("Persuasion", &skills.persuasion)),
-        "religion" => Some(("Religion", &skills.religion)),
-        "sleightofhand" | "sleight" => Some(("Sleight of Hand", &skills.sleight_of_hand)),
-        "stealth" => Some(("Stealth", &skills.stealth)),
-        "survival" => Some(("Survival", &skills.survival)),
+        "acrobatics" => skills.get("acrobatics").map(|s| ("Acrobatics", s)),
+        "animalhandling" | "animal" => skills.get("animalHandling").map(|s| ("Animal Handling", s)),
+        "arcana" => skills.get("arcana").map(|s| ("Arcana", s)),
+        "athletics" => skills.get("athletics").map(|s| ("Athletics", s)),
+        "deception" => skills.get("deception").map(|s| ("Deception", s)),
+        "history" => skills.get("history").map(|s| ("History", s)),
+        "insight" => skills.get("insight").map(|s| ("Insight", s)),
+        "intimidation" => skills.get("intimidation").map(|s| ("Intimidation", s)),
+        "investigation" => skills.get("investigation").map(|s| ("Investigation", s)),
+        "medicine" => skills.get("medicine").map(|s| ("Medicine", s)),
+        "nature" => skills.get("nature").map(|s| ("Nature", s)),
+        "perception" => skills.get("perception").map(|s| ("Perception", s)),
+        "performance" => skills.get("performance").map(|s| ("Performance", s)),
+        "persuasion" => skills.get("persuasion").map(|s| ("Persuasion", s)),
+        "religion" => skills.get("religion").map(|s| ("Religion", s)),
+        "sleightofhand" | "sleight" => skills.get("sleightOfHand").map(|s| ("Sleight of Hand", s)),
+        "stealth" => skills.get("stealth").map(|s| ("Stealth", s)),
+        "survival" => skills.get("survival").map(|s| ("Survival", s)),
         _ => None,
     }
 }
@@ -917,29 +1026,83 @@ fn display_stats(character: &Character) {
         character.combat.initiative
     );
     println!(
-        "  {} {}/{}",
-        "HP:".bold(),
-        character.combat.hit_points.current,
-        character.combat.hit_points.maximum
-    );
-    println!(
         "  {} {:+}",
         "Proficiency Bonus:".bold(),
         character.proficiency_bonus
     );
 
-    println!("\n{}", "WEAPONS".bold().yellow());
-    for weapon in &character.equipment.weapons {
-        println!(
-            "  {} {:+} to hit, {} {}",
-            weapon.name.bold(),
-            weapon.attack_bonus,
-            weapon.damage,
-            weapon.damage_type.dimmed()
-        );
+    if let Some(hp) = &character.combat.hit_points {
+        println!("  {} {}/{}", "HP:".bold(), hp.current, hp.maximum);
+    }
+
+    if let Some(equipment) = &character.equipment {
+        println!("\n{}", "WEAPONS".bold().yellow());
+        for weapon in &equipment.weapons {
+            println!(
+                "  {} {:+} to hit, {} {}",
+                weapon.name.bold(),
+                weapon.attack_bonus,
+                weapon.damage,
+                weapon.damage_type.dimmed()
+            );
+        }
     }
 
     println!("{}", "═══════════════════════════════════════".cyan());
+}
+
+// ============================================================================
+// Local DB Helpers
+// ============================================================================
+
+const DATABASE_FOLDER: &str = "characters.surrealdb";
+const APP_DATA_FOLDER: &str = "DnDGameRolls";
+
+fn get_surreal_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            return Ok(PathBuf::from(local_app_data)
+                .join(APP_DATA_FOLDER)
+                .join(DATABASE_FOLDER));
+        }
+        if let Ok(user_profile) = std::env::var("USERPROFILE") {
+            return Ok(PathBuf::from(user_profile)
+                .join("AppData")
+                .join("Local")
+                .join(APP_DATA_FOLDER)
+                .join(DATABASE_FOLDER));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return Ok(PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join(APP_DATA_FOLDER)
+                .join(DATABASE_FOLDER));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
+            return Ok(PathBuf::from(data_home)
+                .join(APP_DATA_FOLDER)
+                .join(DATABASE_FOLDER));
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            return Ok(PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join(APP_DATA_FOLDER)
+                .join(DATABASE_FOLDER));
+        }
+    }
+
+    Err("Unable to determine local database path".into())
 }
 
 // ============================================================================

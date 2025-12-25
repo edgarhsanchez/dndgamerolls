@@ -3,22 +3,105 @@
 //! This module handles loading and saving application settings.
 
 use super::DiceType;
-use bevy::log::{debug, info, warn};
+use bevy::log::info;
 use bevy::prelude::*;
+use csscolorparser;
 use serde::{Deserialize, Serialize};
-use std::fs;
 
 use super::database::CharacterDatabase;
 use super::ui::{
     ContainerShakeConfig, ShakeCurveBezierHandleKind, ShakeCurveEditMode, ShakeCurvePoint,
 };
-use std::path::PathBuf;
+
+// ============================================================================
+// Dice Roll FX Mapping (hardcoded effects, no customization)
+// ============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiceRollFxKind {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "fire")]
+    Fire,
+    #[serde(rename = "electricity")]
+    Electricity,
+    #[serde(rename = "fireworks")]
+    Fireworks,
+    #[serde(rename = "explosion")]
+    Explosion,
+    #[serde(rename = "plasma")]
+    Plasma,
+}
+
+impl Default for DiceRollFxKind {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl DiceRollFxKind {
+    pub fn label(&self) -> &'static str {
+        match self {
+            DiceRollFxKind::None => "None",
+            DiceRollFxKind::Fire => "Fire",
+            DiceRollFxKind::Electricity => "Electricity",
+            DiceRollFxKind::Fireworks => "Fireworks",
+            DiceRollFxKind::Explosion => "Explosion",
+            DiceRollFxKind::Plasma => "Plasma",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DiceRollFxMapping {
+    pub die_type: DiceType,
+    /// Index by rolled value. Entry 0 is unused (kept for convenience).
+    #[serde(default)]
+    pub effects_by_value: Vec<DiceRollFxKind>,
+}
+
+impl DiceRollFxMapping {
+    pub fn new(die_type: DiceType) -> Self {
+        let mut effects_by_value = vec![DiceRollFxKind::None; (die_type.max_value() + 1) as usize];
+        effects_by_value[0] = DiceRollFxKind::None;
+        Self { die_type, effects_by_value }
+    }
+
+    pub fn get(&self, value: u32) -> DiceRollFxKind {
+        let idx = value as usize;
+        self.effects_by_value
+            .get(idx)
+            .copied()
+            .unwrap_or(DiceRollFxKind::None)
+    }
+
+    pub fn set(&mut self, value: u32, kind: DiceRollFxKind) {
+        let idx = value as usize;
+        if idx == 0 {
+            return;
+        }
+        if idx >= self.effects_by_value.len() {
+            self.effects_by_value.resize(idx + 1, DiceRollFxKind::None);
+        }
+        self.effects_by_value[idx] = kind;
+    }
+
+    pub fn normalize_len(&mut self) {
+        let want = (self.die_type.max_value() + 1) as usize;
+        if self.effects_by_value.len() != want {
+            self.effects_by_value.resize(want, DiceRollFxKind::None);
+        }
+        if !self.effects_by_value.is_empty() {
+            self.effects_by_value[0] = DiceRollFxKind::None;
+        }
+    }
+}
 
 // ============================================================================
 // Persistent Shake Curve Settings
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShakeCurvePointSetting {
     pub id: u64,
     pub t: f32,
@@ -52,7 +135,7 @@ impl ShakeCurvePointSetting {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShakeConfigSetting {
     #[serde(default = "default_shake_distance")]
     pub distance: f32,
@@ -230,6 +313,18 @@ impl ColorSetting {
     pub fn parse(input: &str) -> Option<Self> {
         let input = input.trim();
 
+        // Allow simple named colors for convenience (case-insensitive).
+        // Intended primarily for theme seed input (e.g. "red", "blue").
+        if !input.is_empty()
+            && !input.starts_with('#')
+            && !input.contains(':')
+            && !input.contains(',')
+        {
+            if let Some(named) = Self::parse_named(input) {
+                return Some(named);
+            }
+        }
+
         // Try hex format first
         if input.starts_with('#') {
             return Self::parse_hex(input);
@@ -246,6 +341,29 @@ impl ColorSetting {
         }
 
         None
+    }
+
+    fn parse_named(input: &str) -> Option<Self> {
+        // Support standard CSS color keywords (e.g. "rebeccapurple", "cornflowerblue",
+        // "lightgray", etc.) via csscolorparser.
+        //
+        // Also accept common user formatting like spaces/underscores/hyphens:
+        // "Light Gray" / "light-gray" / "light_gray" -> "lightgray".
+        let cleaned: String = input
+            .trim()
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '_' && *c != '-')
+            .collect::<String>()
+            .to_ascii_lowercase();
+
+        let parsed = csscolorparser::Color::from_html(cleaned.as_str()).ok()?;
+
+        Some(Self {
+            a: parsed.a,
+            r: parsed.r,
+            g: parsed.g,
+            b: parsed.b,
+        })
     }
 
     fn parse_hex(input: &str) -> Option<Self> {
@@ -332,7 +450,7 @@ impl ColorSetting {
     }
 }
 
-/// Application settings (persisted to SQLite; legacy migration from settings.json).
+/// Application settings (persisted to SQLite).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default)]
@@ -377,6 +495,152 @@ pub struct AppSettings {
     /// Saved container shake curve/settings.
     #[serde(default)]
     pub shake_config: ShakeConfigSetting,
+
+    /// Optional theme seed override (hex string like "#FFAABBCC").
+    ///
+    /// When `None`, the app uses the default `MaterialTheme`.
+    #[serde(default)]
+    pub theme_seed_hex: Option<String>,
+
+    /// Recently used theme seeds (canonical hex strings like "#FFAABBCC").
+    #[serde(default)]
+    pub recent_theme_seeds: Vec<String>,
+
+    /// Per-die visual/physics scale overrides.
+    ///
+    /// Defaults match the built-in dice scale values so the current sizing behavior remains
+    /// unchanged unless the user adjusts sliders.
+    #[serde(default)]
+    pub dice_scales: DiceScaleSettings,
+
+    /// Per-die/per-face mapping for which hardcoded FX should play on a specific roll value.
+    ///
+    /// Entries are optional; missing dice types default to "None" for all faces.
+    #[serde(default)]
+    pub dice_roll_fx_mappings: Vec<DiceRollFxMapping>,
+
+    /// Opacity for the dice surface FX shell (0..1).
+    ///
+    /// This affects the translucent shader surface used for electric/fire/atomic/custom FX.
+    #[serde(default = "default_dice_fx_surface_opacity")]
+    pub dice_fx_surface_opacity: f32,
+
+    /// Multiplier for the plume FX height (fire/atomic).
+    #[serde(default = "default_dice_fx_plume_height_multiplier")]
+    pub dice_fx_plume_height_multiplier: f32,
+
+    /// Multiplier for the plume FX radius (fire/atomic).
+    #[serde(default = "default_dice_fx_plume_radius_multiplier")]
+    pub dice_fx_plume_radius_multiplier: f32,
+}
+
+fn default_dice_fx_surface_opacity() -> f32 {
+    0.45
+}
+
+fn default_dice_fx_plume_height_multiplier() -> f32 {
+    1.25
+}
+
+fn default_dice_fx_plume_radius_multiplier() -> f32 {
+    1.15
+}
+
+/// Per-die scale settings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DiceScaleSettings {
+    #[serde(default = "default_d4_scale")]
+    pub d4: f32,
+    #[serde(default = "default_d6_scale")]
+    pub d6: f32,
+    #[serde(default = "default_d8_scale")]
+    pub d8: f32,
+    #[serde(default = "default_d10_scale")]
+    pub d10: f32,
+    #[serde(default = "default_d12_scale")]
+    pub d12: f32,
+    #[serde(default = "default_d20_scale")]
+    pub d20: f32,
+}
+
+fn default_d4_scale() -> f32 {
+    DiceType::D4.scale()
+}
+fn default_d6_scale() -> f32 {
+    DiceType::D6.scale()
+}
+fn default_d8_scale() -> f32 {
+    DiceType::D8.scale()
+}
+fn default_d10_scale() -> f32 {
+    DiceType::D10.scale()
+}
+fn default_d12_scale() -> f32 {
+    DiceType::D12.scale()
+}
+fn default_d20_scale() -> f32 {
+    DiceType::D20.scale()
+}
+
+impl Default for DiceScaleSettings {
+    fn default() -> Self {
+        Self {
+            d4: default_d4_scale(),
+            d6: default_d6_scale(),
+            d8: default_d8_scale(),
+            d10: default_d10_scale(),
+            d12: default_d12_scale(),
+            d20: default_d20_scale(),
+        }
+    }
+}
+
+impl DiceScaleSettings {
+    /// Global min/max for the slider values.
+    ///
+    /// These values are absolute world scales applied to each die type.
+    /// This ensures every die type shares the same slider range and can reach the same sizes.
+    pub const MIN_SCALE: f32 = 0.50;
+    pub const MAX_SCALE: f32 = 2.00;
+
+    /// Returns the stored world scale for a die type.
+    pub fn scale_for(&self, die_type: DiceType) -> f32 {
+        match die_type {
+            DiceType::D4 => self.d4,
+            DiceType::D6 => self.d6,
+            DiceType::D8 => self.d8,
+            DiceType::D10 => self.d10,
+            DiceType::D12 => self.d12,
+            DiceType::D20 => self.d20,
+        }
+        .clamp(Self::MIN_SCALE, Self::MAX_SCALE)
+    }
+
+    /// Sets the stored world scale for a die type.
+    pub fn set_scale_for(&mut self, die_type: DiceType, value: f32) {
+        let value = value.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        match die_type {
+            DiceType::D4 => self.d4 = value,
+            DiceType::D6 => self.d6 = value,
+            DiceType::D8 => self.d8 = value,
+            DiceType::D10 => self.d10 = value,
+            DiceType::D12 => self.d12 = value,
+            DiceType::D20 => self.d20 = value,
+        }
+    }
+
+    /// Enforce the invariant that D4 is the smallest die and D20 is the largest.
+    ///
+    /// Other dice are clamped into the inclusive range [d4..d20].
+    pub fn normalize(&mut self) {
+        // Keep values clamped to the global slider range.
+        self.d4 = self.d4.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d6 = self.d6.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d8 = self.d8.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d10 = self.d10.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d12 = self.d12.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        self.d20 = self.d20.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+    }
 }
 
 /// Serializable UI position (logical pixels, top-left origin).
@@ -437,90 +701,96 @@ impl Default for AppSettings {
             quick_roll_default_die: DiceTypeSetting::default(),
             default_roll_uses_shake: false,
             shake_config: ShakeConfigSetting::default(),
+            theme_seed_hex: None,
+            recent_theme_seeds: Vec::new(),
+            dice_scales: DiceScaleSettings::default(),
+
+            dice_roll_fx_mappings: Vec::new(),
+            dice_fx_surface_opacity: default_dice_fx_surface_opacity(),
+            dice_fx_plume_height_multiplier: default_dice_fx_plume_height_multiplier(),
+            dice_fx_plume_radius_multiplier: default_dice_fx_plume_radius_multiplier(),
         }
     }
 }
 
 impl AppSettings {
-    const SETTINGS_FILE: &'static str = "settings.json";
     const SETTINGS_DB_KEY: &'static str = "app_settings";
 
-    /// Load settings from SQLite (preferred), falling back to legacy `settings.json`.
-    ///
-    /// If the SQLite database does not yet have settings stored, this will attempt a
-    /// one-time migration from `settings.json`.
+    pub fn roll_fx_for(&self, die_type: DiceType, value: u32) -> DiceRollFxKind {
+        if value == 0 {
+            return DiceRollFxKind::None;
+        }
+
+        self.dice_roll_fx_mappings
+            .iter()
+            .find(|m| m.die_type == die_type)
+            .map(|m| m.get(value))
+            .unwrap_or(DiceRollFxKind::None)
+    }
+
+    pub fn ensure_roll_fx_mapping_mut(&mut self, die_type: DiceType) -> &mut DiceRollFxMapping {
+        if let Some(idx) = self.dice_roll_fx_mappings.iter().position(|m| m.die_type == die_type) {
+            self.dice_roll_fx_mappings[idx].normalize_len();
+            return &mut self.dice_roll_fx_mappings[idx];
+        }
+        self.dice_roll_fx_mappings.push(DiceRollFxMapping::new(die_type));
+        let idx = self.dice_roll_fx_mappings.len() - 1;
+        &mut self.dice_roll_fx_mappings[idx]
+    }
+
+    /// Load settings from SurrealDB.
     pub fn load() -> Self {
-        if let Ok(db) = CharacterDatabase::open() {
-            if let Ok(Some(json)) = db.get_setting_json(Self::SETTINGS_DB_KEY) {
-                match serde_json::from_str::<AppSettings>(&json) {
-                    Ok(settings) => {
-                        info!("Loaded settings from SQLite");
-                        return settings;
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse settings from SQLite: {}", e);
-                    }
+        match CharacterDatabase::open() {
+            Ok(db) => match db.get_setting::<AppSettings>(Self::SETTINGS_DB_KEY) {
+                Ok(Some(settings)) => {
+                    info!(
+                        "Loaded settings from SurrealDB at {:?} (background={})",
+                        db.db_path,
+                        settings.background_color.to_hex()
+                    );
+                    return settings;
                 }
-            } else if let Some(legacy) = Self::load_legacy_json() {
-                // Best-effort migration; ignore write errors and still return the value.
-                let _ = legacy.save_to_db(&db);
-                info!("Migrated settings from {} into SQLite", Self::SETTINGS_FILE);
-                return legacy;
-            }
-
-            return Self::default();
-        }
-
-        // DB unavailable: fall back to legacy settings.json.
-        Self::load_legacy_json().unwrap_or_default()
-    }
-
-    fn load_legacy_json() -> Option<Self> {
-        let path = PathBuf::from(Self::SETTINGS_FILE);
-
-        if path.exists() {
-            match fs::read_to_string(&path) {
-                Ok(contents) => match serde_json::from_str(&contents) {
-                    Ok(settings) => {
-                        info!("Loaded settings from {}", Self::SETTINGS_FILE);
-                        return Some(settings);
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse {}: {}", Self::SETTINGS_FILE, e);
-                    }
-                },
+                Ok(None) => {
+                    info!(
+                        "No persisted settings found in SurrealDB at {:?}; using defaults",
+                        db.db_path
+                    );
+                    return Self::default();
+                }
                 Err(e) => {
-                    warn!("Failed to read {}: {}", Self::SETTINGS_FILE, e);
+                    warn!(
+                        "Failed to load settings from SurrealDB at {:?}: {}; using defaults",
+                        db.db_path, e
+                    );
+                    return Self::default();
                 }
+            },
+            Err(e) => {
+                warn!(
+                    "Failed to open SurrealDB for settings ({}); using defaults",
+                    e
+                );
             }
         }
 
-        None
+        // If the DB cannot be opened (or isn't writable), fall back to defaults.
+        // We intentionally do not read/write any JSON files for persistence.
+        Self::default()
     }
 
-    /// Save settings to SQLite (preferred). Falls back to legacy `settings.json` if the
-    /// database cannot be opened.
+    /// Load settings from an already-open database.
+    pub fn load_from_db(db: &CharacterDatabase) -> Result<Option<Self>, String> {
+        db.get_setting::<AppSettings>(Self::SETTINGS_DB_KEY)
+    }
+
+    /// Save settings to SurrealDB.
     pub fn save(&self) -> Result<(), String> {
-        if let Ok(db) = CharacterDatabase::open() {
-            return self.save_to_db(&db);
-        }
-
-        // Legacy fallback
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-        fs::write(Self::SETTINGS_FILE, json)
-            .map_err(|e| format!("Failed to write settings: {}", e))?;
-
-        debug!("Settings saved to {}", Self::SETTINGS_FILE);
-        Ok(())
+        let db = CharacterDatabase::open()?;
+        self.save_to_db(&db)
     }
 
     pub fn save_to_db(&self, db: &CharacterDatabase) -> Result<(), String> {
-        let json = serde_json::to_string(self)
-            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-        db.set_setting_json(Self::SETTINGS_DB_KEY, &json)?;
+        db.set_setting(Self::SETTINGS_DB_KEY, self.clone())?;
 
         Ok(())
     }
@@ -549,6 +819,12 @@ pub struct SettingsState {
     pub color_input_text: String,
     /// Text input for highlight color
     pub highlight_input_text: String,
+
+    /// Theme seed hex input ("#AARRGGBB"). Empty means "use default theme".
+    pub theme_seed_input_text: String,
+
+    /// Parsed theme seed override derived from `theme_seed_input_text`.
+    pub editing_theme_seed_override: Option<ColorSetting>,
 
     /// Editing value for character-sheet dice settings
     pub character_sheet_editing_die: DiceTypeSetting,
@@ -582,21 +858,40 @@ pub struct SettingsState {
     /// Text buffer for shake duration input (seconds).
     pub shake_duration_input_text: String,
 
-    /// Snapshot of the last saved shake config json (used to avoid saving every frame).
-    pub last_saved_shake_config_json: String,
+    /// Snapshot of the last saved shake config (used to avoid saving every frame).
+    pub last_saved_shake_config: ShakeConfigSetting,
+
+    /// Temporary per-die scales being edited in the modal.
+    pub editing_dice_scales: DiceScaleSettings,
+
+    /// Editing values for per-die/per-face roll FX mappings (applied on OK).
+    pub editing_dice_roll_fx_mappings: Vec<DiceRollFxMapping>,
+
+    /// Editing values for global Dice FX visuals (applied on OK).
+    pub editing_dice_fx_surface_opacity: f32,
+    pub editing_dice_fx_plume_height_multiplier: f32,
+    pub editing_dice_fx_plume_radius_multiplier: f32,
 }
 
 impl Default for SettingsState {
     fn default() -> Self {
-        let settings = AppSettings::load();
+        // Avoid doing any database I/O in `Default`.
+        // Settings are loaded during Startup once the DB resource is initialized.
+        let settings = AppSettings::default();
         let character_sheet_editing_die = settings.character_sheet_default_die;
         let quick_roll_editing_die = settings.quick_roll_default_die;
         let default_roll_uses_shake_editing = settings.default_roll_uses_shake;
         let editing_color = settings.background_color.clone();
         let editing_highlight_color = settings.dice_box_highlight_color.clone();
         let editing_shake_config = settings.shake_config.to_runtime();
-        let last_saved_shake_config_json =
-            serde_json::to_string(&settings.shake_config).unwrap_or_default();
+        let last_saved_shake_config = settings.shake_config.clone();
+        let editing_dice_scales = settings.dice_scales.clone();
+
+        let editing_dice_roll_fx_mappings = settings.dice_roll_fx_mappings.clone();
+
+        let editing_dice_fx_surface_opacity = settings.dice_fx_surface_opacity;
+        let editing_dice_fx_plume_height_multiplier = settings.dice_fx_plume_height_multiplier;
+        let editing_dice_fx_plume_radius_multiplier = settings.dice_fx_plume_radius_multiplier;
 
         Self {
             settings,
@@ -607,6 +902,8 @@ impl Default for SettingsState {
             editing_highlight_color,
             color_input_text: String::new(),
             highlight_input_text: String::new(),
+            theme_seed_input_text: String::new(),
+            editing_theme_seed_override: None,
             character_sheet_editing_die,
             quick_roll_editing_die,
             default_roll_uses_shake_editing,
@@ -619,9 +916,35 @@ impl Default for SettingsState {
             shake_curve_add_y: false,
             shake_curve_add_z: false,
             shake_duration_input_text: "1.0".to_string(),
-            last_saved_shake_config_json,
+            last_saved_shake_config,
+            editing_dice_scales,
+
+            editing_dice_roll_fx_mappings,
+            editing_dice_fx_surface_opacity,
+            editing_dice_fx_plume_height_multiplier,
+            editing_dice_fx_plume_radius_multiplier,
         }
     }
+}
+
+/// Which Dice FX parameter a slider/label controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiceFxParamKind {
+    SurfaceOpacity,
+    PlumeHeight,
+    PlumeRadius,
+}
+
+/// Marker for Dice FX parameter sliders.
+#[derive(Component, Clone, Copy)]
+pub struct DiceFxParamSlider {
+    pub kind: DiceFxParamKind,
+}
+
+/// Marker for Dice FX parameter value labels.
+#[derive(Component, Clone, Copy)]
+pub struct DiceFxParamValueLabel {
+    pub kind: DiceFxParamKind,
 }
 
 /// Color component for slider interaction
@@ -671,6 +994,10 @@ pub struct ColorTextInput;
 #[derive(Component)]
 pub struct HighlightColorTextInput;
 
+/// Marker for theme seed text input
+#[derive(Component)]
+pub struct ThemeSeedTextInput;
+
 /// Marker for the shake duration (seconds) text input in the shake curve tab.
 #[derive(Component)]
 pub struct ShakeDurationTextInput;
@@ -686,6 +1013,25 @@ pub struct SettingsCancelButton;
 /// Marker for the switch that controls "default roll uses shake" in the Dice tab.
 #[derive(Component)]
 pub struct DefaultRollUsesShakeSwitch;
+
+/// Marker for a per-die/per-face roll-FX mapping select.
+#[derive(Component, Clone, Copy)]
+pub struct DiceRollFxMappingSelect {
+    pub die_type: DiceType,
+    pub value: u32,
+}
+
+/// Marker for dice scale slider.
+#[derive(Component, Clone, Copy)]
+pub struct DiceScaleSlider {
+    pub die_type: DiceType,
+}
+
+/// Marker for dice scale value labels.
+#[derive(Component, Clone, Copy)]
+pub struct DiceScaleValueLabel {
+    pub die_type: DiceType,
+}
 
 /// Marker for settings Reset Layout button
 #[derive(Component)]
@@ -728,6 +1074,10 @@ pub struct ColorValueLabel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn u8f(v: u8) -> f32 {
+        v as f32 / 255.0
+    }
 
     #[test]
     fn test_color_setting_parse_hex_rgb() {
@@ -772,5 +1122,42 @@ mod tests {
             b: 0.0,
         };
         assert_eq!(color.to_hex(), "#FFFF7F00");
+    }
+
+    #[test]
+    fn test_color_setting_parse_named_color_css() {
+        let color = ColorSetting::parse("rebeccapurple").unwrap();
+        assert!((color.a - 1.0).abs() < 0.01);
+        // RebeccaPurple is #663399
+        assert!((color.r - (0x66 as f32 / 255.0)).abs() < 0.02);
+        assert!((color.g - (0x33 as f32 / 255.0)).abs() < 0.02);
+        assert!((color.b - (0x99 as f32 / 255.0)).abs() < 0.02);
+    }
+
+    #[test]
+    fn test_color_setting_parse_named_color_with_spaces() {
+        let color = ColorSetting::parse("Light Gray").unwrap();
+        assert!((color.a - 1.0).abs() < 0.01);
+        // Just sanity-check it's a light-ish gray.
+        assert!(color.r > 0.6 && color.g > 0.6 && color.b > 0.6);
+    }
+
+    #[test]
+    fn test_color_setting_hex_to_color() {
+        let setting = ColorSetting::parse("#80FF8844").unwrap();
+        let color = setting.to_color();
+        let srgba = color.to_srgba();
+
+        assert!((srgba.alpha - u8f(0x80)).abs() < 0.000_001);
+        assert!((srgba.red - u8f(0xFF)).abs() < 0.000_001);
+        assert!((srgba.green - u8f(0x88)).abs() < 0.000_001);
+        assert!((srgba.blue - u8f(0x44)).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn test_color_setting_color_to_hex() {
+        let color = Color::srgba(u8f(0xFF), u8f(0x88), u8f(0x44), u8f(0x80));
+        let setting = ColorSetting::from_color(color);
+        assert_eq!(setting.to_hex(), "#80FF8844");
     }
 }

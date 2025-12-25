@@ -1,5 +1,9 @@
 ﻿# Rust build artifacts
 /target/
+
+# Blender source/backup files (runtime uses exported .glb)
+/3d/*.blend
+/3d/*.blend1
 **/*.rs.bk
 *.pdb
 *.exe
@@ -43,6 +47,9 @@ Thumbs.db
 .env.local
 *.local
 msi_logs.txt
+
+# Local compiler warning captures
+warnings_full*.txt
 
 # WiX installer outputs
 *.msi

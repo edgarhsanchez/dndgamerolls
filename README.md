@@ -1,8 +1,8 @@
 # DnD Game Rolls
 
 <!-- Build & Quality Badges -->
-[![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
-[![Security Audit](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?event=schedule)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+[![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?branch=release/v0.2.17)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+[![Security Audit](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?branch=release/v0.2.17)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
 
 <!-- Package Badges -->
 [![Crates.io](https://img.shields.io/crates/v/dndgamerolls.svg)](https://crates.io/crates/dndgamerolls)
@@ -10,7 +10,7 @@
 [![docs.rs](https://img.shields.io/docsrs/dndgamerolls)](https://docs.rs/dndgamerolls)
 
 <!-- Project Info Badges -->
-[![License](https://img.shields.io/crates/l/dndgamerolls.svg)](https://github.com/edgarhsanchez/dndgamerolls/blob/main/LICENSE)
+[![License](https://img.shields.io/crates/l/dndgamerolls.svg)](LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](https://github.com/edgarhsanchez/dndgamerolls)
 
@@ -19,9 +19,16 @@ Powered by Bevy game engine with real physics simulation.
 
 ## Local Data Storage
 
-- **Characters and app settings** are stored locally in a SQLite database: `characters.db`.
-- By default on Windows this lives under `%LOCALAPPDATA%\DnDGameRolls\characters.db`.
-- Older installs may have a `settings.json`; on first run, settings are migrated into SQLite.
+- **Characters and app settings** are stored locally in an embedded SurrealDB (SurrealKV) datastore at `characters.surrealdb`.
+- By default on Windows this lives under `%LOCALAPPDATA%\DnDGameRolls\characters.surrealdb`.
+- Older installs may have a legacy SQLite database at `%LOCALAPPDATA%\DnDGameRolls\characters.db`; on first run the app can migrate data into SurrealDB.
+
+## Releasing the CLI (crates.io)
+
+The publishable CLI crate lives at `crates/dndgamerolls-cli`.
+
+- Dry-run publish locally: `cargo publish -p dndgamerolls-cli --dry-run`
+- GitHub Actions workflow: `.github/workflows/publish-cli-crates-io.yml` (manual dispatch; uses `CARGO_REGISTRY_TOKEN`)
 
 ## Screenshots
 
@@ -35,13 +42,25 @@ Powered by Bevy game engine with real physics simulation.
 |:-------------:|:---------------:|
 | ![Command Input](screenshots/dice3d/dice3d-command-input.png) | ![Command History](screenshots/dice3d/dice3d-history.png) |
 
+### UI
+
+| Dice Roller Tab | Character Setup |
+|:--------------:|:---------------:|
+| ![Dice Roller Tab](screenshots/diceroller_tab.png) | ![Character Setup](screenshots/character_setup_character.png) |
+
+| Cup Container | Fine Control Settings |
+|:------------:|:---------------------:|
+| ![Dice Roller Cup](screenshots/dice_roller_cup.png) | ![Fine Control Settings](screenshots/dice_roller_settings_fine_control.png) |
+
+![No Limit on Dice](screenshots/no_limit_on_dice.png)
+
 ---
 
 ## Installation
 
 ### Windows Installer (Recommended for Windows)
 
-Download the latest MSI installer from the [Releases page](https://github.com/edgarhsanchez/dndgamerolls_windows/releases):
+Download the MSI installer for **v0.2.17** from the [Releases page](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.17):
 - `dndgamerolls-installer.msi` - Full Windows installer with Start Menu shortcut and PATH integration
 
 Or download the portable ZIP:
@@ -49,10 +68,10 @@ Or download the portable ZIP:
 
 ### macOS (Recommended)
 
-Download the DMG installer from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases):
-- `DnDGameRolls-x.x.x-universal-apple-darwin.dmg` - Universal binary (Intel + Apple Silicon)
-- `DnDGameRolls-x.x.x-aarch64-apple-darwin.dmg` - Apple Silicon (M1/M2/M3)
-- `DnDGameRolls-x.x.x-x86_64-apple-darwin.dmg` - Intel Macs
+Download the DMG installer for **v0.2.17** from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.17):
+- `DnDGameRolls-0.2.17-universal-apple-darwin.dmg` - Universal binary (Intel + Apple Silicon)
+- `DnDGameRolls-0.2.17-aarch64-apple-darwin.dmg` - Apple Silicon (M1/M2/M3)
+- `DnDGameRolls-0.2.17-x86_64-apple-darwin.dmg` - Intel Macs
 
 **Installation:**
 1. Open the DMG file
@@ -61,7 +80,7 @@ Download the DMG installer from [Releases](https://github.com/edgarhsanchez/dndg
 
 ### Linux (DEB Package)
 
-Download the `.deb` package from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases) and install:
+Download the `.deb` package for **v0.2.17** from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.17) and install:
 
 ```bash
 sudo dpkg -i dndgamerolls_*.deb
@@ -256,10 +275,19 @@ dndgamerolls --cli --dice 1d20 --checkon perception --advantage
 ```
 
 #### Custom Character File
-By default, the tool looks for `dnd_stats.json` in the current directory. You can specify a different file:
+By default, CLI mode loads character data from the local SurrealDB database (`characters.surrealdb`).
+
+You can explicitly provide a JSON file as one-off input via `--file`:
 
 ```bash
 dndgamerolls -f path/to/character.json intelligence
+```
+
+You can also select which local character to use:
+
+```bash
+dndgamerolls --character "Thorin" stats
+dndgamerolls --character-id 3 skill stealth
 ```
 
 ## Features
@@ -270,7 +298,8 @@ dndgamerolls -f path/to/character.json intelligence
 - 📊 Displays both dice roll and final total
 - 🎯 Automatic modifier calculation from character stats
 - 🗡️ Attack rolls with weapon stats
-- 💾 Loads character data from JSON file
+- 💾 Loads character data from SQLite by default (optional one-off JSON input)
+- 💾 Loads character data from SurrealDB by default (optional one-off JSON input)
 - 🎭 Shows expertise on relevant skills
 
 ## D&D Rules Implemented
@@ -284,7 +313,7 @@ dndgamerolls -f path/to/character.json intelligence
 
 ## Character File Format
 
-The tool expects a JSON file with your character stats. See `dnd_stats.json` for the full structure.
+If you pass `--file`, the tool expects a JSON file with your character stats.
 
 ## Building for Release
 

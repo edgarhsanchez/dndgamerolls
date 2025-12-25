@@ -7,6 +7,10 @@ use bevy::prelude::*;
 
 use std::collections::HashMap;
 
+use super::dice::{DiceConfig, DiceType};
+
+use bevy::animation::prelude::{AnimationGraph, AnimationNodeIndex};
+
 // ============================================================================
 // Tab Navigation
 // ============================================================================
@@ -29,6 +33,15 @@ pub struct UiState {
     pub selected_character_index: Option<usize>,
     pub editing_field: Option<EditingField>,
     pub show_save_confirmation: bool,
+}
+
+/// Tracks whether the UI is currently capturing the mouse pointer.
+///
+/// Used to prevent "click-through" into the 3D scene while interacting with
+/// draggable panels and other UI overlays.
+#[derive(Resource, Default)]
+pub struct UiPointerCapture {
+    pub mouse_captured: bool,
 }
 
 /// Which field is currently being edited
@@ -612,6 +625,104 @@ pub struct ContainerShakeAnimation {
     pub duration: f32,
     pub amplitude: f32,
     pub base_positions: HashMap<Entity, Vec3>,
+}
+
+// ============================================================================
+// Dice Box Lid Animations (glTF clips)
+// ============================================================================
+
+/// Marker on the spawned box glTF scene root entity.
+///
+/// Used to find an `AnimationPlayer` to drive lid animations.
+#[derive(Component)]
+pub struct DiceBoxVisualSceneRoot;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiceBoxLidState {
+    Closed,
+    Open,
+    Closing,
+    Opening,
+}
+
+impl Default for DiceBoxLidState {
+    fn default() -> Self {
+        Self::Open
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum PendingRollRequest {
+    /// Re-roll the currently spawned dice in place (left-click in box).
+    RerollExisting,
+    /// Quick-roll uses a single die and updates modifier display.
+    QuickRollSingleDie {
+        die_type: DiceType,
+        modifier: i32,
+        modifier_name: String,
+    },
+    /// Start a fresh roll by applying the provided config and spawning dice.
+    ///
+    /// Used by command submit/history and character sheet rolls when the container is a Box.
+    StartNewRoll { config: DiceConfig },
+}
+
+#[derive(Resource, Default)]
+pub struct DiceBoxLidAnimationController {
+    pub gltf_handle: Option<Handle<bevy::gltf::Gltf>>,
+
+    pub opening_clip: Option<Handle<AnimationClip>>,
+    pub closing_clip: Option<Handle<AnimationClip>>,
+    pub idle_opened_clip: Option<Handle<AnimationClip>>,
+    pub idle_closed_clip: Option<Handle<AnimationClip>>,
+
+    pub animation_graph: Option<Handle<AnimationGraph>>,
+    pub opening_node: Option<AnimationNodeIndex>,
+    pub closing_node: Option<AnimationNodeIndex>,
+    pub idle_opened_node: Option<AnimationNodeIndex>,
+    pub idle_closed_node: Option<AnimationNodeIndex>,
+
+    pub open_duration: f32,
+    pub close_duration: f32,
+    pub idle_opened_duration: f32,
+    pub idle_closed_duration: f32,
+
+    pub animator_entity: Option<Entity>,
+
+    /// Which idle node we most recently started looping.
+    ///
+    /// Used to avoid re-starting idle every frame (which can cause visible flicker
+    /// if a looping clip wraps frequently).
+    pub active_idle_node: Option<AnimationNodeIndex>,
+
+    pub lid_state: DiceBoxLidState,
+    /// Remaining seconds in the current open/close animation.
+    pub state_timer: f32,
+
+    /// When set, a roll is waiting for the lid to close.
+    pub pending_roll: Option<PendingRollRequest>,
+
+    /// When set, the next time we are able we should play LidOpening.
+    ///
+    /// This is queued by the roll-completed event so that if the event fires
+    /// before animation assets/nodes are ready, the opening still plays once
+    /// the assets load.
+    pub pending_open_after_roll: bool,
+
+    #[cfg(debug_assertions)]
+    pub debug_last_idle_node: Option<AnimationNodeIndex>,
+
+    #[cfg(debug_assertions)]
+    pub debug_last_lid_state: Option<DiceBoxLidState>,
+
+    #[cfg(debug_assertions)]
+    pub debug_last_pending_roll_some: Option<bool>,
+
+    #[cfg(debug_assertions)]
+    pub debug_last_pending_open_after_roll: Option<bool>,
+
+    #[cfg(debug_assertions)]
+    pub debug_logged_player_scan: bool,
 }
 
 /// Marker for the dice roller view root (to show/hide)

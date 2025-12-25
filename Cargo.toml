@@ -3,7 +3,7 @@ members = [".", "crates/dndgamerolls-cli"]
 
 [package]
 name = "dndgamerolls"
-version = "0.2.15"
+version = "0.2.18"
 edition = "2021"
 authors = ["Edgar Sanchez <esanchez@m2iab.com>"]
 description = "DnD Game Rolls - D&D dice roller with CLI and 3D visualization using Bevy"
@@ -42,27 +42,45 @@ pkg-fmt = "zip"
 # CLI
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"
+base64 = "0.22"
 serde_json = "1.0"
+ron = "0.8"
 rand = "0.8"
 colored = "2.1"
+csscolorparser = "0.7"
+pulldown-cmark = "0.12"
 
-# HTTP and Image Loading (for profile avatars and GitHub API)
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+# HTTP and Image Loading (for profile avatars)
+reqwest = { version = "0.12", features = ["blocking"] }
 image = "0.25"
+rfd = "0.15"
 
 # Database
+surrealdb = { version = "2.4.0", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "net", "io-util"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Bevy Game Engine (0.17.3)
 # Note: dynamic_linking is only for dev - release builds use static linking
-bevy = "0.17.3"
+bevy = { version = "0.17.3", features = ["mp3"] }
 bevy_rapier3d = { version = "0.32", features = ["simd-stable"] }
+bevy_mesh = "0.17.3"
+
+# GPU particle effects
+bevy_hanabi = { version = "0.17.0", default-features = false, features = ["3d"] }
 
 # Material Design 3 UI Components
-bevy_material_ui = { path = "../bevy_material_ui", features = ["clipboard"] }
+bevy_material_ui = { git = "https://github.com/edgarhsanchez/bevy_material_ui.git", tag = "v0.2.1", features = ["clipboard"] }
 
 # Winit for window icon setting (must match Bevy's winit version)
 winit = "0.30"
+
+[dev-dependencies]
+gltf = { version = "1.4", features = ["utils"] }
+
+[build-dependencies]
+gltf = { version = "1.4", features = ["utils"] }
 
 # Build dependencies for embedding Windows resources
 [target.'cfg(windows)'.build-dependencies]

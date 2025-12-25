@@ -20,8 +20,9 @@ const BOUNDS_MAX_DISTANCE: f32 = 10.0; // If dice is this far from center, it's 
 pub fn check_dice_settled(
     mut roll_state: ResMut<RollState>,
     mut dice_results: ResMut<DiceResults>,
-    mut dice_query: Query<(&Die, &mut Velocity, &mut Transform)>,
+    mut dice_query: Query<(Entity, &Die, &mut Velocity, &mut Transform)>,
     time: Res<Time>,
+    mut roll_complete_events: MessageWriter<DiceRollCompletedEvent>,
 ) {
     if !roll_state.rolling {
         roll_state.roll_timer = 0.0;
@@ -33,7 +34,7 @@ pub fn check_dice_settled(
 
     // Check for out-of-bounds dice and reset them
     let mut any_reset = false;
-    for (_, mut velocity, mut transform) in dice_query.iter_mut() {
+    for (_, _, mut velocity, mut transform) in dice_query.iter_mut() {
         let pos = transform.translation;
 
         // Check if dice is out of bounds
@@ -77,7 +78,7 @@ pub fn check_dice_settled(
         let mut rng = rand::thread_rng();
         use rand::Rng;
 
-        for (_, mut velocity, mut transform) in dice_query.iter_mut() {
+        for (_, _, mut velocity, mut transform) in dice_query.iter_mut() {
             // Reset all dice to center with gentle drop
             transform.translation =
                 Vec3::new(rng.gen_range(-0.5..0.5), 0.3, rng.gen_range(-0.5..0.5));
@@ -92,7 +93,7 @@ pub fn check_dice_settled(
 
     let all_settled = dice_query
         .iter()
-        .all(|(_, vel, _)| vel.linvel.length() < 0.1 && vel.angvel.length() < 0.1);
+        .all(|(_, _, vel, _)| vel.linvel.length() < 0.1 && vel.angvel.length() < 0.1);
 
     if all_settled {
         roll_state.settle_timer += time.delta_secs();
@@ -103,10 +104,19 @@ pub fn check_dice_settled(
             roll_state.roll_timer = 0.0;
 
             dice_results.results.clear();
-            for (die, _, transform) in dice_query.iter() {
+
+            let mut outcomes: Vec<DieRollOutcome> = Vec::new();
+            for (entity, die, _, transform) in dice_query.iter() {
                 let result = determine_dice_result(die, transform);
                 dice_results.results.push((die.die_type, result));
+                outcomes.push(DieRollOutcome {
+                    entity,
+                    die_type: die.die_type,
+                    value: result,
+                });
             }
+
+            roll_complete_events.write(DiceRollCompletedEvent { results: outcomes });
         }
     } else {
         roll_state.settle_timer = 0.0;

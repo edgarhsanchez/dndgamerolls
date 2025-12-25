@@ -17,110 +17,41 @@ mod avatar_loader;
 mod box_highlight;
 mod camera;
 pub mod character_screen;
+mod collision_sfx;
+mod container_centering;
 mod contributors_screen;
 mod dice;
 pub mod dice_box_controls;
+pub mod dice_box_lid_animations;
+pub mod dice_fx;
+mod gltf_colliders;
+mod gltf_spawn_points;
 mod input;
 pub mod rendering;
+mod select_theme_preview;
 mod settings;
-mod settings_tabs;
+pub mod settings_tabs;
 mod setup;
 mod slider_group;
+mod theme_refresh;
 
 // Re-export all public systems
-pub use avatar_loader::{
-    process_avatar_loads, request_avatars, update_avatar_images, AvatarImage, AvatarLoader,
-};
-pub use box_highlight::update_dice_box_highlight;
-pub use camera::{handle_zoom_slider_changes, rotate_camera};
-pub use character_screen::{
-    // UI fixups
-    ensure_buttons_have_interaction,
-    handle_character_list_clicks,
-    handle_character_sheet_die_type_select_change,
-    // Character sheet dice settings modal
-    handle_character_sheet_settings_button_click,
-    handle_character_sheet_settings_cancel_click,
-    handle_character_sheet_settings_save_click,
-    handle_delete_click,
-    handle_expertise_toggle,
-    handle_group_add_click,
-    handle_group_edit_toggle,
-    handle_label_click,
-    handle_new_character_click,
-    handle_new_entry_cancel,
-    handle_new_entry_confirm,
-    handle_new_entry_input,
-    handle_roll_all_stats_click,
-    handle_roll_attribute_click,
-    handle_roll_skill_click,
-    // Save handling
-    handle_save_click,
-    // Scroll handling
-    handle_scroll_input,
-    // Editing handlers
-    handle_stat_field_click,
-    handle_tab_clicks,
-    handle_text_input,
-    // Init
-    init_character_manager,
-    manage_character_sheet_settings_modal,
-    // Rebuild systems
-    rebuild_character_list_on_change,
-    rebuild_character_panel_on_change,
-    // Character sheet dice -> dice roller bridge
-    record_character_screen_roll_on_settle,
-    refresh_character_display,
-    // Character screen setup
-    setup_character_screen,
-    // DnD info screen
-    setup_dnd_info_screen,
-    // Tab bar systems
-    setup_tab_bar,
-    // Character list systems
-    spawn_character_list_panel,
-    sync_character_screen_roll_result_texts,
-    update_character_list_modified_indicator,
-    update_editing_display,
-    update_new_entry_input_display,
-    update_save_button_appearance,
-    update_tab_styles,
-    update_tab_visibility,
-    MD3_ERROR,
-    MD3_ON_PRIMARY,
-    MD3_ON_SURFACE,
-    MD3_ON_SURFACE_VARIANT,
-    MD3_OUTLINE,
-    // Theme colors (for other modules that may need them)
-    MD3_PRIMARY,
-    MD3_SUCCESS,
-    MD3_SURFACE,
-    MD3_SURFACE_CONTAINER,
-};
-pub use contributors_screen::{init_contributors, setup_contributors_screen};
-pub use dice::{check_dice_settled, update_results_display};
-pub use dice_box_controls::{
-    animate_container_shake, handle_dice_box_rotate_click, handle_dice_box_shake_box_click,
-    handle_dice_box_toggle_container_click, handle_shake_slider_changes,
-    sync_dice_container_mode_text, sync_dice_container_toggle_icon,
-};
-pub use input::{
-    handle_command_history_item_clicks, handle_command_input, handle_input,
-    handle_quick_roll_clicks,
-};
-pub use settings::{
-    apply_initial_settings, apply_initial_shake_config, autosave_and_apply_shake_config,
-    drag_shake_curve_bezier_handle, drag_shake_curve_point, handle_color_slider_changes,
-    handle_color_text_input, handle_default_roll_uses_shake_switch_change,
-    handle_quick_roll_die_type_select_change, handle_settings_button_click,
-    handle_settings_cancel_click, handle_settings_ok_click, handle_settings_reset_layout_click,
-    handle_shake_curve_bezier_handle_press, handle_shake_curve_chip_clicks,
-    handle_shake_curve_graph_click_to_add_point, handle_shake_curve_point_press,
-    handle_shake_duration_text_input, manage_settings_modal, persist_settings_to_db,
-    spawn_settings_button, sync_shake_curve_chip_ui, sync_shake_curve_graph_ui, update_color_ui,
-};
-pub use setup::{
-    calculate_dice_position, rebuild_command_history_panel, rebuild_quick_roll_panel, setup,
-    spawn_die,
-};
-pub use slider_group::handle_slider_group_drag;
+pub use avatar_loader::*;
+pub use box_highlight::*;
+pub use camera::*;
+pub use character_screen::*;
+pub use collision_sfx::*;
+pub use container_centering::*;
+pub use contributors_screen::*;
+pub use dice::*;
+pub use dice_box_controls::*;
+pub use dice_box_lid_animations::*;
+pub use dice_fx::*;
+pub use gltf_colliders::*;
+pub use gltf_spawn_points::*;
+pub use input::*;
+pub use select_theme_preview::*;
+pub use settings::*;
+pub use setup::*;
+pub use slider_group::*;
+pub use theme_refresh::*;

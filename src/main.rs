@@ -5,24 +5,32 @@
 
 use bevy::prelude::*;
 use bevy::winit::WinitWindows;
+use bevy_hanabi::prelude::HanabiPlugin;
 use bevy_material_ui::prelude::*;
 use bevy_rapier3d::prelude::*;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
 
 use dndgamerolls::dice3d::{
     animate_container_shake,
+    apply_dice_scale_settings_to_existing_dice,
+    apply_editing_dice_scales_to_existing_dice_while_open,
+    apply_crystal_material_to_container_models,
     apply_initial_settings,
     apply_initial_shake_config,
+    apply_spawn_points_to_dice_when_ready,
+    center_container_models_in_view,
     autosave_and_apply_shake_config,
+    cache_dice_box_lid_animation_player,
     check_dice_settled,
+    collect_dice_spawn_points_from_gltf,
     drag_shake_curve_bezier_handle,
     drag_shake_curve_point,
+    ensure_dice_box_lid_animation_assets,
     ensure_buttons_have_interaction,
+    // Legacy SQLite -> SurrealDB conversion (character screen)
+    finalize_sqlite_conversion_if_done,
     handle_character_list_clicks,
     handle_character_sheet_die_type_select_change,
     handle_character_sheet_settings_button_click,
@@ -30,6 +38,13 @@ use dndgamerolls::dice3d::{
     handle_character_sheet_settings_save_click,
     handle_color_slider_changes,
     handle_color_text_input,
+    handle_dice_scale_slider_changes,
+    handle_dice_fx_param_slider_changes,
+    handle_dice_roll_fx_mapping_select_change,
+    fix_dice_scale_slider_thumb_hitbox,
+    init_dice_scale_preview_render_target,
+    init_settings_ui_images,
+    manage_dice_scale_preview_scene,
     handle_command_history_item_clicks,
     handle_command_input,
     handle_default_roll_uses_shake_switch_change,
@@ -64,49 +79,71 @@ use dndgamerolls::dice3d::{
     handle_shake_duration_text_input,
     handle_shake_slider_changes,
     handle_slider_group_drag,
+    handle_sqlite_conversion_no_click,
+    handle_sqlite_conversion_ok_click,
+    handle_sqlite_conversion_yes_click,
     handle_stat_field_click,
     handle_strength_slider_changes,
     handle_tab_clicks,
     handle_text_input,
+    handle_theme_seed_select_change,
     handle_zoom_slider_changes,
     init_character_manager,
+    init_collision_sounds,
     init_contributors,
     load_icons,
+    load_settings_state_from_db,
     manage_character_sheet_settings_modal,
     manage_settings_modal,
     persist_settings_to_db,
+    play_dice_container_collision_sfx,
+    open_lid_on_roll_completed,
     process_avatar_loads,
+    process_pending_roll_with_lid,
     rebuild_character_list_on_change,
     rebuild_character_panel_on_change,
     rebuild_command_history_panel,
     rebuild_quick_roll_panel,
     record_character_screen_roll_on_settle,
     refresh_character_display,
+    refresh_scrollbar_colors_on_theme_change,
     request_avatars,
     rotate_camera,
+    run_sqlite_conversion_step,
     setup,
     setup_character_screen,
     setup_contributors_screen,
     setup_dnd_info_screen,
     setup_tab_bar,
+    spawn_colliders_from_gltf_guides,
+    start_sqlite_conversion_if_needed,
     sync_character_screen_roll_result_texts,
     sync_dice_container_mode_text,
     sync_dice_container_toggle_icon,
     sync_shake_curve_chip_ui,
     sync_shake_curve_graph_ui,
+    tint_recent_theme_dropdown_items,
     update_avatar_images,
     update_character_list_modified_indicator,
     update_color_ui,
+    update_dice_scale_ui,
+    update_dice_fx_param_ui,
+    sync_dice_scale_preview_dice,
     update_dice_box_highlight,
     update_editing_display,
     update_new_entry_input_display,
     update_results_display,
     update_save_button_appearance,
+    update_sqlite_conversion_dialog_ui,
     update_tab_styles,
     update_tab_visibility,
     update_throw_arrow,
+    update_ui_pointer_capture,
     update_throw_from_mouse,
     // Character sheet tab systems
+    handle_sheet_tab_clicks,
+    update_sheet_tab_styles,
+    update_sheet_tab_visibility,
     AddingEntryState,
     AvatarLoader,
     CharacterData,
@@ -115,10 +152,14 @@ use dndgamerolls::dice3d::{
     CommandInput,
     ContainerShakeAnimation,
     ContainerShakeConfig,
+    Dice3dEmbeddedAssetsPlugin,
     DiceBoxHighlightMaterial,
+    DiceBoxLidAnimationController,
     DiceConfig,
     DiceContainerStyle,
     DiceResults,
+    DiceSpawnPoints,
+    DiceSpawnPointsApplied,
     DiceType,
     GroupEditState,
     RollState,
@@ -126,8 +167,12 @@ use dndgamerolls::dice3d::{
     ShakeState,
     ThrowControlState,
     UiState,
+    DiceFxPlugin,
     ZoomState,
 };
+
+use dndgamerolls::dice3d::types::database::CharacterDatabase;
+use dndgamerolls::dice3d::types::ui::UiPointerCapture;
 
 /// DnD Game Rolls - CLI and 3D Visualization
 #[derive(Parser)]
@@ -145,9 +190,13 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Path to the character stats JSON file
-    #[arg(short = 'f', long = "file", default_value = "dnd_stats.json")]
-    character_file: PathBuf,
+    /// Select a character by name from the local database (SurrealDB)
+    #[arg(long)]
+    character: Option<String>,
+
+    /// Select a character by id from the local database (SurrealDB)
+    #[arg(long)]
+    character_id: Option<i64>,
 
     /// Dice to roll (e.g., "2d6", "1d20", "d8"). Can specify multiple.
     #[arg(short, long, value_parser = parse_dice_arg)]
@@ -308,8 +357,9 @@ fn attach_parent_console() {
 // ============================================================================
 
 fn run_3d_mode(cli: Cli) {
-    let character_data =
-        CharacterData::load_from_file(cli.character_file.to_str().unwrap_or("dnd_stats.json"));
+    // Character persistence is database-backed; character selection/loading is handled
+    // by the in-game character manager.
+    let character_data = CharacterData::default();
 
     let mut dice_to_roll = Vec::new();
     let mut modifier = cli.modifier;
@@ -451,9 +501,12 @@ fn run_3d_mode(cli: Cli) {
                     ..default()
                 }),
         )
+            .add_plugins(HanabiPlugin)
         .add_plugins(bevy::pbr::MaterialPlugin::<DiceBoxHighlightMaterial>::default())
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(MaterialUiPlugin)
+        .add_plugins(Dice3dEmbeddedAssetsPlugin)
+        .add_plugins(DiceFxPlugin)
         // Ensure UI Buttons spawned without ButtonBundle still receive click events
         .add_systems(PreUpdate, ensure_buttons_have_interaction)
         .insert_resource(dice_config)
@@ -472,16 +525,24 @@ fn run_3d_mode(cli: Cli) {
         .insert_resource(AddingEntryState::default())
         .insert_resource(SettingsState::default())
         .insert_resource(CharacterScreenRollBridge::default())
+        .insert_resource(UiPointerCapture::default())
         .insert_resource(ThrowControlState::default())
+        .insert_resource(DiceSpawnPoints::default())
+        .insert_resource(DiceSpawnPointsApplied::default())
         .insert_resource(AvatarLoader::default())
+        .insert_resource(DiceBoxLidAnimationController::default())
         .add_systems(
             Startup,
             (
                 set_window_icon,
                 load_icons,
                 init_character_manager,
+                load_settings_state_from_db,
+                init_dice_scale_preview_render_target,
+                init_settings_ui_images,
                 init_contributors,
                 apply_initial_shake_config,
+                init_collision_sounds,
                 setup,
                 setup_tab_bar,
                 setup_character_screen,
@@ -518,6 +579,63 @@ fn run_3d_mode(cli: Cli) {
                 update_throw_arrow,
             ),
         )
+        .add_systems(
+            Update,
+            update_ui_pointer_capture
+                .before(handle_input)
+                .before(update_throw_from_mouse)
+                .before(update_dice_box_highlight),
+        )
+        .add_systems(Update, ensure_dice_box_lid_animation_assets)
+        .add_systems(
+            Update,
+            cache_dice_box_lid_animation_player.after(ensure_dice_box_lid_animation_assets),
+        )
+        .add_systems(
+            Update,
+            process_pending_roll_with_lid
+                .after(handle_input)
+                .after(handle_quick_roll_clicks),
+        )
+        .add_systems(
+            Update,
+            open_lid_on_roll_completed.after(check_dice_settled),
+        )
+        .add_systems(Update, play_dice_container_collision_sfx)
+        .add_systems(
+            Update,
+            center_container_models_in_view
+                .before(spawn_colliders_from_gltf_guides)
+                .before(apply_crystal_material_to_container_models)
+                .before(collect_dice_spawn_points_from_gltf)
+                .before(apply_spawn_points_to_dice_when_ready)
+                .before(update_dice_box_highlight),
+        )
+        // Separate to avoid Bevy's tuple-size limit, and ensure it runs before highlight tagging.
+        .add_systems(
+            Update,
+            spawn_colliders_from_gltf_guides
+                .before(handle_dice_box_toggle_container_click)
+                .before(update_dice_box_highlight),
+        )
+        .add_systems(
+            Update,
+            apply_crystal_material_to_container_models
+                .before(handle_dice_box_toggle_container_click)
+                .before(update_dice_box_highlight),
+        )
+        .add_systems(
+            Update,
+            collect_dice_spawn_points_from_gltf
+                .before(handle_dice_box_toggle_container_click)
+                .before(update_dice_box_highlight),
+        )
+        .add_systems(
+            Update,
+            apply_spawn_points_to_dice_when_ready
+                .before(handle_dice_box_toggle_container_click)
+                .before(update_dice_box_highlight),
+        )
         .add_systems(Update, handle_command_history_item_clicks)
         .add_systems(
             Update,
@@ -529,6 +647,14 @@ fn run_3d_mode(cli: Cli) {
                 // Tab and character screen systems
                 handle_tab_clicks,
                 update_tab_visibility,
+                // Legacy SQLite -> SurrealDB conversion (character screen)
+                start_sqlite_conversion_if_needed,
+                run_sqlite_conversion_step,
+                update_sqlite_conversion_dialog_ui,
+                handle_sqlite_conversion_ok_click,
+                handle_sqlite_conversion_yes_click,
+                handle_sqlite_conversion_no_click,
+                finalize_sqlite_conversion_if_done,
                 handle_character_list_clicks,
                 handle_new_character_click,
                 handle_save_click,
@@ -545,6 +671,9 @@ fn run_3d_mode(cli: Cli) {
                 // Tab styling (separate to avoid tuple size limit)
                 update_tab_styles,
                 // Character sheet tab systems
+                handle_sheet_tab_clicks,
+                update_sheet_tab_styles,
+                update_sheet_tab_visibility,
                 // Character editing systems - input handling
                 handle_scroll_input,
                 handle_stat_field_click,
@@ -587,167 +716,81 @@ fn run_3d_mode(cli: Cli) {
         .add_systems(
             Update,
             (
-                // Settings systems
-                handle_settings_button_click,
-                manage_settings_modal,
-                handle_settings_ok_click,
-                handle_settings_cancel_click,
-                handle_settings_reset_layout_click,
-                handle_quick_roll_die_type_select_change,
-                handle_default_roll_uses_shake_switch_change,
-                handle_color_slider_changes,
-                handle_color_text_input,
-                handle_shake_duration_text_input,
-                handle_shake_curve_chip_clicks,
                 (
-                    handle_shake_curve_point_press,
-                    handle_shake_curve_bezier_handle_press,
-                    handle_shake_curve_graph_click_to_add_point,
-                    drag_shake_curve_bezier_handle,
-                    drag_shake_curve_point,
-                    sync_shake_curve_graph_ui,
-                )
-                    .chain(),
-                sync_shake_curve_chip_ui,
-                update_color_ui,
-                autosave_and_apply_shake_config.after(sync_shake_curve_graph_ui),
-                // Character sheet dice settings modal
-                handle_character_sheet_settings_button_click,
-                manage_character_sheet_settings_modal,
-                handle_character_sheet_die_type_select_change,
-                handle_character_sheet_settings_save_click,
-                handle_character_sheet_settings_cancel_click,
+                    // Settings systems
+                    (
+                        handle_settings_button_click,
+                        manage_settings_modal,
+                        manage_dice_scale_preview_scene,
+                        fix_dice_scale_slider_thumb_hitbox.after(manage_settings_modal),
+                        handle_settings_ok_click,
+                        handle_settings_cancel_click,
+                        handle_settings_reset_layout_click,
+                    ),
+                    (
+                        (
+                            handle_quick_roll_die_type_select_change,
+                            handle_theme_seed_select_change,
+                            handle_default_roll_uses_shake_switch_change,
+                            handle_color_slider_changes,
+                            handle_dice_scale_slider_changes,
+                            handle_dice_fx_param_slider_changes,
+                            handle_dice_roll_fx_mapping_select_change,
+                            handle_color_text_input,
+                            handle_shake_duration_text_input,
+                        ),
+                        (
+                            handle_shake_curve_chip_clicks,
+                            (
+                                handle_shake_curve_point_press,
+                                handle_shake_curve_bezier_handle_press,
+                                handle_shake_curve_graph_click_to_add_point,
+                                drag_shake_curve_bezier_handle,
+                                drag_shake_curve_point,
+                                sync_shake_curve_graph_ui,
+                            )
+                                .chain(),
+                            sync_shake_curve_chip_ui,
+                        ),
+                    ),
+                    (
+                        update_color_ui,
+                        update_dice_scale_ui,
+                        update_dice_fx_param_ui,
+                        sync_dice_scale_preview_dice,
+                        autosave_and_apply_shake_config.after(sync_shake_curve_graph_ui),
+                    ),
+                ),
+                (
+                    // Character sheet dice settings modal
+                    handle_character_sheet_settings_button_click,
+                    manage_character_sheet_settings_modal,
+                    handle_character_sheet_die_type_select_change,
+                    handle_character_sheet_settings_save_click,
+                    handle_character_sheet_settings_cancel_click,
+                ),
             ),
         )
+        .add_systems(
+            Update,
+            apply_editing_dice_scales_to_existing_dice_while_open
+                .after(handle_dice_scale_slider_changes),
+        )
+        .add_systems(
+            Update,
+            apply_dice_scale_settings_to_existing_dice.after(handle_settings_ok_click),
+        )
+        .add_systems(
+            Update,
+            refresh_scrollbar_colors_on_theme_change
+                .after(handle_color_text_input)
+                .after(handle_theme_seed_select_change)
+                .after(handle_settings_ok_click)
+                .after(handle_settings_cancel_click),
+        )
+        .add_systems(PostUpdate, tint_recent_theme_dropdown_items)
         .add_systems(PostUpdate, persist_settings_to_db)
         .run();
-}
-
-// ============================================================================
-// CLI Mode - Character Data Structures
-// ============================================================================
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Character {
-    character: CharacterInfo,
-    attributes: Attributes,
-    modifiers: Modifiers,
-    combat: Combat,
-    #[serde(rename = "proficiencyBonus")]
-    proficiency_bonus: i32,
-    #[serde(rename = "savingThrows")]
-    saving_throws: SavingThrows,
-    skills: Skills,
-    equipment: Equipment,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct CharacterInfo {
-    name: String,
-    #[serde(rename = "alterEgo")]
-    alter_ego: Option<String>,
-    class: String,
-    subclass: Option<String>,
-    race: String,
-    level: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Attributes {
-    strength: i32,
-    dexterity: i32,
-    constitution: i32,
-    intelligence: i32,
-    wisdom: i32,
-    charisma: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Modifiers {
-    strength: i32,
-    dexterity: i32,
-    constitution: i32,
-    intelligence: i32,
-    wisdom: i32,
-    charisma: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Combat {
-    #[serde(rename = "armorClass")]
-    armor_class: i32,
-    initiative: i32,
-    #[serde(rename = "hitPoints")]
-    hit_points: HitPoints,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct HitPoints {
-    current: i32,
-    maximum: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct SavingThrows {
-    strength: SavingThrow,
-    dexterity: SavingThrow,
-    constitution: SavingThrow,
-    intelligence: SavingThrow,
-    wisdom: SavingThrow,
-    charisma: SavingThrow,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct SavingThrow {
-    proficient: bool,
-    modifier: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Skills {
-    acrobatics: Skill,
-    #[serde(rename = "animalHandling")]
-    animal_handling: Skill,
-    arcana: Skill,
-    athletics: Skill,
-    deception: Skill,
-    history: Skill,
-    insight: Skill,
-    intimidation: Skill,
-    investigation: Skill,
-    medicine: Skill,
-    nature: Skill,
-    perception: Skill,
-    performance: Skill,
-    persuasion: Skill,
-    religion: Skill,
-    #[serde(rename = "sleightOfHand")]
-    sleight_of_hand: Skill,
-    stealth: Skill,
-    survival: Skill,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Skill {
-    proficient: bool,
-    modifier: i32,
-    #[serde(default)]
-    expertise: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Equipment {
-    weapons: Vec<Weapon>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Weapon {
-    name: String,
-    #[serde(rename = "attackBonus")]
-    attack_bonus: i32,
-    damage: String,
-    #[serde(rename = "damageType")]
-    damage_type: String,
 }
 
 // ============================================================================
@@ -762,51 +805,46 @@ fn run_cli_mode(cli: Cli) {
     }
 
     // Legacy subcommand mode
-    let character = match load_character(&cli.character_file) {
+    let sheet = match load_character_sheet(cli.character.as_deref(), cli.character_id) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!(
-                "{} Failed to load character file '{}': {}",
-                "Error:".red().bold(),
-                cli.character_file.display(),
-                e
-            );
+            eprintln!("{} Failed to load character: {}", "Error:".red().bold(), e);
             std::process::exit(1);
         }
     };
 
     match cli.command {
         Some(Commands::Strength) => {
-            let modifier = character.modifiers.strength;
+            let modifier = sheet.modifiers.strength;
             roll_ability_check("Strength", modifier, cli.advantage, cli.disadvantage);
         }
         Some(Commands::Dexterity) => {
-            let modifier = character.modifiers.dexterity;
+            let modifier = sheet.modifiers.dexterity;
             roll_ability_check("Dexterity", modifier, cli.advantage, cli.disadvantage);
         }
         Some(Commands::Constitution) => {
-            let modifier = character.modifiers.constitution;
+            let modifier = sheet.modifiers.constitution;
             roll_ability_check("Constitution", modifier, cli.advantage, cli.disadvantage);
         }
         Some(Commands::Intelligence) => {
-            let modifier = character.modifiers.intelligence;
+            let modifier = sheet.modifiers.intelligence;
             roll_ability_check("Intelligence", modifier, cli.advantage, cli.disadvantage);
         }
         Some(Commands::Wisdom) => {
-            let modifier = character.modifiers.wisdom;
+            let modifier = sheet.modifiers.wisdom;
             roll_ability_check("Wisdom", modifier, cli.advantage, cli.disadvantage);
         }
         Some(Commands::Charisma) => {
-            let modifier = character.modifiers.charisma;
+            let modifier = sheet.modifiers.charisma;
             roll_ability_check("Charisma", modifier, cli.advantage, cli.disadvantage);
         }
         Some(Commands::Initiative) => {
-            let modifier = character.combat.initiative;
+            let modifier = sheet.combat.initiative;
             roll_ability_check("Initiative", modifier, cli.advantage, cli.disadvantage);
         }
         Some(Commands::Skill { name }) => {
-            if let Some((skill_name, skill)) = get_skill_by_name(&character.skills, &name) {
-                let proficiency_str = if skill.expertise {
+            if let Some((skill_name, skill)) = get_skill_by_name(&sheet.skills, &name) {
+                let proficiency_str = if skill.expertise.unwrap_or(false) {
                     " (Expertise)"
                 } else if skill.proficient {
                     " (Proficient)"
@@ -830,19 +868,29 @@ fn run_cli_mode(cli: Cli) {
         }
         Some(Commands::Save { ability }) => {
             let ability_lower = ability.to_lowercase();
-            let (save_name, save) = match ability_lower.as_str() {
-                "str" | "strength" => ("Strength", &character.saving_throws.strength),
-                "dex" | "dexterity" => ("Dexterity", &character.saving_throws.dexterity),
-                "con" | "constitution" => ("Constitution", &character.saving_throws.constitution),
-                "int" | "intelligence" => ("Intelligence", &character.saving_throws.intelligence),
-                "wis" | "wisdom" => ("Wisdom", &character.saving_throws.wisdom),
-                "cha" | "charisma" => ("Charisma", &character.saving_throws.charisma),
+            let (save_name, key) = match ability_lower.as_str() {
+                "str" | "strength" => ("Strength", "strength"),
+                "dex" | "dexterity" => ("Dexterity", "dexterity"),
+                "con" | "constitution" => ("Constitution", "constitution"),
+                "int" | "intelligence" => ("Intelligence", "intelligence"),
+                "wis" | "wisdom" => ("Wisdom", "wisdom"),
+                "cha" | "charisma" => ("Charisma", "charisma"),
                 _ => {
                     eprintln!("{} Unknown ability '{}'", "Error:".red().bold(), ability);
                     eprintln!("Use: str, dex, con, int, wis, cha");
                     std::process::exit(1);
                 }
             };
+
+            let Some(save) = sheet.saving_throws.get(key) else {
+                eprintln!(
+                    "{} Saving throw '{}' not found",
+                    "Error:".red().bold(),
+                    save_name
+                );
+                std::process::exit(1);
+            };
+
             let proficiency_str = if save.proficient { " (Proficient)" } else { "" };
             roll_ability_check(
                 &format!("{} Save{}", save_name, proficiency_str),
@@ -853,8 +901,15 @@ fn run_cli_mode(cli: Cli) {
         }
         Some(Commands::Attack { weapon }) => {
             let weapon_lower = weapon.to_lowercase();
-            if let Some(wpn) = character
-                .equipment
+            let Some(equipment) = sheet.equipment.as_ref() else {
+                eprintln!(
+                    "{} No equipment found on this character",
+                    "Error:".red().bold()
+                );
+                std::process::exit(1);
+            };
+
+            if let Some(wpn) = equipment
                 .weapons
                 .iter()
                 .find(|w| w.name.to_lowercase() == weapon_lower)
@@ -863,14 +918,14 @@ fn run_cli_mode(cli: Cli) {
             } else {
                 eprintln!("{} Weapon '{}' not found", "Error:".red().bold(), weapon);
                 eprintln!("Available weapons:");
-                for wpn in &character.equipment.weapons {
+                for wpn in &equipment.weapons {
                     eprintln!("  - {}", wpn.name);
                 }
                 std::process::exit(1);
             }
         }
         Some(Commands::Stats) => {
-            display_stats(&character);
+            display_stats(&sheet);
         }
         None => {
             eprintln!("{} No command specified", "Error:".red().bold());
@@ -881,8 +936,9 @@ fn run_cli_mode(cli: Cli) {
 }
 
 fn run_cli_dice_roll(cli: &Cli) {
-    let character_data =
-        CharacterData::load_from_file(cli.character_file.to_str().unwrap_or("dnd_stats.json"));
+    // Character persistence is SQLite-backed; the CLI dice roll path can still run
+    // without a loaded character sheet.
+    let character_data = CharacterData::default();
 
     let mut total_modifier = cli.modifier;
     let mut modifier_name = String::new();
@@ -1095,7 +1151,7 @@ fn roll_ability_check(name: &str, modifier: i32, advantage: bool, disadvantage: 
     );
 }
 
-fn roll_attack(weapon: &Weapon, advantage: bool, disadvantage: bool) {
+fn roll_attack(weapon: &dndgamerolls::dice3d::types::Weapon, advantage: bool, disadvantage: bool) {
     let (dice_roll, dropped_roll) = roll_with_advantage_disadvantage(advantage, disadvantage);
     let total = dice_roll + weapon.attack_bonus;
 
@@ -1241,39 +1297,62 @@ fn display_roll_result(
     println!("{}", "═══════════════════════════════════════".cyan());
 }
 
-fn load_character(path: &PathBuf) -> Result<Character, Box<dyn std::error::Error>> {
-    let content = fs::read_to_string(path)?;
-    let character: Character = serde_json::from_str(&content)?;
-    Ok(character)
+fn load_character_sheet(
+    character_name: Option<&str>,
+    character_id: Option<i64>,
+) -> Result<dndgamerolls::dice3d::types::CharacterSheet, Box<dyn std::error::Error>> {
+    let db = CharacterDatabase::open().map_err(|e| format!("Failed to open database: {}", e))?;
+
+    if let Some(id) = character_id {
+        return Ok(db.load_character(id)?);
+    }
+
+    let list = db.list_characters()?;
+    if list.is_empty() {
+        return Err("No characters found in local database".into());
+    }
+
+    if let Some(name) = character_name {
+        if let Some(entry) = list.iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
+            return Ok(db.load_character(entry.id)?);
+        }
+
+        return Err(format!("Character '{}' not found", name).into());
+    }
+
+    Ok(db.load_character(list[0].id)?)
 }
 
-fn get_skill_by_name<'a>(skills: &'a Skills, name: &str) -> Option<(&'static str, &'a Skill)> {
+fn get_skill_by_name<'a>(
+    skills: &'a std::collections::HashMap<String, dndgamerolls::dice3d::types::Skill>,
+    name: &str,
+) -> Option<(&'static str, &'a dndgamerolls::dice3d::types::Skill)> {
     let name_lower = name.to_lowercase().replace(' ', "");
 
     match name_lower.as_str() {
-        "acrobatics" => Some(("Acrobatics", &skills.acrobatics)),
-        "animalhandling" | "animal" => Some(("Animal Handling", &skills.animal_handling)),
-        "arcana" => Some(("Arcana", &skills.arcana)),
-        "athletics" => Some(("Athletics", &skills.athletics)),
-        "deception" => Some(("Deception", &skills.deception)),
-        "history" => Some(("History", &skills.history)),
-        "insight" => Some(("Insight", &skills.insight)),
-        "intimidation" => Some(("Intimidation", &skills.intimidation)),
-        "investigation" => Some(("Investigation", &skills.investigation)),
-        "medicine" => Some(("Medicine", &skills.medicine)),
-        "nature" => Some(("Nature", &skills.nature)),
-        "perception" => Some(("Perception", &skills.perception)),
-        "performance" => Some(("Performance", &skills.performance)),
-        "persuasion" => Some(("Persuasion", &skills.persuasion)),
-        "religion" => Some(("Religion", &skills.religion)),
-        "sleightofhand" | "sleight" => Some(("Sleight of Hand", &skills.sleight_of_hand)),
-        "stealth" => Some(("Stealth", &skills.stealth)),
-        "survival" => Some(("Survival", &skills.survival)),
+        "acrobatics" => skills.get("acrobatics").map(|s| ("Acrobatics", s)),
+        "animalhandling" | "animal" => skills.get("animalHandling").map(|s| ("Animal Handling", s)),
+        "arcana" => skills.get("arcana").map(|s| ("Arcana", s)),
+        "athletics" => skills.get("athletics").map(|s| ("Athletics", s)),
+        "deception" => skills.get("deception").map(|s| ("Deception", s)),
+        "history" => skills.get("history").map(|s| ("History", s)),
+        "insight" => skills.get("insight").map(|s| ("Insight", s)),
+        "intimidation" => skills.get("intimidation").map(|s| ("Intimidation", s)),
+        "investigation" => skills.get("investigation").map(|s| ("Investigation", s)),
+        "medicine" => skills.get("medicine").map(|s| ("Medicine", s)),
+        "nature" => skills.get("nature").map(|s| ("Nature", s)),
+        "perception" => skills.get("perception").map(|s| ("Perception", s)),
+        "performance" => skills.get("performance").map(|s| ("Performance", s)),
+        "persuasion" => skills.get("persuasion").map(|s| ("Persuasion", s)),
+        "religion" => skills.get("religion").map(|s| ("Religion", s)),
+        "sleightofhand" | "sleight" => skills.get("sleightOfHand").map(|s| ("Sleight of Hand", s)),
+        "stealth" => skills.get("stealth").map(|s| ("Stealth", s)),
+        "survival" => skills.get("survival").map(|s| ("Survival", s)),
         _ => None,
     }
 }
 
-fn display_stats(character: &Character) {
+fn display_stats(character: &dndgamerolls::dice3d::types::CharacterSheet) {
     let info = &character.character;
     println!("\n{}", "═══════════════════════════════════════".cyan());
     println!("{}", "CHARACTER STATS".bold().yellow());
@@ -1344,12 +1423,9 @@ fn display_stats(character: &Character) {
         "Initiative:".bold(),
         character.combat.initiative
     );
-    println!(
-        "  {} {}/{}",
-        "HP:".bold(),
-        character.combat.hit_points.current,
-        character.combat.hit_points.maximum
-    );
+    if let Some(hp) = character.combat.hit_points.as_ref() {
+        println!("  {} {}/{}", "HP:".bold(), hp.current, hp.maximum);
+    }
     println!(
         "  {} {:+}",
         "Proficiency Bonus:".bold(),
@@ -1357,14 +1433,16 @@ fn display_stats(character: &Character) {
     );
 
     println!("\n{}", "WEAPONS".bold().yellow());
-    for weapon in &character.equipment.weapons {
-        println!(
-            "  {} {:+} to hit, {} {}",
-            weapon.name.bold(),
-            weapon.attack_bonus,
-            weapon.damage,
-            weapon.damage_type.dimmed()
-        );
+    if let Some(equipment) = character.equipment.as_ref() {
+        for weapon in &equipment.weapons {
+            println!(
+                "  {} {:+} to hit, {} {}",
+                weapon.name.bold(),
+                weapon.attack_bonus,
+                weapon.damage,
+                weapon.damage_type.dimmed()
+            );
+        }
     }
 
     println!("{}", "═══════════════════════════════════════".cyan());

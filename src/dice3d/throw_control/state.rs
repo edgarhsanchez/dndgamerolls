@@ -8,10 +8,20 @@ use bevy::prelude::*;
 /// The box is centered at origin with walls at these positions
 // NOTE: These should match the geometry spawned in `dice3d::systems::setup`.
 // Floor is a 4x4 cuboid centered at (0, -0.15, 0) with height 0.3, so the top surface is y=0.0.
-pub const BOX_MIN_X: f32 = -2.0;
-pub const BOX_MAX_X: f32 = 2.0;
-pub const BOX_MIN_Z: f32 = -2.0;
-pub const BOX_MAX_Z: f32 = 2.0;
+/// The original (baseline) box half-extent the game was tuned for.
+pub const ORIGINAL_BOX_HALF_EXTENT: f32 = 2.0;
+
+/// Half-extent of the box container in world units (box footprint is 2*extent by 2*extent).
+/// Increase this to make the box larger.
+pub const BOX_HALF_EXTENT: f32 = 3.5;
+
+/// Radius of the cup container in world units.
+pub const CUP_RADIUS: f32 = 2.0;
+
+pub const BOX_MIN_X: f32 = -BOX_HALF_EXTENT;
+pub const BOX_MAX_X: f32 = BOX_HALF_EXTENT;
+pub const BOX_MIN_Z: f32 = -BOX_HALF_EXTENT;
+pub const BOX_MAX_Z: f32 = BOX_HALF_EXTENT;
 pub const BOX_FLOOR_Y: f32 = 0.0;
 pub const BOX_WALL_HEIGHT: f32 = 1.5;
 pub const BOX_TOP_Y: f32 = BOX_FLOOR_Y + BOX_WALL_HEIGHT;
@@ -104,7 +114,7 @@ impl ThrowControlState {
     /// Calculate strength based on distance from box center
     pub fn calculate_strength_from_distance(target: Vec3) -> f32 {
         let distance = Vec2::new(target.x, target.z).length();
-        let max_distance = 2.0; // Half the box width
+        let max_distance = BOX_HALF_EXTENT.max(0.0001);
         (distance / max_distance).clamp(0.0, 1.0)
     }
 }
@@ -126,7 +136,9 @@ mod tests {
         assert!(ThrowControlState::is_point_in_box(Vec3::new(0.0, 0.0, 0.0)));
         assert!(ThrowControlState::is_point_in_box(Vec3::new(1.0, 0.0, 1.0)));
         assert!(!ThrowControlState::is_point_in_box(Vec3::new(
-            2.1, 0.0, 0.0
+            BOX_MAX_X + 0.1,
+            0.0,
+            0.0
         )));
     }
 
@@ -138,7 +150,7 @@ mod tests {
         assert_eq!(clamped.y, BOX_FLOOR_Y);
         assert_eq!(clamped.z, 0.5);
 
-        let outside = Vec3::new(3.0, 0.0, -3.0);
+        let outside = Vec3::new(BOX_MAX_X + 1.0, 0.0, BOX_MIN_Z - 1.0);
         let clamped = ThrowControlState::clamp_to_box_floor(outside);
         assert_eq!(clamped.x, BOX_MAX_X);
         assert_eq!(clamped.z, BOX_MIN_Z);

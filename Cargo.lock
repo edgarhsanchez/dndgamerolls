@@ -3215,7 +3215,7 @@ dependencies = [
 
 [[package]]
 name = "dndgamerolls"
-version = "0.2.17"
+version = "0.2.18"
 dependencies = [
  "base64 0.22.1",
  "bevy",

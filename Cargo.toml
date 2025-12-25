@@ -3,7 +3,7 @@ members = [".", "crates/dndgamerolls-cli"]
 
 [package]
 name = "dndgamerolls"
-version = "0.2.17"
+version = "0.2.18"
 edition = "2021"
 authors = ["Edgar Sanchez <esanchez@m2iab.com>"]
 description = "DnD Game Rolls - D&D dice roller with CLI and 3D visualization using Bevy"

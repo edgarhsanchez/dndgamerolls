@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_material_ui::prelude::SliderChangeEvent;
 
 use crate::dice3d::types::DiceContainerStyle;
-use crate::dice3d::types::{ContainerShakeAnimation, SettingsState};
+use crate::dice3d::types::{ContainerShakeAnimation, SettingsState, UiPointerCapture};
 
 fn ray_intersects_aabb(ray_origin: Vec3, ray_dir: Vec3, aabb_min: Vec3, aabb_max: Vec3) -> bool {
     // Slab method.
@@ -58,6 +58,7 @@ pub fn update_throw_from_mouse(
     command_input: Res<crate::dice3d::types::CommandInput>,
     ui_state: Res<crate::dice3d::types::UiState>,
     settings_state: Res<crate::dice3d::types::SettingsState>,
+    ui_pointer_capture: Res<UiPointerCapture>,
     container_style: Res<DiceContainerStyle>,
 ) {
     // Don't update when in command input mode or not on dice roller tab
@@ -67,6 +68,12 @@ pub fn update_throw_from_mouse(
 
     // Modal dialog open: treat as not hovering the box.
     if settings_state.show_modal {
+        throw_state.mouse_over_box = false;
+        return;
+    }
+
+    // UI is capturing pointer: prevent click-through into the 3D box.
+    if ui_pointer_capture.mouse_captured {
         throw_state.mouse_over_box = false;
         return;
     }

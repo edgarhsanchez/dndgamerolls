@@ -15,6 +15,43 @@ use super::dice_box_controls::start_container_shake;
 
 use super::setup::{calculate_dice_position, spawn_die};
 
+/// Update `UiPointerCapture` so 3D input systems can avoid click-through.
+pub fn update_ui_pointer_capture(
+    ui_state: Res<UiState>,
+    settings_state: Res<crate::dice3d::types::SettingsState>,
+    mut capture: ResMut<UiPointerCapture>,
+    interactions: Query<&Interaction>,
+    slider_group_drag: Query<&SliderGroupDragState>,
+    quick_roll_drag: Query<&QuickRollPanelDragState>,
+    history_drag: Query<&CommandHistoryPanelDragState>,
+    results_drag: Query<&ResultsPanelDragState>,
+    box_controls_drag: Query<&DiceBoxControlsPanelDragState>,
+) {
+    // Only relevant on the dice roller tab.
+    if ui_state.active_tab != AppTab::DiceRoller {
+        capture.mouse_captured = false;
+        return;
+    }
+
+    // Modal already blocks world interaction; treat as captured.
+    if settings_state.show_modal {
+        capture.mouse_captured = true;
+        return;
+    }
+
+    let any_dragging = slider_group_drag.iter().any(|s| s.dragging)
+        || quick_roll_drag.iter().any(|s| s.dragging)
+        || history_drag.iter().any(|s| s.dragging)
+        || results_drag.iter().any(|s| s.dragging)
+        || box_controls_drag.iter().any(|s| s.dragging);
+
+    let any_ui_interaction = interactions
+        .iter()
+        .any(|i| *i == Interaction::Hovered || *i == Interaction::Pressed);
+
+    capture.mouse_captured = any_dragging || any_ui_interaction;
+}
+
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct CommandInputParams<'w, 's> {
     pub commands: Commands<'w, 's>,

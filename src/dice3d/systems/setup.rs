@@ -320,6 +320,8 @@ pub fn setup(
                 BackgroundColor(theme.surface_container),
                 BorderRadius::all(Val::Px(12.0)),
                 ZIndex(14),
+                Interaction::None,
+                FocusPolicy::Block,
                 DiceRollerRoot,
                 DiceBoxControlsPanelRoot,
                 DiceBoxControlsPanelDragState::default(),
@@ -511,6 +513,8 @@ pub fn setup(
                 ResultsPanelDragState::default(),
                 BackgroundColor(theme.surface_container_highest),
                 BorderRadius::all(Val::Px(12.0)),
+                Interaction::None,
+                FocusPolicy::Block,
             ))
             .with_children(|panel| {
                 // Drag handle
@@ -569,6 +573,8 @@ pub fn setup(
             },
             ZIndex(10),
             DiceRollerRoot,
+            Interaction::None,
+            FocusPolicy::Block,
         ))
         .with_children(|parent| {
             parent
@@ -615,6 +621,8 @@ pub fn setup(
                 DiceRollerRoot,
                 CommandHistoryPanelRoot,
                 CommandHistoryPanelDragState::default(),
+                Interaction::None,
+                FocusPolicy::Block,
             ))
             .with_children(|panel| {
                 // Drag handle
@@ -716,6 +724,8 @@ pub fn setup(
                 DiceRollerRoot,
                 SliderGroupRoot,
                 SliderGroupDragState::default(),
+                Interaction::None,
+                FocusPolicy::Block,
             ))
             .with_children(|panel| {
                 // Drag handle
@@ -1353,6 +1363,8 @@ pub fn spawn_quick_roll_panel(
             QuickRollPanel,
             QuickRollPanelDragState::default(),
             DiceRollerRoot,
+            Interaction::None,
+            FocusPolicy::Block,
         ))
         .with_children(|parent| {
             // Drag handle

@@ -138,6 +138,7 @@ use dndgamerolls::dice3d::{
     update_tab_styles,
     update_tab_visibility,
     update_throw_arrow,
+    update_ui_pointer_capture,
     update_throw_from_mouse,
     // Character sheet tab systems
     handle_sheet_tab_clicks,
@@ -171,6 +172,7 @@ use dndgamerolls::dice3d::{
 };
 
 use dndgamerolls::dice3d::types::database::CharacterDatabase;
+use dndgamerolls::dice3d::types::ui::UiPointerCapture;
 
 /// DnD Game Rolls - CLI and 3D Visualization
 #[derive(Parser)]
@@ -523,6 +525,7 @@ fn run_3d_mode(cli: Cli) {
         .insert_resource(AddingEntryState::default())
         .insert_resource(SettingsState::default())
         .insert_resource(CharacterScreenRollBridge::default())
+        .insert_resource(UiPointerCapture::default())
         .insert_resource(ThrowControlState::default())
         .insert_resource(DiceSpawnPoints::default())
         .insert_resource(DiceSpawnPointsApplied::default())
@@ -575,6 +578,13 @@ fn run_3d_mode(cli: Cli) {
                 handle_shake_slider_changes,
                 update_throw_arrow,
             ),
+        )
+        .add_systems(
+            Update,
+            update_ui_pointer_capture
+                .before(handle_input)
+                .before(update_throw_from_mouse)
+                .before(update_dice_box_highlight),
         )
         .add_systems(Update, ensure_dice_box_lid_animation_assets)
         .add_systems(

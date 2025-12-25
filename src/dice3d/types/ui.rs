@@ -35,6 +35,15 @@ pub struct UiState {
     pub show_save_confirmation: bool,
 }
 
+/// Tracks whether the UI is currently capturing the mouse pointer.
+///
+/// Used to prevent "click-through" into the 3D scene while interacting with
+/// draggable panels and other UI overlays.
+#[derive(Resource, Default)]
+pub struct UiPointerCapture {
+    pub mouse_captured: bool,
+}
+
 /// Which field is currently being edited
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EditingField {

@@ -54,12 +54,28 @@ pub const DICE_FX_EXPLOSION_SFX_PATH: &str = concat!(
     "/sounds/fx_explosion.mp3"
 );
 
+pub const DICE_FX_FIRE_SFX_ASSET_PATH: &str =
+    concat!(env!("CARGO_PKG_NAME"), "/sounds/fx_fire.mp3");
+pub const DICE_FX_FIRE_SFX_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/sounds/fx_fire.mp3"
+);
+
 pub const DICE_FX_FIREWORKS_SFX_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/sounds/fx_fireworks.mp3");
 pub const DICE_FX_FIREWORKS_SFX_PATH: &str = concat!(
     "embedded://",
     env!("CARGO_PKG_NAME"),
     "/sounds/fx_fireworks.mp3"
+);
+
+pub const DICE_FX_PLASMABALL_SFX_ASSET_PATH: &str =
+    concat!(env!("CARGO_PKG_NAME"), "/sounds/fx_plasmaball.mp3");
+pub const DICE_FX_PLASMABALL_SFX_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/sounds/fx_plasmaball.mp3"
 );
 
 // -----------------------------------------------------------------------------
@@ -177,11 +193,25 @@ impl Plugin for Dice3dEmbeddedAssetsPlugin {
             include_bytes!("../../assets/sounds/fx_explosion.mp3"),
         );
 
+        let asset_path = Path::new(env!("CARGO_PKG_NAME")).join("sounds/fx_fire.mp3");
+        registry.insert_asset(
+            PathBuf::from("assets/sounds/fx_fire.mp3"),
+            &asset_path,
+            include_bytes!("../../assets/sounds/fx_fire.mp3"),
+        );
+
         let asset_path = Path::new(env!("CARGO_PKG_NAME")).join("sounds/fx_fireworks.mp3");
         registry.insert_asset(
             PathBuf::from("assets/sounds/fx_fireworks.mp3"),
             &asset_path,
             include_bytes!("../../assets/sounds/fx_fireworks.mp3"),
+        );
+
+        let asset_path = Path::new(env!("CARGO_PKG_NAME")).join("sounds/fx_plasmaball.mp3");
+        registry.insert_asset(
+            PathBuf::from("assets/sounds/fx_plasmaball.mp3"),
+            &asset_path,
+            include_bytes!("../../assets/sounds/fx_plasmaball.mp3"),
         );
 
         // -----------------------------------------------------------------

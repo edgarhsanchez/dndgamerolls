@@ -29,6 +29,8 @@ pub struct DiceFxState {
     pub fire: bool,
     pub electric: bool,
 
+    pub plasma: bool,
+
     pub fireworks: bool,
     pub explosion: bool,
 

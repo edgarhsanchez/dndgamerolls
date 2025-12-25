@@ -510,6 +510,7 @@ fn make_electric_wander_fx() -> EffectAsset {
     let module = w.finish();
 
     EffectAsset::new(14000, SpawnerSettings::rate(520.0.into()), module)
+        .with_simulation_space(SimulationSpace::Local)
         .with_name("dice_electric_wander")
         .init(SetPositionSphereModifier {
             center,
@@ -542,16 +543,17 @@ fn make_electric_bolt_fx() -> EffectAsset {
     color.add_key(1.0, Vec4::new(0.0, 0.0, 0.0, 0.0));
 
     let mut size = bevy_hanabi::Gradient::new();
-    // Small points which read as a jagged bolt when densely distributed.
-    size.add_key(0.0, Vec3::splat(0.018));
-    size.add_key(1.0, Vec3::splat(0.010));
+    // Long, very thin segments. We keep the streaks narrow so multiple kinks don't
+    // read as a thick "tube".
+    size.add_key(0.0, Vec3::new(0.0028, 0.22, 0.0028));
+    size.add_key(1.0, Vec3::new(0.0018, 0.12, 0.0018));
 
     let w = ExprWriter::new();
 
-    // Position in a thin "column" with y in [0..1]. The effect entity's transform scales this
-    // into world-space bolt length.
-    let x = w.rand(ScalarType::Float).mul(w.lit(0.08)).sub(w.lit(0.04));
-    let z = w.rand(ScalarType::Float).mul(w.lit(0.08)).sub(w.lit(0.04));
+    // Position in a very tight "column" with y in [0..1]. The effect entity's transform scales
+    // this into world-space bolt length.
+    let x = w.rand(ScalarType::Float).mul(w.lit(0.012)).sub(w.lit(0.006));
+    let z = w.rand(ScalarType::Float).mul(w.lit(0.012)).sub(w.lit(0.006));
     let y = w.rand(ScalarType::Float);
     let pos = w
         .lit(Vec3::X)
@@ -559,13 +561,21 @@ fn make_electric_bolt_fx() -> EffectAsset {
         .add(w.lit(Vec3::Y).mul(y))
         .add(w.lit(Vec3::Z).mul(z));
 
-    // Very short flash.
-    let lifetime = w.lit(0.05).add(w.rand(ScalarType::Float).mul(w.lit(0.07)));
+    // Short flash (actual lifetime is also gated by entity despawn timer).
+    let lifetime = w.lit(0.05).add(w.rand(ScalarType::Float).mul(w.lit(0.10)));
+
+    // Motion integration support: initialize velocity.
+    // Keep it zero to preserve the current “static streak column” look.
+    let vel = w.lit(Vec3::ZERO);
     let module = w.finish();
 
-    EffectAsset::new(4096, SpawnerSettings::once(1400.0.into()), module)
+    // Keep per-instance particle count moderate; jaggedness is produced by spawning multiple
+    // kinked segments, not by filling a huge volume.
+    EffectAsset::new(4096, SpawnerSettings::once(650.0.into()), module)
+        .with_simulation_space(SimulationSpace::Local)
         .with_name("dice_electric_bolt")
         .init(SetAttributeModifier::new(Attribute::POSITION, pos.expr()))
+        .init(SetAttributeModifier::new(Attribute::VELOCITY, vel.expr()))
         .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
         .render(ColorOverLifetimeModifier::new(color))
         .render(SizeOverLifetimeModifier {
@@ -576,24 +586,27 @@ fn make_electric_bolt_fx() -> EffectAsset {
 
 fn make_plasma_core_fx() -> EffectAsset {
     let mut color = bevy_hanabi::Gradient::new();
-    // HDR purple/blue core glow.
-    color.add_key(0.0, Vec4::new(8.0, 2.0, 10.0, 0.95));
-    color.add_key(0.7, Vec4::new(4.0, 1.2, 8.0, 0.65));
+    // HDR magenta/blue plasma core glow.
+    // Start hot (near-white with magenta bias), then fade into deep purple.
+    color.add_key(0.0, Vec4::new(28.0, 10.0, 36.0, 0.95));
+    color.add_key(0.35, Vec4::new(14.0, 4.0, 30.0, 0.80));
+    color.add_key(0.75, Vec4::new(6.0, 1.8, 18.0, 0.55));
     color.add_key(1.0, Vec4::new(0.0, 0.0, 0.0, 0.0));
 
     let mut size = bevy_hanabi::Gradient::new();
-    size.add_key(0.0, Vec3::splat(0.05));
-    size.add_key(1.0, Vec3::splat(0.02));
+    size.add_key(0.0, Vec3::splat(0.040));
+    size.add_key(0.65, Vec3::splat(0.030));
+    size.add_key(1.0, Vec3::splat(0.018));
 
     let w = ExprWriter::new();
-    let lifetime = w.lit(0.18).add(w.rand(ScalarType::Float).mul(w.lit(0.18)));
+    let lifetime = w.lit(0.14).add(w.rand(ScalarType::Float).mul(w.lit(0.22)));
     let center = w.lit(Vec3::ZERO).expr();
-    let radius = w.lit(0.10).expr();
-    let speed = w.lit(0.4).add(w.rand(ScalarType::Float).mul(w.lit(0.6)));
-    let drag = w.lit(3.0).expr();
+    let radius = w.lit(0.075).expr();
+    let speed = w.lit(0.55).add(w.rand(ScalarType::Float).mul(w.lit(1.10)));
+    let drag = w.lit(4.5).expr();
     let module = w.finish();
 
-    EffectAsset::new(4096, SpawnerSettings::rate(220.0.into()), module)
+    EffectAsset::new(4096, SpawnerSettings::rate(260.0.into()), module)
         .with_name("dice_plasma_core")
         .init(SetPositionSphereModifier {
             center,
@@ -615,36 +628,49 @@ fn make_plasma_core_fx() -> EffectAsset {
 
 fn make_plasma_filaments_fx() -> EffectAsset {
     let mut color = bevy_hanabi::Gradient::new();
-    // Bright pink filaments which fade quickly.
-    color.add_key(0.0, Vec4::new(14.0, 2.0, 12.0, 1.0));
-    color.add_key(0.5, Vec4::new(8.0, 1.5, 10.0, 0.85));
+    // Filaments: HDR magenta/violet streaks.
+    color.add_key(0.0, Vec4::new(38.0, 10.0, 46.0, 1.0));
+    color.add_key(0.35, Vec4::new(18.0, 4.0, 40.0, 0.90));
+    color.add_key(0.70, Vec4::new(8.0, 2.0, 24.0, 0.55));
     color.add_key(1.0, Vec4::new(0.0, 0.0, 0.0, 0.0));
 
     let mut size = bevy_hanabi::Gradient::new();
-    size.add_key(0.0, Vec3::splat(0.03));
-    size.add_key(1.0, Vec3::splat(0.01));
+    // Long thin streaks; we rely on OrientMode::AlongVelocity.
+    size.add_key(0.0, Vec3::new(0.0036, 0.16, 0.0036));
+    size.add_key(1.0, Vec3::new(0.0018, 0.06, 0.0018));
 
     let w = ExprWriter::new();
     let center = w.lit(Vec3::ZERO).expr();
-    let radius = w.lit(0.22).expr();
+    let radius = w.lit(0.18).expr();
 
-    // Tangential speed in [1.8:6.5]
+    // Tangential speed in [3.0:11.0]
     let speed = w
-        .lit(1.8)
-        .add(w.rand(ScalarType::Float).mul(w.lit(4.7)));
+        .lit(3.0)
+        .add(w.rand(ScalarType::Float).mul(w.lit(8.0)));
 
-    // Lifetime in [0.10:0.28]
+    // Flickery short lifetime in [0.06:0.22]
     let lifetime = w
-        .lit(0.10)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.18)));
+        .lit(0.06)
+        .add(w.rand(ScalarType::Float).mul(w.lit(0.16)));
 
-    let drag = w.lit(5.5).expr();
+    let drag = w.lit(7.5).expr();
     let origin = w.lit(Vec3::ZERO).expr();
-    let axis = w.lit(Vec3::Y).expr();
+
+    // Randomize swirl axis per particle so the filaments look like arcing plasma
+    // rather than a uniform ring.
+    let ax = w.rand(ScalarType::Float).mul(w.lit(2.0)).sub(w.lit(1.0));
+    let ay = w.rand(ScalarType::Float).mul(w.lit(2.0)).sub(w.lit(1.0));
+    let az = w.rand(ScalarType::Float).mul(w.lit(2.0)).sub(w.lit(1.0));
+    let axis = w
+        .lit(Vec3::X)
+        .mul(ax)
+        .add(w.lit(Vec3::Y).mul(ay))
+        .add(w.lit(Vec3::Z).mul(az))
+        .expr();
 
     let module = w.finish();
 
-    EffectAsset::new(12000, SpawnerSettings::rate(520.0.into()), module)
+    EffectAsset::new(14000, SpawnerSettings::rate(720.0.into()), module)
         .with_name("dice_plasma_filaments")
         .init(SetPositionSphereModifier {
             center,

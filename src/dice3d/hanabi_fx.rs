@@ -23,7 +23,10 @@ pub struct DiceHanabiFxInstance {
     pub kind: DiceRollFxKind,
 }
 
-pub fn init_dice_hanabi_fx_assets(mut commands: Commands, mut effects: ResMut<Assets<EffectAsset>>) {
+pub fn init_dice_hanabi_fx_assets(
+    mut commands: Commands,
+    mut effects: ResMut<Assets<EffectAsset>>,
+) {
     let fire_core = effects.add(make_fire_core_fx());
     let fire_sparks_small = effects.add(make_fire_sparks_small_fx());
     let fire_sparks_large = effects.add(make_fire_sparks_large_fx());
@@ -51,7 +54,10 @@ pub fn init_dice_hanabi_fx_assets(mut commands: Commands, mut effects: ResMut<As
     });
 }
 
-pub fn fx_handles_for_kind(assets: &DiceHanabiFxAssets, kind: DiceRollFxKind) -> Vec<Handle<EffectAsset>> {
+pub fn fx_handles_for_kind(
+    assets: &DiceHanabiFxAssets,
+    kind: DiceRollFxKind,
+) -> Vec<Handle<EffectAsset>> {
     match kind {
         DiceRollFxKind::None => vec![],
         DiceRollFxKind::Fire => vec![
@@ -61,7 +67,9 @@ pub fn fx_handles_for_kind(assets: &DiceHanabiFxAssets, kind: DiceRollFxKind) ->
             assets.fire_smoke.clone(),
         ],
         DiceRollFxKind::Electricity => vec![assets.electricity.clone()],
-        DiceRollFxKind::Fireworks => vec![assets.fireworks_rocket.clone(), assets.fireworks.clone()],
+        DiceRollFxKind::Fireworks => {
+            vec![assets.fireworks_rocket.clone(), assets.fireworks.clone()]
+        }
         DiceRollFxKind::Explosion => vec![assets.explosion.clone()],
         DiceRollFxKind::Plasma => vec![assets.plasma_core.clone(), assets.plasma_filaments.clone()],
     }
@@ -86,14 +94,10 @@ fn make_fire_core_fx() -> EffectAsset {
     let radius = w.lit(0.10).expr();
 
     // Lifetime in [0.30:0.80]
-    let lifetime = w
-        .lit(0.30)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.50)));
+    let lifetime = w.lit(0.30).add(w.rand(ScalarType::Float).mul(w.lit(0.50)));
 
     // Speed in [0.9:2.6]
-    let speed = w
-        .lit(0.90)
-        .add(w.rand(ScalarType::Float).mul(w.lit(1.70)));
+    let speed = w.lit(0.90).add(w.rand(ScalarType::Float).mul(w.lit(1.70)));
 
     // Use a sphere velocity from a point slightly below the die so the
     // resulting direction is biased upward.
@@ -117,7 +121,10 @@ fn make_fire_core_fx() -> EffectAsset {
             center: vel_center,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(AccelModifier::new(accel))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
@@ -147,14 +154,10 @@ fn make_fire_sparks_small_fx() -> EffectAsset {
     let radius = w.lit(0.08).expr();
 
     // Lifetime in [0.18:0.55]
-    let lifetime = w
-        .lit(0.18)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.37)));
+    let lifetime = w.lit(0.18).add(w.rand(ScalarType::Float).mul(w.lit(0.37)));
 
     // Speed in [1.6:5.8]
-    let speed = w
-        .lit(1.6)
-        .add(w.rand(ScalarType::Float).mul(w.lit(4.2)));
+    let speed = w.lit(1.6).add(w.rand(ScalarType::Float).mul(w.lit(4.2)));
 
     // Bias velocity upward.
     let vel_center = w.lit(Vec3::new(0.0, -0.12, 0.0)).expr();
@@ -175,7 +178,10 @@ fn make_fire_sparks_small_fx() -> EffectAsset {
             center: vel_center,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(AccelModifier::new(accel))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
@@ -205,14 +211,10 @@ fn make_fire_sparks_large_fx() -> EffectAsset {
     let radius = w.lit(0.11).expr();
 
     // Lifetime in [0.20:0.60]
-    let lifetime = w
-        .lit(0.20)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.40)));
+    let lifetime = w.lit(0.20).add(w.rand(ScalarType::Float).mul(w.lit(0.40)));
 
     // Speed in [1.2:3.6]
-    let speed = w
-        .lit(1.2)
-        .add(w.rand(ScalarType::Float).mul(w.lit(2.4)));
+    let speed = w.lit(1.2).add(w.rand(ScalarType::Float).mul(w.lit(2.4)));
 
     let vel_center = w.lit(Vec3::new(0.0, -0.10, 0.0)).expr();
     let accel = w.lit(Vec3::new(0.0, 2.0, 0.0)).expr();
@@ -232,7 +234,10 @@ fn make_fire_sparks_large_fx() -> EffectAsset {
             center: vel_center,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(AccelModifier::new(accel))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
@@ -261,14 +266,10 @@ fn make_fire_smoke_fx() -> EffectAsset {
     let radius = w.lit(0.18).expr();
 
     // Lifetime in [1.2:2.2]
-    let lifetime = w
-        .lit(1.2)
-        .add(w.rand(ScalarType::Float).mul(w.lit(1.0)));
+    let lifetime = w.lit(1.2).add(w.rand(ScalarType::Float).mul(w.lit(1.0)));
 
     // Slow rise, little drift.
-    let speed = w
-        .lit(0.25)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.45)));
+    let speed = w.lit(0.25).add(w.rand(ScalarType::Float).mul(w.lit(0.45)));
     let vel_center = w.lit(Vec3::new(0.0, -0.08, 0.0)).expr();
     let accel = w.lit(Vec3::new(0.0, 0.55, 0.0)).expr();
     let drag = w.lit(1.0).expr();
@@ -287,7 +288,10 @@ fn make_fire_smoke_fx() -> EffectAsset {
             center: vel_center,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(AccelModifier::new(accel))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
@@ -324,14 +328,10 @@ fn make_fireworks_fx() -> EffectAsset {
         .add(w.lit(Vec3::Z).mul(z));
 
     // Speed in [3.0:8.5]
-    let speed = w
-        .lit(3.0)
-        .add(w.rand(ScalarType::Float).mul(w.lit(5.5)));
+    let speed = w.lit(3.0).add(w.rand(ScalarType::Float).mul(w.lit(5.5)));
 
     // Lifetime in [0.75:1.35]
-    let lifetime = w
-        .lit(0.75)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.60)));
+    let lifetime = w.lit(0.75).add(w.rand(ScalarType::Float).mul(w.lit(0.60)));
 
     let gravity = w.lit(Vec3::new(0.0, -8.5, 0.0)).expr();
     let drag = w.lit(1.0).expr();
@@ -346,7 +346,10 @@ fn make_fireworks_fx() -> EffectAsset {
             center: zero,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(AccelModifier::new(gravity))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
@@ -385,9 +388,7 @@ fn make_fireworks_rocket_fx() -> EffectAsset {
         .add(w.lit(Vec3::Z).mul(vz));
 
     // Lifetime in [0.35:0.70]
-    let lifetime = w
-        .lit(0.35)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.35)));
+    let lifetime = w.lit(0.35).add(w.rand(ScalarType::Float).mul(w.lit(0.35)));
 
     let gravity = w.lit(Vec3::new(0.0, -5.0, 0.0)).expr();
     let drag = w.lit(0.8).expr();
@@ -401,7 +402,10 @@ fn make_fireworks_rocket_fx() -> EffectAsset {
             dimension: ShapeDimension::Volume,
         })
         .init(SetAttributeModifier::new(Attribute::VELOCITY, vel.expr()))
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(AccelModifier::new(gravity))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
@@ -428,14 +432,10 @@ fn make_explosion_fx() -> EffectAsset {
     let radius = w.lit(0.02).expr();
 
     // Speed in [4.0:10.0]
-    let speed = w
-        .lit(4.0)
-        .add(w.rand(ScalarType::Float).mul(w.lit(6.0)));
+    let speed = w.lit(4.0).add(w.rand(ScalarType::Float).mul(w.lit(6.0)));
 
     // Lifetime in [0.25:0.75]
-    let lifetime = w
-        .lit(0.25)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.50)));
+    let lifetime = w.lit(0.25).add(w.rand(ScalarType::Float).mul(w.lit(0.50)));
 
     let gravity = w.lit(Vec3::new(0.0, -8.0, 0.0)).expr();
     let drag = w.lit(2.5).expr();
@@ -454,7 +454,10 @@ fn make_explosion_fx() -> EffectAsset {
             center: zero,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(AccelModifier::new(gravity))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
@@ -484,14 +487,10 @@ fn make_electric_wander_fx() -> EffectAsset {
     let radius = w.lit(0.22).expr();
 
     // Speed in [3.5:11.0]
-    let speed = w
-        .lit(3.5)
-        .add(w.rand(ScalarType::Float).mul(w.lit(7.5)));
+    let speed = w.lit(3.5).add(w.rand(ScalarType::Float).mul(w.lit(7.5)));
 
     // Lifetime in [0.06:0.16]
-    let lifetime = w
-        .lit(0.06)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.10)));
+    let lifetime = w.lit(0.06).add(w.rand(ScalarType::Float).mul(w.lit(0.10)));
 
     let drag = w.lit(8.5).expr();
     let origin = w.lit(Vec3::ZERO).expr();
@@ -522,7 +521,10 @@ fn make_electric_wander_fx() -> EffectAsset {
             axis,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
         .render(SizeOverLifetimeModifier {
@@ -552,8 +554,14 @@ fn make_electric_bolt_fx() -> EffectAsset {
 
     // Position in a very tight "column" with y in [0..1]. The effect entity's transform scales
     // this into world-space bolt length.
-    let x = w.rand(ScalarType::Float).mul(w.lit(0.012)).sub(w.lit(0.006));
-    let z = w.rand(ScalarType::Float).mul(w.lit(0.012)).sub(w.lit(0.006));
+    let x = w
+        .rand(ScalarType::Float)
+        .mul(w.lit(0.012))
+        .sub(w.lit(0.006));
+    let z = w
+        .rand(ScalarType::Float)
+        .mul(w.lit(0.012))
+        .sub(w.lit(0.006));
     let y = w.rand(ScalarType::Float);
     let pos = w
         .lit(Vec3::X)
@@ -576,7 +584,10 @@ fn make_electric_bolt_fx() -> EffectAsset {
         .with_name("dice_electric_bolt")
         .init(SetAttributeModifier::new(Attribute::POSITION, pos.expr()))
         .init(SetAttributeModifier::new(Attribute::VELOCITY, vel.expr()))
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .render(ColorOverLifetimeModifier::new(color))
         .render(SizeOverLifetimeModifier {
             gradient: size,
@@ -617,7 +628,10 @@ fn make_plasma_core_fx() -> EffectAsset {
             center,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
         .render(SizeOverLifetimeModifier {
@@ -644,14 +658,10 @@ fn make_plasma_filaments_fx() -> EffectAsset {
     let radius = w.lit(0.18).expr();
 
     // Tangential speed in [3.0:11.0]
-    let speed = w
-        .lit(3.0)
-        .add(w.rand(ScalarType::Float).mul(w.lit(8.0)));
+    let speed = w.lit(3.0).add(w.rand(ScalarType::Float).mul(w.lit(8.0)));
 
     // Flickery short lifetime in [0.06:0.22]
-    let lifetime = w
-        .lit(0.06)
-        .add(w.rand(ScalarType::Float).mul(w.lit(0.16)));
+    let lifetime = w.lit(0.06).add(w.rand(ScalarType::Float).mul(w.lit(0.16)));
 
     let drag = w.lit(7.5).expr();
     let origin = w.lit(Vec3::ZERO).expr();
@@ -682,7 +692,10 @@ fn make_plasma_filaments_fx() -> EffectAsset {
             axis,
             speed: speed.expr(),
         })
-        .init(SetAttributeModifier::new(Attribute::LIFETIME, lifetime.expr()))
+        .init(SetAttributeModifier::new(
+            Attribute::LIFETIME,
+            lifetime.expr(),
+        ))
         .update(LinearDragModifier::new(drag))
         .render(ColorOverLifetimeModifier::new(color))
         .render(SizeOverLifetimeModifier {

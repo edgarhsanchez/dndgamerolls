@@ -278,15 +278,15 @@ pub fn setup(
     let dice_to_spawn = &dice_config.dice_to_roll;
     let num_dice = dice_to_spawn.len();
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for (i, die_type) in dice_to_spawn.iter().enumerate() {
         let position = match *container_style {
             DiceContainerStyle::Box => calculate_dice_position(i, num_dice),
             DiceContainerStyle::Cup => {
                 // Spawn inside the cup and let gravity "drop" the dice.
                 let radius = 1.2;
-                let x = rng.gen_range(-radius..radius);
-                let z = rng.gen_range(-radius..radius);
+                let x = rng.random_range(-radius..radius);
+                let z = rng.random_range(-radius..radius);
                 Vec3::new(x, 1.25, z)
             }
         };
@@ -1202,20 +1202,20 @@ pub fn spawn_die(
         ..default()
     });
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let angular_vel = Vec3::new(
-        rng.gen_range(-8.0..8.0),
-        rng.gen_range(-8.0..8.0),
-        rng.gen_range(-8.0..8.0),
+        rng.random_range(-8.0..8.0),
+        rng.random_range(-8.0..8.0),
+        rng.random_range(-8.0..8.0),
     );
 
     let (mesh, collider, face_normals) = create_die_mesh_and_collider(die_type);
 
     let throw_vel = Vec3::new(
-        rng.gen_range(-1.5..1.5),
-        rng.gen_range(-0.5..0.0),
-        rng.gen_range(-1.5..1.5),
+        rng.random_range(-1.5..1.5),
+        rng.random_range(-0.5..0.0),
+        rng.random_range(-1.5..1.5),
     );
 
     let outline_material = materials.add(StandardMaterial {
@@ -1245,9 +1245,9 @@ pub fn spawn_die(
         Transform::from_translation(position)
             .with_rotation(Quat::from_euler(
                 EulerRot::XYZ,
-                rng.gen_range(0.0..std::f32::consts::TAU),
-                rng.gen_range(0.0..std::f32::consts::TAU),
-                rng.gen_range(0.0..std::f32::consts::TAU),
+                rng.random_range(0.0..std::f32::consts::TAU),
+                rng.random_range(0.0..std::f32::consts::TAU),
+                rng.random_range(0.0..std::f32::consts::TAU),
             ))
             .with_scale(Vec3::splat(corrected_scale)),
         RigidBody::Dynamic,

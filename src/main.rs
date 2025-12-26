@@ -14,23 +14,24 @@ use rand::Rng;
 
 use dndgamerolls::dice3d::{
     animate_container_shake,
+    apply_crystal_material_to_container_models,
     apply_dice_scale_settings_to_existing_dice,
     apply_editing_dice_scales_to_existing_dice_while_open,
-    apply_crystal_material_to_container_models,
     apply_initial_settings,
     apply_initial_shake_config,
     apply_spawn_points_to_dice_when_ready,
-    center_container_models_in_view,
     autosave_and_apply_shake_config,
     cache_dice_box_lid_animation_player,
+    center_container_models_in_view,
     check_dice_settled,
     collect_dice_spawn_points_from_gltf,
     drag_shake_curve_bezier_handle,
     drag_shake_curve_point,
-    ensure_dice_box_lid_animation_assets,
     ensure_buttons_have_interaction,
+    ensure_dice_box_lid_animation_assets,
     // Legacy SQLite -> SurrealDB conversion (character screen)
     finalize_sqlite_conversion_if_done,
+    fix_dice_scale_slider_thumb_hitbox,
     handle_character_list_clicks,
     handle_character_sheet_die_type_select_change,
     handle_character_sheet_settings_button_click,
@@ -38,13 +39,6 @@ use dndgamerolls::dice3d::{
     handle_character_sheet_settings_save_click,
     handle_color_slider_changes,
     handle_color_text_input,
-    handle_dice_scale_slider_changes,
-    handle_dice_fx_param_slider_changes,
-    handle_dice_roll_fx_mapping_select_change,
-    fix_dice_scale_slider_thumb_hitbox,
-    init_dice_scale_preview_render_target,
-    init_settings_ui_images,
-    manage_dice_scale_preview_scene,
     handle_command_history_item_clicks,
     handle_command_input,
     handle_default_roll_uses_shake_switch_change,
@@ -52,6 +46,9 @@ use dndgamerolls::dice3d::{
     handle_dice_box_rotate_click,
     handle_dice_box_shake_box_click,
     handle_dice_box_toggle_container_click,
+    handle_dice_fx_param_slider_changes,
+    handle_dice_roll_fx_mapping_select_change,
+    handle_dice_scale_slider_changes,
     handle_expertise_toggle,
     handle_group_add_click,
     handle_group_edit_toggle,
@@ -78,6 +75,8 @@ use dndgamerolls::dice3d::{
     handle_shake_curve_point_press,
     handle_shake_duration_text_input,
     handle_shake_slider_changes,
+    // Character sheet tab systems
+    handle_sheet_tab_clicks,
     handle_slider_group_drag,
     handle_sqlite_conversion_no_click,
     handle_sqlite_conversion_ok_click,
@@ -91,13 +90,16 @@ use dndgamerolls::dice3d::{
     init_character_manager,
     init_collision_sounds,
     init_contributors,
+    init_dice_scale_preview_render_target,
+    init_settings_ui_images,
     load_icons,
     load_settings_state_from_db,
     manage_character_sheet_settings_modal,
+    manage_dice_scale_preview_scene,
     manage_settings_modal,
+    open_lid_on_roll_completed,
     persist_settings_to_db,
     play_dice_container_collision_sfx,
-    open_lid_on_roll_completed,
     process_avatar_loads,
     process_pending_roll_with_lid,
     rebuild_character_list_on_change,
@@ -120,30 +122,28 @@ use dndgamerolls::dice3d::{
     sync_character_screen_roll_result_texts,
     sync_dice_container_mode_text,
     sync_dice_container_toggle_icon,
+    sync_dice_scale_preview_dice,
     sync_shake_curve_chip_ui,
     sync_shake_curve_graph_ui,
     tint_recent_theme_dropdown_items,
     update_avatar_images,
     update_character_list_modified_indicator,
     update_color_ui,
-    update_dice_scale_ui,
-    update_dice_fx_param_ui,
-    sync_dice_scale_preview_dice,
     update_dice_box_highlight,
+    update_dice_fx_param_ui,
+    update_dice_scale_ui,
     update_editing_display,
     update_new_entry_input_display,
     update_results_display,
     update_save_button_appearance,
+    update_sheet_tab_styles,
+    update_sheet_tab_visibility,
     update_sqlite_conversion_dialog_ui,
     update_tab_styles,
     update_tab_visibility,
     update_throw_arrow,
-    update_ui_pointer_capture,
     update_throw_from_mouse,
-    // Character sheet tab systems
-    handle_sheet_tab_clicks,
-    update_sheet_tab_styles,
-    update_sheet_tab_visibility,
+    update_ui_pointer_capture,
     AddingEntryState,
     AvatarLoader,
     CharacterData,
@@ -157,6 +157,7 @@ use dndgamerolls::dice3d::{
     DiceBoxLidAnimationController,
     DiceConfig,
     DiceContainerStyle,
+    DiceFxPlugin,
     DiceResults,
     DiceSpawnPoints,
     DiceSpawnPointsApplied,
@@ -167,7 +168,6 @@ use dndgamerolls::dice3d::{
     ShakeState,
     ThrowControlState,
     UiState,
-    DiceFxPlugin,
     ZoomState,
 };
 
@@ -501,7 +501,7 @@ fn run_3d_mode(cli: Cli) {
                     ..default()
                 }),
         )
-            .add_plugins(HanabiPlugin)
+        .add_plugins(HanabiPlugin)
         .add_plugins(bevy::pbr::MaterialPlugin::<DiceBoxHighlightMaterial>::default())
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(MaterialUiPlugin)
@@ -597,10 +597,7 @@ fn run_3d_mode(cli: Cli) {
                 .after(handle_input)
                 .after(handle_quick_roll_clicks),
         )
-        .add_systems(
-            Update,
-            open_lid_on_roll_completed.after(check_dice_settled),
-        )
+        .add_systems(Update, open_lid_on_roll_completed.after(check_dice_settled))
         .add_systems(Update, play_dice_container_collision_sfx)
         .add_systems(
             Update,
@@ -978,12 +975,12 @@ fn run_cli_dice_roll(cli: &Cli) {
     }
 
     // Roll the dice
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut results: Vec<(DiceType, u32)> = Vec::new();
     let mut total: i32 = 0;
 
     for die in &dice_to_roll {
-        let roll = rng.gen_range(1..=die.max_value());
+        let roll = rng.random_range(1..=die.max_value());
         results.push((*die, roll));
         total += roll as i32;
     }
@@ -991,7 +988,7 @@ fn run_cli_dice_roll(cli: &Cli) {
     // Handle advantage/disadvantage for d20 rolls
     if dice_to_roll.len() == 1 && dice_to_roll[0] == DiceType::D20 {
         if cli.advantage && !cli.disadvantage {
-            let roll2 = rng.gen_range(1..=20);
+            let roll2 = rng.random_range(1..=20);
             let roll1 = results[0].1;
             let used = roll1.max(roll2);
             let dropped = roll1.min(roll2);
@@ -1012,7 +1009,7 @@ fn run_cli_dice_roll(cli: &Cli) {
                 format!("[{}]", dropped).dimmed()
             );
         } else if cli.disadvantage && !cli.advantage {
-            let roll2 = rng.gen_range(1..=20);
+            let roll2 = rng.random_range(1..=20);
             let roll1 = results[0].1;
             let used = roll1.min(roll2);
             let dropped = roll1.max(roll2);
@@ -1118,7 +1115,7 @@ fn print_normal_roll(results: &[(DiceType, u32)], modifier_name: &str) {
 }
 
 fn roll_d20() -> i32 {
-    rand::thread_rng().gen_range(1..=20)
+    rand::rng().random_range(1..=20)
 }
 
 fn roll_with_advantage_disadvantage(advantage: bool, disadvantage: bool) -> (i32, Option<i32>) {

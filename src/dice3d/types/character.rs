@@ -342,15 +342,15 @@ impl CharacterData {
 
     /// Create a new default character with randomly rolled stats using d20s
     pub fn create_new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         // Roll d20 for each core attribute
-        let strength = rng.gen_range(1..=20);
-        let dexterity = rng.gen_range(1..=20);
-        let constitution = rng.gen_range(1..=20);
-        let intelligence = rng.gen_range(1..=20);
-        let wisdom = rng.gen_range(1..=20);
-        let charisma = rng.gen_range(1..=20);
+        let strength = rng.random_range(1..=20);
+        let dexterity = rng.random_range(1..=20);
+        let constitution = rng.random_range(1..=20);
+        let intelligence = rng.random_range(1..=20);
+        let wisdom = rng.random_range(1..=20);
+        let charisma = rng.random_range(1..=20);
 
         // Calculate modifiers from attributes (D&D formula: (score - 10) / 2)
         let str_mod = Attributes::calculate_modifier(strength);

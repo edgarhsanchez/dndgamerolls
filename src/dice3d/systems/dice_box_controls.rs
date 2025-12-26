@@ -708,20 +708,20 @@ pub fn handle_dice_box_toggle_container_click(
 
     // Re-drop dice into the middle of the new container style.
     // Put them above the floor so gravity drops them naturally.
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let spawn_radius = 0.30;
     for (mut transform, mut velocity) in dice_query.iter_mut() {
         transform.translation = Vec3::new(
-            rng.gen_range(-spawn_radius..spawn_radius),
+            rng.random_range(-spawn_radius..spawn_radius),
             1.25,
-            rng.gen_range(-spawn_radius..spawn_radius),
+            rng.random_range(-spawn_radius..spawn_radius),
         );
         // Give a small downward velocity so they're guaranteed to "re-drop".
         velocity.linvel = Vec3::new(0.0, -0.5, 0.0);
         velocity.angvel = Vec3::new(
-            rng.gen_range(-1.5..1.5),
-            rng.gen_range(-1.5..1.5),
-            rng.gen_range(-1.5..1.5),
+            rng.random_range(-1.5..1.5),
+            rng.random_range(-1.5..1.5),
+            rng.random_range(-1.5..1.5),
         );
     }
 }

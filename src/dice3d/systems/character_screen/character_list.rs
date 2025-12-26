@@ -367,10 +367,10 @@ pub fn handle_roll_all_stats_click(
 
         // Roll 4d6 drop lowest for each attribute
         use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let roll_4d6_drop_lowest = |rng: &mut rand::rngs::ThreadRng| {
-            let mut rolls: Vec<i32> = (0..4).map(|_| rng.gen_range(1..=6)).collect();
+            let mut rolls: Vec<i32> = (0..4).map(|_| rng.random_range(1..=6)).collect();
             rolls.sort();
             rolls.iter().skip(1).sum::<i32>()
         };

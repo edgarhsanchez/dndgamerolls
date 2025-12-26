@@ -246,7 +246,6 @@ pub fn build_dice_tab(
         TextColor(theme.on_surface_variant),
     ));
 
-
     // Sliders + preview side-by-side.
     parent
         .spawn(Node {
@@ -395,7 +394,11 @@ pub fn build_dice_tab(
         }
     }
 
-    fn editing_roll_fx_for(settings_state: &SettingsState, die_type: DiceType, value: u32) -> DiceRollFxKind {
+    fn editing_roll_fx_for(
+        settings_state: &SettingsState,
+        die_type: DiceType,
+        value: u32,
+    ) -> DiceRollFxKind {
         if value == 0 {
             return DiceRollFxKind::None;
         }
@@ -408,7 +411,14 @@ pub fn build_dice_tab(
             .unwrap_or(DiceRollFxKind::None)
     }
 
-    let dice_types = [DiceType::D4, DiceType::D6, DiceType::D8, DiceType::D10, DiceType::D12, DiceType::D20];
+    let dice_types = [
+        DiceType::D4,
+        DiceType::D6,
+        DiceType::D8,
+        DiceType::D10,
+        DiceType::D12,
+        DiceType::D20,
+    ];
     let options = fx_kind_options();
 
     for die_type in dice_types {
@@ -438,43 +448,43 @@ pub fn build_dice_tab(
             })
             .with_children(|wrap| {
                 for value in 1..=die_type.max_value() {
-                    let selected = kind_to_index(editing_roll_fx_for(settings_state, die_type, value));
+                    let selected =
+                        kind_to_index(editing_roll_fx_for(settings_state, die_type, value));
 
-                    wrap
-                        .spawn(Node {
-                            flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Center,
-                            column_gap: Val::Px(10.0),
-                            padding: UiRect::all(Val::Px(8.0)),
-                            ..default()
-                        })
-                        .with_children(|row| {
-                            row.spawn((
-                                Text::new(format!("{}:", value)),
-                                TextFont {
-                                    font_size: 12.0,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
+                    wrap.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(10.0),
+                        padding: UiRect::all(Val::Px(8.0)),
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        row.spawn((
+                            Text::new(format!("{}:", value)),
+                            TextFont {
+                                font_size: 12.0,
+                                ..default()
+                            },
+                            TextColor(theme.on_surface_variant),
+                        ));
 
-                            row.spawn((
-                                Node {
-                                    width: Val::Px(150.0),
-                                    height: Val::Px(32.0),
-                                    ..default()
-                                },
-                                DiceRollFxMappingSelect { die_type, value },
-                            ))
-                            .with_children(|slot| {
-                                let builder = SelectBuilder::new(options.clone())
-                                    .outlined()
-                                    .label("")
-                                    .selected(selected)
-                                    .width(Val::Px(150.0));
-                                slot.spawn_select_with(theme, builder);
-                            });
+                        row.spawn((
+                            Node {
+                                width: Val::Px(150.0),
+                                height: Val::Px(32.0),
+                                ..default()
+                            },
+                            DiceRollFxMappingSelect { die_type, value },
+                        ))
+                        .with_children(|slot| {
+                            let builder = SelectBuilder::new(options.clone())
+                                .outlined()
+                                .label("")
+                                .selected(selected)
+                                .width(Val::Px(150.0));
+                            slot.spawn_select_with(theme, builder);
                         });
+                    });
                 }
             });
     }

@@ -565,7 +565,10 @@ pub fn update_sheet_tab_styles(
 pub fn update_sheet_tab_visibility(
     selected_tab: Res<SelectedCharacterSheetTab>,
     mut content_query: Query<(&CharacterSheetTabContent, &mut Node), Without<ScrollableContent>>,
-    mut scrollable_query: Query<&mut Node, (With<ScrollableContent>, Without<CharacterSheetTabContent>)>,
+    mut scrollable_query: Query<
+        &mut Node,
+        (With<ScrollableContent>, Without<CharacterSheetTabContent>),
+    >,
 ) {
     if !selected_tab.is_changed() {
         return;

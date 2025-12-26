@@ -92,7 +92,11 @@ pub fn play_dice_container_collision_sfx(
                 continue;
             };
 
-            (primary, Some(other), (gt1.translation() + gt2.translation()) * 0.5)
+            (
+                primary,
+                Some(other),
+                (gt1.translation() + gt2.translation()) * 0.5,
+            )
         } else {
             continue;
         };
@@ -145,11 +149,7 @@ pub fn play_dice_container_collision_sfx(
             // Helps diagnose cases where the style is unexpectedly Cup (or vice versa).
             debug!(
                 "collision_sfx: variant={} die={:?} other_die={:?} strength={:.2} vol={:.2}",
-                _variant_name,
-                primary_die,
-                other_die,
-                strength,
-                volume
+                _variant_name, primary_die, other_die, strength, volume
             );
         }
 

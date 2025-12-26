@@ -64,7 +64,10 @@ impl DiceRollFxMapping {
     pub fn new(die_type: DiceType) -> Self {
         let mut effects_by_value = vec![DiceRollFxKind::None; (die_type.max_value() + 1) as usize];
         effects_by_value[0] = DiceRollFxKind::None;
-        Self { die_type, effects_by_value }
+        Self {
+            die_type,
+            effects_by_value,
+        }
     }
 
     pub fn get(&self, value: u32) -> DiceRollFxKind {
@@ -729,11 +732,16 @@ impl AppSettings {
     }
 
     pub fn ensure_roll_fx_mapping_mut(&mut self, die_type: DiceType) -> &mut DiceRollFxMapping {
-        if let Some(idx) = self.dice_roll_fx_mappings.iter().position(|m| m.die_type == die_type) {
+        if let Some(idx) = self
+            .dice_roll_fx_mappings
+            .iter()
+            .position(|m| m.die_type == die_type)
+        {
             self.dice_roll_fx_mappings[idx].normalize_len();
             return &mut self.dice_roll_fx_mappings[idx];
         }
-        self.dice_roll_fx_mappings.push(DiceRollFxMapping::new(die_type));
+        self.dice_roll_fx_mappings
+            .push(DiceRollFxMapping::new(die_type));
         let idx = self.dice_roll_fx_mappings.len() - 1;
         &mut self.dice_roll_fx_mappings[idx]
     }

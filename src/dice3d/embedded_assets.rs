@@ -56,11 +56,8 @@ pub const DICE_FX_EXPLOSION_SFX_PATH: &str = concat!(
 
 pub const DICE_FX_FIRE_SFX_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/sounds/fx_fire.mp3");
-pub const DICE_FX_FIRE_SFX_PATH: &str = concat!(
-    "embedded://",
-    env!("CARGO_PKG_NAME"),
-    "/sounds/fx_fire.mp3"
-);
+pub const DICE_FX_FIRE_SFX_PATH: &str =
+    concat!("embedded://", env!("CARGO_PKG_NAME"), "/sounds/fx_fire.mp3");
 
 pub const DICE_FX_FIREWORKS_SFX_ASSET_PATH: &str =
     concat!(env!("CARGO_PKG_NAME"), "/sounds/fx_fireworks.mp3");

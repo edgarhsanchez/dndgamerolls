@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
+use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
 use rand::prelude::IndexedRandom;
 use rand::Rng;
@@ -10,8 +10,8 @@ use crate::dice3d::embedded_assets::{
     DICE_FX_FIRE_SFX_PATH, DICE_FX_PLASMABALL_SFX_PATH,
 };
 use crate::dice3d::hanabi_fx::{fx_handles_for_kind, DiceHanabiFxAssets, DiceHanabiFxInstance};
-use crate::dice3d::types::*;
 use crate::dice3d::throw_control::{BOX_FLOOR_Y, BOX_HALF_EXTENT, BOX_TOP_Y, CUP_RADIUS};
+use crate::dice3d::types::*;
 
 #[derive(Component, Clone, Copy, Debug)]
 pub struct DiceFxOwner(pub Entity);
@@ -92,11 +92,7 @@ pub fn clear_dice_fx_on_roll_start(
         commands.entity(die_entity).remove::<DieLastRoll>();
         commands.entity(die_entity).remove::<ElectricBoltEmitter>();
 
-        despawn_all_fx_children(
-            &mut commands,
-            children,
-            &fx,
-        );
+        despawn_all_fx_children(&mut commands, children, &fx);
     }
 }
 
@@ -126,7 +122,9 @@ pub fn apply_dice_fx_from_roll_complete(
                 DiceRollFxKind::None => (false, false, false, false, false),
             };
 
-            commands.entity(r.entity).insert(DieLastRoll { value: r.value });
+            commands
+                .entity(r.entity)
+                .insert(DieLastRoll { value: r.value });
 
             if fire || electric || fireworks || explosion || plasma {
                 commands.entity(r.entity).insert(DiceFxState {
@@ -307,13 +305,16 @@ pub fn spawn_electric_bolts(
     hanabi_fx: Res<DiceHanabiFxAssets>,
     dice_box: Query<&GlobalTransform, With<DiceBox>>,
     dice_positions: Query<(Entity, &GlobalTransform), With<Die>>,
-    mut dice_emitters: Query<(
-        Entity,
-        &GlobalTransform,
-        &Die,
-        &DiceFxState,
-        Option<&mut ElectricBoltEmitter>,
-    ), With<Die>>,
+    mut dice_emitters: Query<
+        (
+            Entity,
+            &GlobalTransform,
+            &Die,
+            &DiceFxState,
+            Option<&mut ElectricBoltEmitter>,
+        ),
+        With<Die>,
+    >,
 ) {
     let now = time.elapsed_secs();
     let mut rng = rand::rng();
@@ -418,14 +419,12 @@ pub fn spawn_electric_bolts(
                 }
             } else if roll < 0.90 {
                 random_dir_target(rng)
+            } else if has_hidden {
+                *hidden_world.choose(rng).unwrap()
+            } else if has_other_dice {
+                *candidates.choose(rng).unwrap()
             } else {
-                if has_hidden {
-                    *hidden_world.choose(rng).unwrap()
-                } else if has_other_dice {
-                    *candidates.choose(rng).unwrap()
-                } else {
-                    random_dir_target(rng)
-                }
+                random_dir_target(rng)
             }
         };
 
@@ -480,7 +479,7 @@ pub fn spawn_electric_bolts(
             let sum_len: f32 = seg_lengths.iter().sum();
             if sum_len > 0.0 {
                 for l in &mut seg_lengths {
-                    *l = *l * (distance / sum_len);
+                    *l *= distance / sum_len;
                 }
             }
 
@@ -491,7 +490,10 @@ pub fn spawn_electric_bolts(
 
             for (i, seg_len) in seg_lengths.into_iter().enumerate() {
                 let base_rot = Quat::from_rotation_arc(Vec3::Y, seg_dir);
-                let twist = Quat::from_axis_angle(seg_dir, rng.random_range(-3.14..3.14));
+                let twist = Quat::from_axis_angle(
+                    seg_dir,
+                    rng.random_range(-std::f32::consts::PI..std::f32::consts::PI),
+                );
                 let seg_rot = base_rot * twist;
 
                 commands.entity(die_entity).with_children(|parent| {
@@ -543,9 +545,7 @@ pub fn spawn_electric_bolts(
 
 fn random_die_vertex_local(die_type: DiceType, rng: &mut rand::rngs::ThreadRng) -> Vec3 {
     let vertices = die_vertices_local(die_type);
-    *vertices
-        .choose(rng)
-        .unwrap_or(&Vec3::ZERO)
+    *vertices.choose(rng).unwrap_or(&Vec3::ZERO)
 }
 
 fn die_vertices_local(die_type: DiceType) -> Vec<Vec3> {
@@ -598,7 +598,11 @@ fn die_vertices_local(die_type: DiceType) -> Vec<Vec3> {
             vertices.push(bottom);
             for i in 0..5 {
                 let a = i as f32 * angle * 2.0;
-                vertices.push(Vec3::new(a.cos() * size * 0.7, size * 0.3, a.sin() * size * 0.7));
+                vertices.push(Vec3::new(
+                    a.cos() * size * 0.7,
+                    size * 0.3,
+                    a.sin() * size * 0.7,
+                ));
             }
             for i in 0..5 {
                 let a = (i as f32 + 0.5) * angle * 2.0;

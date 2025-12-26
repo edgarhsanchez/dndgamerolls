@@ -84,8 +84,11 @@ pub fn check_dice_settled(
 
         for (_, _, mut velocity, mut transform) in dice_query.iter_mut() {
             // Reset all dice to center with gentle drop
-            transform.translation =
-                Vec3::new(rng.random_range(-0.5..0.5), 0.3, rng.random_range(-0.5..0.5));
+            transform.translation = Vec3::new(
+                rng.random_range(-0.5..0.5),
+                0.3,
+                rng.random_range(-0.5..0.5),
+            );
             velocity.linvel = Vec3::new(0.0, -0.5, 0.0);
             velocity.angvel = Vec3::ZERO;
         }

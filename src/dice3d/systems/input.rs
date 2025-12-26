@@ -175,7 +175,7 @@ pub fn handle_input(
         roll_state.rolling = true;
         dice_results.results.clear();
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let num_dice = dice_config.dice_to_roll.len();
 
         let use_shake = settings_state.settings.default_roll_uses_shake;
@@ -189,15 +189,15 @@ pub fn handle_input(
             // (Keep it inside the box: the ceiling is at ~1.5.)
             transform.translation = position
                 + Vec3::new(
-                    rng.gen_range(-0.3..0.3),
-                    rng.gen_range(0.0..0.3),
-                    rng.gen_range(-0.3..0.3),
+                    rng.random_range(-0.3..0.3),
+                    rng.random_range(0.0..0.3),
+                    rng.random_range(-0.3..0.3),
                 );
             transform.rotation = Quat::from_euler(
                 EulerRot::XYZ,
-                rng.gen_range(0.0..std::f32::consts::TAU),
-                rng.gen_range(0.0..std::f32::consts::TAU),
-                rng.gen_range(0.0..std::f32::consts::TAU),
+                rng.random_range(0.0..std::f32::consts::TAU),
+                rng.random_range(0.0..std::f32::consts::TAU),
+                rng.random_range(0.0..std::f32::consts::TAU),
             );
 
             if use_shake {
@@ -208,9 +208,9 @@ pub fn handle_input(
                 // Use mouse-controlled throw direction with slight randomness
                 velocity.linvel = base_velocity
                     + Vec3::new(
-                        rng.gen_range(-0.5..0.5),
-                        rng.gen_range(-0.3..0.0),
-                        rng.gen_range(-0.5..0.5),
+                        rng.random_range(-0.5..0.5),
+                        rng.random_range(-0.3..0.0),
+                        rng.random_range(-0.5..0.5),
                     );
                 velocity.angvel = throw_state.calculate_angular_velocity(&mut rng);
             }
@@ -666,19 +666,19 @@ pub fn handle_quick_roll_clicks(
 
         let use_shake = params.settings_state.settings.default_roll_uses_shake;
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let base_velocity = params.throw_state.calculate_throw_velocity();
 
         let transform = Transform::from_translation(Vec3::new(
-            rng.gen_range(-0.5..0.5),
+            rng.random_range(-0.5..0.5),
             1.0,
-            rng.gen_range(-0.5..0.5),
+            rng.random_range(-0.5..0.5),
         ))
         .with_rotation(Quat::from_euler(
             EulerRot::XYZ,
-            rng.gen_range(0.0..std::f32::consts::TAU),
-            rng.gen_range(0.0..std::f32::consts::TAU),
-            rng.gen_range(0.0..std::f32::consts::TAU),
+            rng.random_range(0.0..std::f32::consts::TAU),
+            rng.random_range(0.0..std::f32::consts::TAU),
+            rng.random_range(0.0..std::f32::consts::TAU),
         ))
         .with_scale(Vec3::splat(die_scale));
 
@@ -691,9 +691,9 @@ pub fn handle_quick_roll_clicks(
             Velocity {
                 linvel: base_velocity
                     + Vec3::new(
-                        rng.gen_range(-0.5..0.5),
-                        rng.gen_range(-0.3..0.0),
-                        rng.gen_range(-0.5..0.5),
+                        rng.random_range(-0.5..0.5),
+                        rng.random_range(-0.3..0.0),
+                        rng.random_range(-0.5..0.5),
                     ),
                 angvel: params.throw_state.calculate_angular_velocity(&mut rng),
             }

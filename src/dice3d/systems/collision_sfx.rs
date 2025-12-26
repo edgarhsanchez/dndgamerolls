@@ -103,7 +103,7 @@ pub fn play_dice_container_collision_sfx(
             }
         }
 
-        let (sound, variant_gain, variant_name) = match *style {
+        let (sound, variant_gain, _variant_name) = match *style {
             // The wooden box sample tends to read quieter than the glass cup sample.
             DiceContainerStyle::Box => (sfx.box_.clone(), 2.2_f32, "box"),
             DiceContainerStyle::Cup => (sfx.cup.clone(), 1.6_f32, "cup"),
@@ -145,7 +145,7 @@ pub fn play_dice_container_collision_sfx(
             // Helps diagnose cases where the style is unexpectedly Cup (or vice versa).
             debug!(
                 "collision_sfx: variant={} die={:?} other_die={:?} strength={:.2} vol={:.2}",
-                variant_name,
+                _variant_name,
                 primary_die,
                 other_die,
                 strength,

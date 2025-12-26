@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
 use bevy_hanabi::prelude::*;
-use rand::seq::SliceRandom;
+use rand::prelude::IndexedRandom;
 use rand::Rng;
 
 use crate::dice3d::dice_fx::DiceFxRollingTracker;
@@ -113,7 +113,7 @@ pub fn apply_dice_fx_from_roll_complete(
         // FX should persist until the next roll.
         let duration = 0.0_f32;
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         for r in &event.results {
             let kind = settings_state.settings.roll_fx_for(r.die_type, r.value);
@@ -163,9 +163,9 @@ pub fn apply_dice_fx_from_roll_complete(
                 // Electricity also emits intermittent jagged bolts toward other dice / hidden targets.
                 if electric {
                     // Give each die a persistent cadence bias so bolts don't sync up.
-                    let rate_scale = rng.gen_range(0.55..1.85);
+                    let rate_scale = rng.random_range(0.55..1.85);
                     // Wide initial phase so dice don't start emitting at the same time.
-                    let next = started_at + rng.gen_range(0.05..1.25) * rate_scale;
+                    let next = started_at + rng.random_range(0.05..1.25) * rate_scale;
                     commands.entity(r.entity).insert(ElectricBoltEmitter {
                         next_shot_at: next,
                         rate_scale,
@@ -316,7 +316,7 @@ pub fn spawn_electric_bolts(
     ), With<Die>>,
 ) {
     let now = time.elapsed_secs();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let box_gt = dice_box.iter().next();
 
@@ -346,7 +346,7 @@ pub fn spawn_electric_bolts(
             // If we somehow missed inserting it, create it and let next frame handle.
             commands.entity(die_entity).insert(ElectricBoltEmitter {
                 next_shot_at: now + 0.20,
-                rate_scale: rng.gen_range(0.75..1.6),
+                rate_scale: rng.random_range(0.75..1.6),
             });
             continue;
         };
@@ -357,10 +357,10 @@ pub fn spawn_electric_bolts(
 
         // Randomize next time we shoot.
         // Mostly quick flickers, sometimes longer pauses.
-        emitter.next_shot_at = if rng.gen_bool(0.25) {
-            now + rng.gen_range(0.22..0.75)
+        emitter.next_shot_at = if rng.random_bool(0.25) {
+            now + rng.random_range(0.22..0.75)
         } else {
-            now + rng.gen_range(0.05..0.25)
+            now + rng.random_range(0.05..0.25)
         };
 
         let source_world = die_gt.translation();
@@ -373,10 +373,10 @@ pub fn spawn_electric_bolts(
 
         // Occasionally "fizzle" (no visible bolt) so the timing feels less periodic.
         // Still reschedule below.
-        let should_emit = !rng.gen_bool(0.22);
+        let should_emit = !rng.random_bool(0.22);
 
         // Spawn 2–6 overlapping bolts at a time.
-        let bolt_count = rng.gen_range(2..=6);
+        let bolt_count = rng.random_range(2..=6);
 
         // Helper: choose a direction/target per bolt.
         // - 70%: arc to other dice (when any exist)
@@ -394,19 +394,19 @@ pub fn spawn_electric_bolts(
             // Pure random direction (bias away from near-vertical so it doesn't read as "shooting up").
             let random_dir_target = |rng: &mut rand::rngs::ThreadRng| {
                 let mut d = Vec3::new(
-                    rng.gen_range(-1.0..1.0),
-                    rng.gen_range(-0.35..0.65),
-                    rng.gen_range(-1.0..1.0),
+                    rng.random_range(-1.0..1.0),
+                    rng.random_range(-0.35..0.65),
+                    rng.random_range(-1.0..1.0),
                 )
                 .normalize_or_zero();
                 if d == Vec3::ZERO {
                     d = Vec3::X;
                 }
-                let len = rng.gen_range(0.25..1.25);
+                let len = rng.random_range(0.25..1.25);
                 source_world + d * len
             };
 
-            let roll = rng.gen_range(0.0..1.0);
+            let roll = rng.random_range(0.0..1.0);
 
             if roll < 0.70 {
                 if has_other_dice {
@@ -431,15 +431,15 @@ pub fn spawn_electric_bolts(
 
         // Randomize next time we shoot.
         // Mix short jittery bursts with occasional long quiet gaps.
-        let base_dt = if rng.gen_bool(0.12) {
-            rng.gen_range(0.85..2.20)
-        } else if rng.gen_bool(0.35) {
-            rng.gen_range(0.20..0.85)
+        let base_dt = if rng.random_bool(0.12) {
+            rng.random_range(0.85..2.20)
+        } else if rng.random_bool(0.35) {
+            rng.random_range(0.20..0.85)
         } else {
-            rng.gen_range(0.04..0.32)
+            rng.random_range(0.04..0.32)
         };
         // Add extra randomness per event and apply a per-die cadence bias.
-        emitter.next_shot_at = now + base_dt * emitter.rate_scale * rng.gen_range(0.85..1.25);
+        emitter.next_shot_at = now + base_dt * emitter.rate_scale * rng.random_range(0.85..1.25);
 
         if !should_emit {
             continue;
@@ -457,17 +457,20 @@ pub fn spawn_electric_bolts(
 
             // Randomize bolt length so not every arc reaches its target exactly.
             // Keep it within a sane range so it still reads as "between dice".
-            let distance = (base_distance * rng.gen_range(0.65..1.15)).clamp(0.12, 2.0);
+            let distance = (base_distance * rng.random_range(0.65..1.15)).clamp(0.12, 2.0);
 
             // Convert direction into die-local space so we can spawn as child.
-            let local_dir = (die_rot_world.inverse() * world_dir).normalize_or_zero();
+            let local_dir_world_to_local: Vec3 = die_rot_world.inverse() * world_dir;
+            let local_dir = local_dir_world_to_local.normalize_or_zero();
             if local_dir == Vec3::ZERO {
                 continue;
             }
 
             // Kinked bolt: chain 2–4 segments, each rotated a bit differently.
-            let segment_count = rng.gen_range(2..=4);
-            let weights: Vec<f32> = (0..segment_count).map(|_| rng.gen_range(0.6..1.4)).collect();
+            let segment_count = rng.random_range(2..=4);
+            let weights: Vec<f32> = (0..segment_count)
+                .map(|_| rng.random_range(0.6..1.4))
+                .collect();
             let sum_w: f32 = weights.iter().sum();
             let mut seg_lengths: Vec<f32> = weights
                 .into_iter()
@@ -481,14 +484,14 @@ pub fn spawn_electric_bolts(
                 }
             }
 
-            let ttl = rng.gen_range(0.12..0.42);
+            let ttl = rng.random_range(0.12..0.42);
 
             let mut seg_dir = local_dir;
             let mut seg_origin = origin_local;
 
             for (i, seg_len) in seg_lengths.into_iter().enumerate() {
                 let base_rot = Quat::from_rotation_arc(Vec3::Y, seg_dir);
-                let twist = Quat::from_axis_angle(seg_dir, rng.gen_range(-3.14..3.14));
+                let twist = Quat::from_axis_angle(seg_dir, rng.random_range(-3.14..3.14));
                 let seg_rot = base_rot * twist;
 
                 commands.entity(die_entity).with_children(|parent| {
@@ -513,9 +516,9 @@ pub fn spawn_electric_bolts(
                 // Change direction for the next segment (kink), except after the last.
                 if i + 1 < segment_count {
                     let mut axis = Vec3::new(
-                        rng.gen_range(-1.0..1.0),
-                        rng.gen_range(-1.0..1.0),
-                        rng.gen_range(-1.0..1.0),
+                        rng.random_range(-1.0..1.0),
+                        rng.random_range(-1.0..1.0),
+                        rng.random_range(-1.0..1.0),
                     )
                     .normalize_or_zero();
                     if axis == Vec3::ZERO {
@@ -526,8 +529,9 @@ pub fn spawn_electric_bolts(
                         axis = seg_dir.any_orthonormal_vector();
                     }
 
-                    let kink = rng.gen_range(-0.95..0.95); // ~55 degrees
-                    seg_dir = (Quat::from_axis_angle(axis, kink) * seg_dir).normalize_or_zero();
+                    let kink = rng.random_range(-0.95..0.95); // ~55 degrees
+                    let kinked_dir: Vec3 = Quat::from_axis_angle(axis, kink) * seg_dir;
+                    seg_dir = kinked_dir.normalize_or_zero();
                     if seg_dir == Vec3::ZERO {
                         seg_dir = local_dir;
                     }

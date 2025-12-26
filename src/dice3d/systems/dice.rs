@@ -46,21 +46,25 @@ pub fn check_dice_settled(
 
         if is_out_of_bounds {
             // Reset dice to center of box with random position
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             use rand::Rng;
 
             transform.translation = Vec3::new(
-                rng.gen_range(-0.5..0.5),
+                rng.random_range(-0.5..0.5),
                 0.5, // Above the floor
-                rng.gen_range(-0.5..0.5),
+                rng.random_range(-0.5..0.5),
             );
 
             // Give it a gentle downward velocity
-            velocity.linvel = Vec3::new(rng.gen_range(-0.5..0.5), -1.0, rng.gen_range(-0.5..0.5));
+            velocity.linvel = Vec3::new(
+                rng.random_range(-0.5..0.5),
+                -1.0,
+                rng.random_range(-0.5..0.5),
+            );
             velocity.angvel = Vec3::new(
-                rng.gen_range(-2.0..2.0),
-                rng.gen_range(-2.0..2.0),
-                rng.gen_range(-2.0..2.0),
+                rng.random_range(-2.0..2.0),
+                rng.random_range(-2.0..2.0),
+                rng.random_range(-2.0..2.0),
             );
 
             any_reset = true;
@@ -75,13 +79,13 @@ pub fn check_dice_settled(
 
     // Check for timeout - if rolling too long, force dice to drop into box
     if roll_state.roll_timer > MAX_ROLL_TIME {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         use rand::Rng;
 
         for (_, _, mut velocity, mut transform) in dice_query.iter_mut() {
             // Reset all dice to center with gentle drop
             transform.translation =
-                Vec3::new(rng.gen_range(-0.5..0.5), 0.3, rng.gen_range(-0.5..0.5));
+                Vec3::new(rng.random_range(-0.5..0.5), 0.3, rng.random_range(-0.5..0.5));
             velocity.linvel = Vec3::new(0.0, -0.5, 0.0);
             velocity.angvel = Vec3::ZERO;
         }

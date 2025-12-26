@@ -503,12 +503,12 @@ fn run_dice_roll(cli: &Cli) {
     }
 
     // Roll the dice
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut results: Vec<(DiceType, u32)> = Vec::new();
     let mut total: i32 = 0;
 
     for die in &dice_to_roll {
-        let roll = rng.gen_range(1..=die.max_value());
+        let roll = rng.random_range(1..=die.max_value());
         results.push((*die, roll));
         total += roll as i32;
     }
@@ -516,7 +516,7 @@ fn run_dice_roll(cli: &Cli) {
     // Handle advantage/disadvantage for d20 rolls
     if dice_to_roll.len() == 1 && dice_to_roll[0] == DiceType::D20 {
         if cli.advantage && !cli.disadvantage {
-            let roll2 = rng.gen_range(1..=20);
+            let roll2 = rng.random_range(1..=20);
             let roll1 = results[0].1;
             let used = roll1.max(roll2);
             let dropped = roll1.min(roll2);
@@ -537,7 +537,7 @@ fn run_dice_roll(cli: &Cli) {
                 format!("[{}]", dropped).dimmed()
             );
         } else if cli.disadvantage && !cli.advantage {
-            let roll2 = rng.gen_range(1..=20);
+            let roll2 = rng.random_range(1..=20);
             let roll1 = results[0].1;
             let used = roll1.min(roll2);
             let dropped = roll1.max(roll2);
@@ -637,7 +637,7 @@ fn print_normal_roll(results: &[(DiceType, u32)], modifier_name: &str) {
 }
 
 fn roll_d20() -> i32 {
-    rand::thread_rng().gen_range(1..=20)
+    rand::rng().random_range(1..=20)
 }
 
 fn roll_with_advantage_disadvantage(advantage: bool, disadvantage: bool) -> (i32, Option<i32>) {

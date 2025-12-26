@@ -637,18 +637,13 @@ pub struct ContainerShakeAnimation {
 #[derive(Component)]
 pub struct DiceBoxVisualSceneRoot;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum DiceBoxLidState {
     Closed,
+    #[default]
     Open,
     Closing,
     Opening,
-}
-
-impl Default for DiceBoxLidState {
-    fn default() -> Self {
-        Self::Open
-    }
 }
 
 #[derive(Debug, Clone)]

@@ -17,9 +17,10 @@ use super::ui::{
 // Dice Roll FX Mapping (hardcoded effects, no customization)
 // ============================================================================
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiceRollFxKind {
     #[serde(rename = "none")]
+    #[default]
     None,
     #[serde(rename = "fire")]
     Fire,
@@ -31,12 +32,6 @@ pub enum DiceRollFxKind {
     Explosion,
     #[serde(rename = "plasma")]
     Plasma,
-}
-
-impl Default for DiceRollFxKind {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl DiceRollFxKind {
@@ -223,7 +218,7 @@ impl ShakeConfigSetting {
 }
 
 /// Dice type setting
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DiceTypeSetting {
     #[serde(rename = "d4")]
     D4,
@@ -236,13 +231,8 @@ pub enum DiceTypeSetting {
     #[serde(rename = "d12")]
     D12,
     #[serde(rename = "d20")]
+    #[default]
     D20,
-}
-
-impl Default for DiceTypeSetting {
-    fn default() -> Self {
-        Self::D20
-    }
 }
 
 impl DiceTypeSetting {

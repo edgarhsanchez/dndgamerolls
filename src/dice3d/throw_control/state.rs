@@ -91,9 +91,9 @@ impl ThrowControlState {
         let spin_factor = strength * 3.0;
 
         Vec3::new(
-            rng.gen_range(-spin_factor..spin_factor),
-            rng.gen_range(-spin_factor..spin_factor),
-            rng.gen_range(-spin_factor..spin_factor),
+            rng.random_range(-spin_factor..spin_factor),
+            rng.random_range(-spin_factor..spin_factor),
+            rng.random_range(-spin_factor..spin_factor),
         )
     }
 

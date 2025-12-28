@@ -2,12 +2,12 @@
 //!
 //! This module contains systems for the settings button, modal, and color picker.
 
+use bevy::camera::visibility::RenderLayers;
+use bevy::camera::RenderTarget;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
-use bevy::ui::{ComputedUiTargetCamera, UiGlobalTransform};
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
-use bevy::camera::RenderTarget;
-use bevy::camera::visibility::RenderLayers;
+use bevy::ui::{ComputedUiTargetCamera, UiGlobalTransform};
 
 use bevy::window::PrimaryWindow;
 use bevy_material_ui::prelude::*;
@@ -214,8 +214,7 @@ pub fn manage_dice_scale_preview_scene(
                     target: RenderTarget::Image(preview_target.image.clone().into()),
                     ..default()
                 },
-                Transform::from_xyz(0.0, 5.5, 10.5)
-                    .looking_at(Vec3::new(0.0, 1.3, 0.0), Vec3::Y),
+                Transform::from_xyz(0.0, 5.5, 10.5).looking_at(Vec3::new(0.0, 1.3, 0.0), Vec3::Y),
                 preview_layer.clone(),
             ))
             .id();
@@ -240,8 +239,12 @@ pub fn manage_dice_scale_preview_scene(
                 .spawn((
                     Mesh3d(mesh_handle),
                     MeshMaterial3d(material),
-                    Transform::from_xyz(x, 1.0, 0.0)
-                        .with_rotation(Quat::from_euler(EulerRot::XYZ, 0.6, 0.7, 0.0)),
+                    Transform::from_xyz(x, 1.0, 0.0).with_rotation(Quat::from_euler(
+                        EulerRot::XYZ,
+                        0.6,
+                        0.7,
+                        0.0,
+                    )),
                     DiceScalePreviewDie { die_type },
                     preview_layer.clone(),
                 ))
@@ -849,10 +852,13 @@ pub(crate) fn spawn_dice_scale_slider(
                 ..default()
             })
             .with_children(|slot| {
-                let slider = MaterialSlider::new(DiceScaleSettings::MIN_SCALE, DiceScaleSettings::MAX_SCALE)
-                    .with_value(value.clamp(DiceScaleSettings::MIN_SCALE, DiceScaleSettings::MAX_SCALE))
-                    .track_height(6.0)
-                    .thumb_radius(8.0);
+                let slider =
+                    MaterialSlider::new(DiceScaleSettings::MIN_SCALE, DiceScaleSettings::MAX_SCALE)
+                        .with_value(
+                            value.clamp(DiceScaleSettings::MIN_SCALE, DiceScaleSettings::MAX_SCALE),
+                        )
+                        .track_height(6.0)
+                        .thumb_radius(8.0);
                 spawn_slider_control_with(slot, theme, slider, DiceScaleSlider { die_type });
             });
 
@@ -905,7 +911,8 @@ pub fn handle_settings_button_click(
         settings_state.editing_dice_roll_fx_mappings =
             settings_state.settings.dice_roll_fx_mappings.clone();
 
-        settings_state.editing_dice_fx_surface_opacity = settings_state.settings.dice_fx_surface_opacity;
+        settings_state.editing_dice_fx_surface_opacity =
+            settings_state.settings.dice_fx_surface_opacity;
         settings_state.editing_dice_fx_plume_height_multiplier =
             settings_state.settings.dice_fx_plume_height_multiplier;
         settings_state.editing_dice_fx_plume_radius_multiplier =
@@ -1041,12 +1048,15 @@ pub fn handle_settings_ok_click(
         settings_state.settings.dice_scales = settings_state.editing_dice_scales.clone();
 
         // Apply Dice FX visual parameters.
-        settings_state.settings.dice_fx_surface_opacity =
-            settings_state.editing_dice_fx_surface_opacity.clamp(0.0, 1.0);
-        settings_state.settings.dice_fx_plume_height_multiplier =
-            settings_state.editing_dice_fx_plume_height_multiplier.clamp(0.25, 3.0);
-        settings_state.settings.dice_fx_plume_radius_multiplier =
-            settings_state.editing_dice_fx_plume_radius_multiplier.clamp(0.25, 3.0);
+        settings_state.settings.dice_fx_surface_opacity = settings_state
+            .editing_dice_fx_surface_opacity
+            .clamp(0.0, 1.0);
+        settings_state.settings.dice_fx_plume_height_multiplier = settings_state
+            .editing_dice_fx_plume_height_multiplier
+            .clamp(0.25, 3.0);
+        settings_state.settings.dice_fx_plume_radius_multiplier = settings_state
+            .editing_dice_fx_plume_radius_multiplier
+            .clamp(0.25, 3.0);
 
         // Apply per-die/per-face Dice Roll FX mappings.
         let mut mappings = settings_state.editing_dice_roll_fx_mappings.clone();
@@ -1168,10 +1178,12 @@ pub fn handle_dice_fx_param_slider_changes(
                 settings_state.editing_dice_fx_surface_opacity = event.value.clamp(0.0, 1.0);
             }
             DiceFxParamKind::PlumeHeight => {
-                settings_state.editing_dice_fx_plume_height_multiplier = event.value.clamp(0.25, 3.0);
+                settings_state.editing_dice_fx_plume_height_multiplier =
+                    event.value.clamp(0.25, 3.0);
             }
             DiceFxParamKind::PlumeRadius => {
-                settings_state.editing_dice_fx_plume_radius_multiplier = event.value.clamp(0.25, 3.0);
+                settings_state.editing_dice_fx_plume_radius_multiplier =
+                    event.value.clamp(0.25, 3.0);
             }
         }
     }
@@ -1244,7 +1256,10 @@ pub fn handle_dice_roll_fx_mapping_select_change(
         };
 
         let kind = parse_kind(value);
-        let mapping = ensure_mapping_mut(&mut settings_state.editing_dice_roll_fx_mappings, tag.die_type);
+        let mapping = ensure_mapping_mut(
+            &mut settings_state.editing_dice_roll_fx_mappings,
+            tag.die_type,
+        );
         mapping.set(tag.value, kind);
     }
 }
@@ -1272,9 +1287,7 @@ pub fn update_dice_scale_ui(
     }
 
     for (label, mut text) in label_query.iter_mut() {
-        let v = settings_state
-            .editing_dice_scales
-            .scale_for(label.die_type);
+        let v = settings_state.editing_dice_scales.scale_for(label.die_type);
         *text = Text::new(format!("{:.2}", v));
     }
 }
@@ -1297,9 +1310,15 @@ pub fn update_dice_fx_param_ui(
 
     for (slider, mut material_slider) in slider_query.iter_mut() {
         material_slider.value = match slider.kind {
-            DiceFxParamKind::SurfaceOpacity => settings_state.editing_dice_fx_surface_opacity.clamp(0.0, 1.0),
-            DiceFxParamKind::PlumeHeight => settings_state.editing_dice_fx_plume_height_multiplier.clamp(0.25, 3.0),
-            DiceFxParamKind::PlumeRadius => settings_state.editing_dice_fx_plume_radius_multiplier.clamp(0.25, 3.0),
+            DiceFxParamKind::SurfaceOpacity => settings_state
+                .editing_dice_fx_surface_opacity
+                .clamp(0.0, 1.0),
+            DiceFxParamKind::PlumeHeight => settings_state
+                .editing_dice_fx_plume_height_multiplier
+                .clamp(0.25, 3.0),
+            DiceFxParamKind::PlumeRadius => settings_state
+                .editing_dice_fx_plume_radius_multiplier
+                .clamp(0.25, 3.0),
         };
     }
 

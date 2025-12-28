@@ -476,7 +476,7 @@ pub fn process_pending_roll_with_lid(
                 exec.roll_state.rolling = true;
                 exec.dice_results.results.clear();
 
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 let num_dice = exec.dice_config.dice_to_roll.len();
 
                 let use_shake = exec.settings_state.settings.default_roll_uses_shake;
@@ -486,15 +486,15 @@ pub fn process_pending_roll_with_lid(
                     let position = calculate_dice_position(i, num_dice);
                     transform.translation = position
                         + Vec3::new(
-                            rng.gen_range(-0.3..0.3),
-                            rng.gen_range(0.0..0.3),
-                            rng.gen_range(-0.3..0.3),
+                            rng.random_range(-0.3..0.3),
+                            rng.random_range(0.0..0.3),
+                            rng.random_range(-0.3..0.3),
                         );
                     transform.rotation = Quat::from_euler(
                         EulerRot::XYZ,
-                        rng.gen_range(0.0..std::f32::consts::TAU),
-                        rng.gen_range(0.0..std::f32::consts::TAU),
-                        rng.gen_range(0.0..std::f32::consts::TAU),
+                        rng.random_range(0.0..std::f32::consts::TAU),
+                        rng.random_range(0.0..std::f32::consts::TAU),
+                        rng.random_range(0.0..std::f32::consts::TAU),
                     );
 
                     if use_shake {
@@ -503,9 +503,9 @@ pub fn process_pending_roll_with_lid(
                     } else {
                         velocity.linvel = base_velocity
                             + Vec3::new(
-                                rng.gen_range(-0.5..0.5),
-                                rng.gen_range(-0.3..0.0),
-                                rng.gen_range(-0.5..0.5),
+                                rng.random_range(-0.5..0.5),
+                                rng.random_range(-0.3..0.0),
+                                rng.random_range(-0.5..0.5),
                             );
                         velocity.angvel = exec.throw_state.calculate_angular_velocity(&mut rng);
                     }
@@ -566,19 +566,19 @@ pub fn process_pending_roll_with_lid(
                 );
 
                 let use_shake = exec.settings_state.settings.default_roll_uses_shake;
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 let base_velocity = exec.throw_state.calculate_throw_velocity();
 
                 let transform = Transform::from_translation(Vec3::new(
-                    rng.gen_range(-0.5..0.5),
+                    rng.random_range(-0.5..0.5),
                     1.0,
-                    rng.gen_range(-0.5..0.5),
+                    rng.random_range(-0.5..0.5),
                 ))
                 .with_rotation(Quat::from_euler(
                     EulerRot::XYZ,
-                    rng.gen_range(0.0..std::f32::consts::TAU),
-                    rng.gen_range(0.0..std::f32::consts::TAU),
-                    rng.gen_range(0.0..std::f32::consts::TAU),
+                    rng.random_range(0.0..std::f32::consts::TAU),
+                    rng.random_range(0.0..std::f32::consts::TAU),
+                    rng.random_range(0.0..std::f32::consts::TAU),
                 ))
                 .with_scale(Vec3::splat(die_scale));
 
@@ -591,9 +591,9 @@ pub fn process_pending_roll_with_lid(
                     Velocity {
                         linvel: base_velocity
                             + Vec3::new(
-                                rng.gen_range(-0.5..0.5),
-                                rng.gen_range(-0.3..0.0),
-                                rng.gen_range(-0.5..0.5),
+                                rng.random_range(-0.5..0.5),
+                                rng.random_range(-0.3..0.0),
+                                rng.random_range(-0.5..0.5),
                             ),
                         angvel: exec.throw_state.calculate_angular_velocity(&mut rng),
                     }

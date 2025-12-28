@@ -127,19 +127,19 @@ pub fn apply_spawn_points_to_dice_when_ready(
         return;
     }
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for (i, (mut transform, mut velocity)) in dice_query.iter_mut().enumerate() {
         let p = points[i % points.len()] + Vec3::Y * 0.15;
         transform.translation = p;
         velocity.linvel = Vec3::new(
-            rng.gen_range(-0.5..0.5),
-            rng.gen_range(-0.5..0.0),
-            rng.gen_range(-0.5..0.5),
+            rng.random_range(-0.5..0.5),
+            rng.random_range(-0.5..0.0),
+            rng.random_range(-0.5..0.5),
         );
         velocity.angvel = Vec3::new(
-            rng.gen_range(-1.5..1.5),
-            rng.gen_range(-1.5..1.5),
-            rng.gen_range(-1.5..1.5),
+            rng.random_range(-1.5..1.5),
+            rng.random_range(-1.5..1.5),
+            rng.random_range(-1.5..1.5),
         );
     }
 

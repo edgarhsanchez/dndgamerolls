@@ -2,7 +2,10 @@
 //!
 //! These tests validate that character data persists via SQLite only.
 
-use dndgamerolls::dice3d::types::character::{Attributes, CharacterData};
+use dndgamerolls::dice3d::types::character::{
+    Attributes, CharacterData, CharacterSheet, CustomIntField, CustomStringField, SavingThrow, Skill,
+};
+use std::collections::HashMap;
 use dndgamerolls::dice3d::types::database::CharacterDatabase;
 
 #[test]
@@ -87,15 +90,16 @@ fn test_get_skill_modifier() {
 
     if let Some(ref mut sheet) = char_data.sheet {
         // Add a skill with known modifier
-        sheet.skills.insert(
-            "stealth".to_string(),
-            dndgamerolls::dice3d::types::character::Skill {
-                proficient: true,
-                expertise: Some(false),
-                modifier: 5,
-                proficiency_type: None,
-            },
-        );
+        let skill = dndgamerolls::dice3d::types::character::Skill {
+            id: "test-stealth".to_string(),
+            name: "Stealth".to_string(),
+            slug: "stealth".to_string(),
+            proficient: true,
+            expertise: Some(false),
+            modifier: 5,
+            proficiency_type: None,
+        };
+        sheet.skills.insert(skill.id.clone(), skill);
     }
 
     let modifier = char_data.get_skill_modifier("stealth");
@@ -179,6 +183,125 @@ fn test_extreme_attribute_values() {
     assert_eq!(Attributes::calculate_modifier(0), -5); // (0-10)/2 = -10/2 = -5
     assert_eq!(Attributes::calculate_modifier(30), 10); // (30-10)/2 = 20/2 = 10
     assert_eq!(Attributes::calculate_modifier(100), 45); // (100-10)/2 = 90/2 = 45
+}
+
+// ============================================================================
+// Scenario 9: Migration to ID-keyed maps
+// ============================================================================
+
+#[test]
+fn test_migrate_legacy_name_keyed_maps_to_ids() {
+    // Legacy data keyed by display names with missing ids/slugs.
+    let mut sheet = CharacterSheet {
+        skills: HashMap::from([
+            (
+                "stealth".to_string(),
+                Skill {
+                    id: String::new(),
+                    name: String::new(),
+                    slug: String::new(),
+                    proficient: true,
+                    modifier: 4,
+                    expertise: Some(false),
+                    proficiency_type: None,
+                },
+            ),
+            (
+                "acrobatics".to_string(),
+                Skill {
+                    id: "fixed-id".to_string(),
+                    name: String::new(),
+                    slug: String::new(),
+                    proficient: false,
+                    modifier: 2,
+                    expertise: None,
+                    proficiency_type: None,
+                },
+            ),
+        ]),
+        saving_throws: HashMap::from([(
+            "strength".to_string(),
+            SavingThrow {
+                id: String::new(),
+                name: String::new(),
+                slug: String::new(),
+                proficient: true,
+                modifier: 3,
+            },
+        )]),
+        custom_basic_info: HashMap::from([(
+            "Nickname".to_string(),
+            CustomStringField {
+                id: String::new(),
+                name: String::new(),
+                value: "Rogue".to_string(),
+            },
+        )]),
+        custom_attributes: HashMap::from([(
+            "Grit".to_string(),
+            CustomIntField {
+                id: String::new(),
+                name: String::new(),
+                value: 7,
+            },
+        )]),
+        custom_combat: HashMap::from([(
+            "Parry".to_string(),
+            CustomStringField {
+                id: String::new(),
+                name: String::new(),
+                value: "+1 AC".to_string(),
+            },
+        )]),
+        ..Default::default()
+    };
+
+    sheet.migrate_to_ids();
+
+    // Skills: re-keyed by id, filled name/slug, values preserved.
+    assert_eq!(sheet.skills.len(), 2);
+    for skill in sheet.skills.values() {
+        assert!(!skill.id.is_empty(), "skill id should be populated");
+    }
+    let stealth = sheet
+        .skills
+        .values()
+        .find(|s| s.slug == "stealth")
+        .expect("stealth skill present");
+    assert_eq!(stealth.name, "stealth");
+    assert!(stealth.proficient);
+    assert_eq!(stealth.modifier, 4);
+
+    let acrobatics = sheet
+        .skills
+        .get("fixed-id")
+        .expect("existing id preserved and used as key");
+    assert_eq!(acrobatics.slug, "acrobatics");
+    assert_eq!(acrobatics.name, "acrobatics");
+
+    // Saving throws migrated similarly.
+    assert_eq!(sheet.saving_throws.len(), 1);
+    let (save_id, save) = sheet.saving_throws.iter().next().unwrap();
+    assert_eq!(save_id, &save.id);
+    assert!(!save.slug.is_empty());
+    assert_eq!(save.name, "strength");
+    assert!(save.proficient);
+
+    // Custom fields receive ids and keep values/names.
+    let basic = sheet.custom_basic_info.values().next().unwrap();
+    assert_eq!(basic.name, "Nickname");
+    assert_eq!(basic.value, "Rogue");
+    assert!(!basic.id.is_empty());
+
+    let custom_attr = sheet.custom_attributes.values().next().unwrap();
+    assert_eq!(custom_attr.name, "Grit");
+    assert_eq!(custom_attr.value, 7);
+    assert!(!custom_attr.id.is_empty());
+
+    let custom_combat = sheet.custom_combat.values().next().unwrap();
+    assert_eq!(custom_combat.name, "Parry");
+    assert_eq!(custom_combat.value, "+1 AC");
+    assert!(!custom_combat.id.is_empty());
 }
 
 // ============================================================================

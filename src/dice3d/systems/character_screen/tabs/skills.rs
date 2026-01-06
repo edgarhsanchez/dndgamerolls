@@ -56,12 +56,12 @@ pub fn spawn_skills_group(
             // Group header
             spawn_group_header(card, "Skills", group_type.clone(), edit_state, theme);
 
-            // Sort skills alphabetically
+            // Sort skills alphabetically by display name
             let mut skills: Vec<_> = sheet.skills.iter().collect();
-            skills.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+            skills.sort_by(|a, b| a.1.name.to_lowercase().cmp(&b.1.name.to_lowercase()));
 
-            for (skill_name, skill) in skills {
-                spawn_skill_row(card, skill_name, skill, is_editing, icon_assets, theme);
+            for (skill_id, skill) in skills {
+                spawn_skill_row(card, skill_id, skill, is_editing, icon_assets, theme);
             }
 
             // Add button (shown when editing)
@@ -74,18 +74,18 @@ pub fn spawn_skills_group(
 /// Spawn a single skill row
 fn spawn_skill_row(
     parent: &mut ChildSpawnerCommands,
-    skill_name: &str,
+    skill_id: &str,
     skill: &Skill,
     is_editing: bool,
     icon_assets: &IconAssets,
     theme: &MaterialTheme,
 ) {
     let dice_icon = icon_assets.icons.get(&IconType::Dice).cloned();
-    let skill_name_owned = skill_name.to_string();
-    let has_proficiency = skill.modifier != 0;
+    let skill_id_owned = skill_id.to_string();
+    let has_proficiency = skill.proficient || skill.expertise.unwrap_or(false);
 
-    // Convert camelCase to Title Case
-    let display_name = camel_to_title_case(skill_name);
+    // Convert name to Title Case-ish
+    let display_name = camel_to_title_case(&skill.name);
 
     parent
         .spawn((
@@ -97,7 +97,7 @@ fn spawn_skill_row(
                 ..default()
             },
             SkillRow {
-                skill_name: skill_name_owned.clone(),
+                skill_id: skill_id_owned.clone(),
             },
         ))
         .with_children(|row| {
@@ -120,7 +120,7 @@ fn spawn_skill_row(
                             .filled_tonal()
                             .build(theme),
                         RollSkillButton {
-                            skill: skill_name_owned.clone(),
+                            skill_id: skill_id_owned.clone(),
                         },
                     ))
                     .insert(Node {
@@ -165,6 +165,8 @@ fn spawn_skill_row(
                         align_items: AlignItems::Center,
                         ..default()
                     },
+                    Button,
+                    Interaction::None,
                     BackgroundColor(if has_proficiency {
                         MD3_SUCCESS
                     } else {
@@ -177,12 +179,12 @@ fn spawn_skill_row(
                     }),
                     BorderRadius::all(Val::Px(4.0)),
                     ProficiencyCheckbox {
-                        target: ProficiencyTarget::Skill(skill_name_owned.clone()),
+                        target: ProficiencyTarget::Skill(skill_id_owned.clone()),
                     },
                 ));
 
                 // Skill name
-                let label_field = EditingField::SkillLabel(skill_name_owned.clone());
+                let label_field = EditingField::SkillLabel(skill_id_owned.clone());
 
                 if is_editing {
                     // Editable label
@@ -193,7 +195,7 @@ fn spawn_skill_row(
                             .build(theme),
                         EditableLabelButton {
                             field: label_field.clone(),
-                            current_name: skill_name_owned.clone(),
+                            current_name: skill.name.clone(),
                         },
                     ))
                     .insert(Node {
@@ -245,7 +247,7 @@ fn spawn_skill_row(
                 } else {
                     skill.modifier.to_string()
                 };
-                let field = EditingField::Skill(skill_name_owned.clone());
+                let field = EditingField::Skill(skill_id_owned.clone());
 
                 right
                     .spawn((
@@ -286,7 +288,7 @@ fn spawn_skill_row(
                     },
                     TextColor(theme.on_surface_variant),
                     SkillRollResultText {
-                        skill: skill_name_owned.clone(),
+                        skill: skill_id_owned.clone(),
                     },
                 ));
 
@@ -295,7 +297,7 @@ fn spawn_skill_row(
                     spawn_delete_button(
                         right,
                         GroupType::Skills,
-                        &skill_name_owned,
+                        &skill_id_owned,
                         icon_assets,
                         theme,
                     );

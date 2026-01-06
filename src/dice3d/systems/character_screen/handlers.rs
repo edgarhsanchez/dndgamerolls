@@ -15,6 +15,7 @@ use pulldown_cmark::{Event as MdEvent, Parser, Tag, TagEnd};
 use super::*;
 use crate::dice3d::systems::dice_box_controls::start_container_shake;
 use crate::dice3d::types::*;
+use uuid::Uuid;
 
 // ============================================================================
 // UI Fixups
@@ -480,29 +481,48 @@ pub fn handle_new_entry_confirm(
         if !adding_state.new_entry_name.is_empty() {
             // Add the new entry to the character sheet
             if let Some(sheet) = &mut character_data.sheet {
+                let new_id = Uuid::now_v7().to_string();
                 match &button.group_type {
                     GroupType::BasicInfo => {
                         sheet.custom_basic_info.insert(
-                            adding_state.new_entry_name.clone(),
-                            adding_state.new_entry_value.clone(),
+                            new_id.clone(),
+                            CustomStringField {
+                                id: new_id,
+                                name: adding_state.new_entry_name.clone(),
+                                value: adding_state.new_entry_value.clone(),
+                            },
                         );
                     }
                     GroupType::Attributes => {
                         sheet.custom_attributes.insert(
-                            adding_state.new_entry_name.clone(),
-                            10, // Default attribute value
+                            new_id.clone(),
+                            CustomIntField {
+                                id: new_id,
+                                name: adding_state.new_entry_name.clone(),
+                                value: 10, // Default attribute value
+                            },
                         );
                     }
                     GroupType::Combat => {
                         sheet.custom_combat.insert(
-                            adding_state.new_entry_name.clone(),
-                            adding_state.new_entry_value.clone(),
+                            new_id.clone(),
+                            CustomStringField {
+                                id: new_id,
+                                name: adding_state.new_entry_name.clone(),
+                                value: adding_state.new_entry_value.clone(),
+                            },
                         );
                     }
                     GroupType::SavingThrows => {
                         sheet.saving_throws.insert(
-                            adding_state.new_entry_name.clone(),
+                            new_id.clone(),
                             SavingThrow {
+                                id: new_id,
+                                name: adding_state.new_entry_name.clone(),
+                                slug: adding_state
+                                    .new_entry_name
+                                    .to_lowercase()
+                                    .replace(|c: char| !c.is_alphanumeric(), ""),
                                 modifier: 0,
                                 proficient: false,
                             },
@@ -510,8 +530,14 @@ pub fn handle_new_entry_confirm(
                     }
                     GroupType::Skills => {
                         sheet.skills.insert(
-                            adding_state.new_entry_name.clone(),
+                            new_id.clone(),
                             Skill {
+                                id: new_id,
+                                name: adding_state.new_entry_name.clone(),
+                                slug: adding_state
+                                    .new_entry_name
+                                    .to_lowercase()
+                                    .replace(|c: char| !c.is_alphanumeric(), ""),
                                 modifier: 0,
                                 proficient: false,
                                 expertise: None,
@@ -791,21 +817,24 @@ pub fn handle_roll_attribute_click(
             continue;
         };
         if let Some(sheet) = &params.character_data.sheet {
-            // Get the modifier for this attribute
-            let modifier = match button.attribute.to_lowercase().as_str() {
-                "strength" => sheet.modifiers.strength,
-                "dexterity" => sheet.modifiers.dexterity,
-                "constitution" => sheet.modifiers.constitution,
-                "intelligence" => sheet.modifiers.intelligence,
-                "wisdom" => sheet.modifiers.wisdom,
-                "charisma" => sheet.modifiers.charisma,
+            // Get the modifier for this attribute and a display label
+            let (modifier, display_name) = match button.attribute.to_lowercase().as_str() {
+                "strength" => (sheet.modifiers.strength, "Strength".to_string()),
+                "dexterity" => (sheet.modifiers.dexterity, "Dexterity".to_string()),
+                "constitution" => (sheet.modifiers.constitution, "Constitution".to_string()),
+                "intelligence" => (sheet.modifiers.intelligence, "Intelligence".to_string()),
+                "wisdom" => (sheet.modifiers.wisdom, "Wisdom".to_string()),
+                "charisma" => (sheet.modifiers.charisma, "Charisma".to_string()),
                 _ => {
-                    // Check custom attributes
-                    sheet
-                        .custom_attributes
-                        .get(&button.attribute)
-                        .map(|&score| Attributes::calculate_modifier(score))
-                        .unwrap_or(0)
+                    // Check custom attributes (keyed by id)
+                    if let Some(attr) = sheet.custom_attributes.get(&button.attribute) {
+                        (
+                            Attributes::calculate_modifier(attr.value),
+                            attr.name.clone(),
+                        )
+                    } else {
+                        (0, button.attribute.clone())
+                    }
                 }
             };
 
@@ -844,7 +873,7 @@ pub fn handle_roll_attribute_click(
                 die_type,
                 die_scale,
                 modifier,
-                format!("{} Check", button.attribute),
+                format!("{} Check", display_name),
                 CharacterScreenRollTarget::Attribute(button.attribute.clone()),
             );
 
@@ -877,9 +906,15 @@ pub fn handle_roll_skill_click(
             continue;
         };
 
+        let skill_name = sheet
+            .skills
+            .get(&button.skill_id)
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| button.skill_id.clone());
+
         let modifier = sheet
             .skills
-            .get(&button.skill)
+            .get(&button.skill_id)
             .map(|s| s.modifier)
             .unwrap_or(0);
 
@@ -918,8 +953,8 @@ pub fn handle_roll_skill_click(
             die_type,
             die_scale,
             modifier,
-            format!("{} Skill", button.skill),
-            CharacterScreenRollTarget::Skill(button.skill.clone()),
+            format!("{} Skill", skill_name),
+            CharacterScreenRollTarget::Skill(button.skill_id.clone()),
         );
 
         params
@@ -1073,8 +1108,10 @@ pub fn record_character_screen_roll_on_settle(
                         sheet.modifiers.charisma = Attributes::calculate_modifier(dice_total);
                     }
                     _ => {
-                        // Custom attribute: store as a score.
-                        sheet.custom_attributes.insert(attr.clone(), dice_total);
+                        // Custom attribute keyed by id.
+                        if let Some(entry) = sheet.custom_attributes.get_mut(&attr) {
+                            entry.value = dice_total;
+                        }
                     }
                 }
 
@@ -1090,14 +1127,6 @@ pub fn record_character_screen_roll_on_settle(
             if let Some(sheet) = character_data.sheet.as_mut() {
                 if let Some(sk) = sheet.skills.get_mut(&skill) {
                     sk.modifier = dice_total;
-                } else {
-                    sheet.skills.insert(
-                        skill.clone(),
-                        Skill {
-                            modifier: dice_total,
-                            ..Default::default()
-                        },
-                    );
                 }
 
                 character_data.is_modified = true;
@@ -1431,9 +1460,45 @@ pub fn handle_expertise_toggle(
     for (interaction, checkbox) in interaction_query.iter() {
         if *interaction == Interaction::Pressed {
             if let Some(sheet) = &mut character_data.sheet {
-                if let Some(skill) = sheet.skills.get_mut(&checkbox.skill_name) {
+                if let Some(skill) = sheet.skills.get_mut(&checkbox.skill_id) {
                     // Toggle expertise: None/Some(false) -> Some(true), Some(true) -> Some(false)
                     skill.expertise = Some(!skill.expertise.unwrap_or(false));
+                    character_data.is_modified = true;
+                }
+            }
+        }
+    }
+}
+
+/// Handle proficiency toggle clicks for skills and saving throws
+pub fn handle_proficiency_toggle(
+    interaction_query: Query<(&Interaction, &ProficiencyCheckbox), Changed<Interaction>>,
+    mut character_data: ResMut<CharacterData>,
+    settings_state: Res<SettingsState>,
+) {
+    if settings_state.show_modal {
+        return;
+    }
+
+    for (interaction, checkbox) in interaction_query.iter() {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+
+        let Some(sheet) = &mut character_data.sheet else {
+            continue;
+        };
+
+        match &checkbox.target {
+            ProficiencyTarget::Skill(id) => {
+                if let Some(skill) = sheet.skills.get_mut(id) {
+                    skill.proficient = !skill.proficient;
+                    character_data.is_modified = true;
+                }
+            }
+            ProficiencyTarget::SavingThrow(id) => {
+                if let Some(save) = sheet.saving_throws.get_mut(id) {
+                    save.proficient = !save.proficient;
                     character_data.is_modified = true;
                 }
             }
@@ -1577,34 +1642,56 @@ fn get_field_value(character_data: &CharacterData, field: &EditingField) -> Stri
             .map(|hp| hp.maximum.to_string())
             .unwrap_or_default(),
         EditingField::ProficiencyBonus => format!("+{}", sheet.proficiency_bonus),
-        EditingField::Skill(name) => sheet
+        EditingField::Skill(id) => sheet
             .skills
-            .get(name)
+            .get(id)
             .map(|s| format_modifier(s.modifier))
             .unwrap_or_default(),
-        EditingField::SavingThrow(name) => sheet
+        EditingField::SavingThrow(id) => sheet
             .saving_throws
-            .get(name)
+            .get(id)
             .map(|s| format_modifier(s.modifier))
             .unwrap_or_default(),
-        EditingField::CustomBasicInfo(name) => sheet
+        EditingField::CustomBasicInfo(id) => sheet
             .custom_basic_info
-            .get(name)
-            .cloned()
+            .get(id)
+            .map(|v| v.value.clone())
             .unwrap_or_default(),
-        EditingField::CustomAttribute(name) => sheet
+        EditingField::CustomAttribute(id) => sheet
             .custom_attributes
-            .get(name)
-            .map(|v| v.to_string())
+            .get(id)
+            .map(|v| v.value.to_string())
             .unwrap_or_default(),
-        EditingField::CustomCombat(name) => {
-            sheet.custom_combat.get(name).cloned().unwrap_or_default()
-        }
-        EditingField::SkillLabel(name)
-        | EditingField::SavingThrowLabel(name)
-        | EditingField::CustomBasicInfoLabel(name)
-        | EditingField::CustomAttributeLabel(name)
-        | EditingField::CustomCombatLabel(name) => name.clone(),
+        EditingField::CustomCombat(id) => sheet
+            .custom_combat
+            .get(id)
+            .map(|v| v.value.clone())
+            .unwrap_or_default(),
+        EditingField::SkillLabel(id) => sheet
+            .skills
+            .get(id)
+            .map(|s| s.name.clone())
+            .unwrap_or_default(),
+        EditingField::SavingThrowLabel(id) => sheet
+            .saving_throws
+            .get(id)
+            .map(|s| s.name.clone())
+            .unwrap_or_default(),
+        EditingField::CustomBasicInfoLabel(id) => sheet
+            .custom_basic_info
+            .get(id)
+            .map(|v| v.name.clone())
+            .unwrap_or_default(),
+        EditingField::CustomAttributeLabel(id) => sheet
+            .custom_attributes
+            .get(id)
+            .map(|v| v.name.clone())
+            .unwrap_or_default(),
+        EditingField::CustomCombatLabel(id) => sheet
+            .custom_combat
+            .get(id)
+            .map(|v| v.name.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -1617,6 +1704,7 @@ fn apply_field_value(
 ) -> bool {
     let value = value.trim();
     let before = get_field_value(character_data, field);
+    let mut after_override: Option<String> = None;
 
     {
         let Some(sheet) = &mut character_data.sheet else {
@@ -1702,38 +1790,90 @@ fn apply_field_value(
                     sheet.proficiency_bonus = v;
                 }
             }
-            EditingField::Skill(name) => {
-                if let Some(skill) = sheet.skills.get_mut(name) {
+            EditingField::Skill(id) => {
+                if let Some(skill) = sheet.skills.get_mut(id) {
                     if let Ok(v) = parse_modifier(value) {
                         skill.modifier = v;
                     }
                 }
             }
-            EditingField::SavingThrow(name) => {
-                if let Some(save) = sheet.saving_throws.get_mut(name) {
+            EditingField::SavingThrow(id) => {
+                if let Some(save) = sheet.saving_throws.get_mut(id) {
                     if let Ok(v) = parse_modifier(value) {
                         save.modifier = v;
                     }
                 }
             }
-            EditingField::CustomBasicInfo(name) => {
-                sheet
-                    .custom_basic_info
-                    .insert(name.clone(), value.to_string());
-            }
-            EditingField::CustomAttribute(name) => {
-                if let Ok(v) = value.parse() {
-                    sheet.custom_attributes.insert(name.clone(), v);
+            EditingField::CustomBasicInfo(id) => {
+                if let Some(entry) = sheet.custom_basic_info.get_mut(id) {
+                    entry.value = value.to_string();
                 }
             }
-            EditingField::CustomCombat(name) => {
-                sheet.custom_combat.insert(name.clone(), value.to_string());
+            EditingField::CustomAttribute(id) => {
+                if let (Some(entry), Ok(v)) = (sheet.custom_attributes.get_mut(id), value.parse()) {
+                    entry.value = v;
+                }
             }
-            _ => {} // Label fields handled separately
+            EditingField::CustomCombat(id) => {
+                if let Some(entry) = sheet.custom_combat.get_mut(id) {
+                    entry.value = value.to_string();
+                }
+            }
+            EditingField::SkillLabel(id) => {
+                let new_name = value.to_string();
+                if let Some(skill) = sheet.skills.get_mut(id) {
+                    if !new_name.is_empty() && skill.name != new_name {
+                        skill.name = new_name.clone();
+                        skill.slug = new_name
+                            .to_lowercase()
+                            .replace(|c: char| !c.is_alphanumeric(), "");
+                        after_override = Some(new_name);
+                    }
+                }
+            }
+            EditingField::SavingThrowLabel(id) => {
+                let new_name = value.to_string();
+                if let Some(save) = sheet.saving_throws.get_mut(id) {
+                    if !new_name.is_empty() && save.name != new_name {
+                        save.name = new_name.clone();
+                        save.slug = new_name
+                            .to_lowercase()
+                            .replace(|c: char| !c.is_alphanumeric(), "");
+                        after_override = Some(new_name);
+                    }
+                }
+            }
+            EditingField::CustomBasicInfoLabel(id) => {
+                let new_name = value.to_string();
+                if let Some(entry) = sheet.custom_basic_info.get_mut(id) {
+                    if !new_name.is_empty() && entry.name != new_name {
+                        entry.name = new_name.clone();
+                        after_override = Some(new_name);
+                    }
+                }
+            }
+            EditingField::CustomAttributeLabel(id) => {
+                let new_name = value.to_string();
+                if let Some(entry) = sheet.custom_attributes.get_mut(id) {
+                    if !new_name.is_empty() && entry.name != new_name {
+                        entry.name = new_name.clone();
+                        after_override = Some(new_name);
+                    }
+                }
+            }
+            EditingField::CustomCombatLabel(id) => {
+                let new_name = value.to_string();
+                if let Some(entry) = sheet.custom_combat.get_mut(id) {
+                    if !new_name.is_empty() && entry.name != new_name {
+                        entry.name = new_name.clone();
+                        after_override = Some(new_name);
+                    }
+                }
+            }
         }
     }
 
-    let after = get_field_value(character_data, field);
+    let after = after_override.unwrap_or_else(|| get_field_value(character_data, field));
     let changed = before != after;
     if changed {
         character_data.is_modified = true;

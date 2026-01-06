@@ -50,6 +50,7 @@ rand = "0.9.2"
 colored = "3.0.0"
 csscolorparser = "0.8.1"
 pulldown-cmark = "0.13.0"
+uuid = { version = "1.10", features = ["v7"] }
 
 # HTTP and Image Loading (for profile avatars)
 reqwest = { version = "0.12.28", features = ["blocking"] }

@@ -57,26 +57,12 @@ pub fn spawn_saving_throws_group(
             spawn_group_header(card, "Saving Throws", group_type.clone(), edit_state, theme);
 
             // Standard abilities
-            let abilities = [
-                "strength",
-                "dexterity",
-                "constitution",
-                "intelligence",
-                "wisdom",
-                "charisma",
-            ];
+            // Show all saving throws sorted by display name
+            let mut saves: Vec<_> = sheet.saving_throws.iter().collect();
+            saves.sort_by(|a, b| a.1.name.to_lowercase().cmp(&b.1.name.to_lowercase()));
 
-            for ability in abilities {
-                if let Some(save) = sheet.saving_throws.get(ability) {
-                    spawn_saving_throw_row(card, ability, save, is_editing, icon_assets, theme);
-                }
-            }
-
-            // Custom saving throws
-            for (save_name, save) in sheet.saving_throws.iter() {
-                if !abilities.contains(&save_name.as_str()) {
-                    spawn_saving_throw_row(card, save_name, save, is_editing, icon_assets, theme);
-                }
+            for (save_id, save) in saves {
+                spawn_saving_throw_row(card, save_id, save, is_editing, icon_assets, theme);
             }
 
             // Add button (shown when editing)
@@ -89,21 +75,16 @@ pub fn spawn_saving_throws_group(
 /// Spawn a single saving throw row
 fn spawn_saving_throw_row(
     parent: &mut ChildSpawnerCommands,
-    ability: &str,
+    save_id: &str,
     save: &SavingThrow,
     is_editing: bool,
     icon_assets: &IconAssets,
     theme: &MaterialTheme,
 ) {
-    let ability_owned = ability.to_string();
-    let has_proficiency = save.modifier != 0;
+    let save_id_owned = save_id.to_string();
+    let has_proficiency = save.proficient;
 
-    // Format display name (capitalize first letter, truncate to 3 chars)
-    let display_name = format!(
-        "{}{}",
-        ability.chars().next().unwrap().to_uppercase(),
-        &ability[1..3]
-    );
+    let display_name = save.name.clone();
 
     parent
         .spawn((
@@ -115,7 +96,7 @@ fn spawn_saving_throw_row(
                 ..default()
             },
             SavingThrowRow {
-                ability: ability_owned.clone(),
+                save_id: save_id_owned.clone(),
             },
         ))
         .with_children(|row| {
@@ -137,6 +118,8 @@ fn spawn_saving_throw_row(
                         align_items: AlignItems::Center,
                         ..default()
                     },
+                    Button,
+                    Interaction::None,
                     BackgroundColor(if has_proficiency {
                         MD3_SUCCESS
                     } else {
@@ -149,12 +132,12 @@ fn spawn_saving_throw_row(
                     }),
                     BorderRadius::all(Val::Px(4.0)),
                     ProficiencyCheckbox {
-                        target: ProficiencyTarget::SavingThrow(ability_owned.clone()),
+                        target: ProficiencyTarget::SavingThrow(save_id_owned.clone()),
                     },
                 ));
 
                 // Ability name
-                let label_field = EditingField::SavingThrowLabel(ability_owned.clone());
+                let label_field = EditingField::SavingThrowLabel(save_id_owned.clone());
 
                 if is_editing {
                     // Editable label
@@ -165,7 +148,7 @@ fn spawn_saving_throw_row(
                             .build(theme),
                         EditableLabelButton {
                             field: label_field.clone(),
-                            current_name: ability_owned.clone(),
+                            current_name: save.name.clone(),
                         },
                     ))
                     .insert(Node {
@@ -217,7 +200,7 @@ fn spawn_saving_throw_row(
                 } else {
                     save.modifier.to_string()
                 };
-                let field = EditingField::SavingThrow(ability_owned.clone());
+                let field = EditingField::SavingThrow(save_id_owned.clone());
 
                 right
                     .spawn((
@@ -254,7 +237,7 @@ fn spawn_saving_throw_row(
                     spawn_delete_button(
                         right,
                         GroupType::SavingThrows,
-                        &ability_owned,
+                        &save_id_owned,
                         icon_assets,
                         theme,
                     );

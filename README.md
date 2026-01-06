@@ -1,8 +1,8 @@
 # DnD Game Rolls
 
 <!-- Build & Quality Badges -->
-[![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?branch=release/v0.2.18)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
-[![Security Audit](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?branch=release/v0.2.18)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+[![CI](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?branch=release/v0.2.19)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
+[![Security Audit](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml/badge.svg?branch=release/v0.2.19)](https://github.com/edgarhsanchez/dndgamerolls/actions/workflows/ci.yml)
 
 <!-- Package Badges -->
 [![Crates.io](https://img.shields.io/crates/v/dndgamerolls.svg)](https://crates.io/crates/dndgamerolls)
@@ -60,7 +60,7 @@ The publishable CLI crate lives at `crates/dndgamerolls-cli`.
 
 ### Windows Installer (Recommended for Windows)
 
-Download the MSI installer for **v0.2.18** from the [Releases page](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.18):
+Download the MSI installer for **v0.2.19** from the [Releases page](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.19):
 - `dndgamerolls-installer.msi` - Full Windows installer with Start Menu shortcut and PATH integration
 
 Or download the portable ZIP:
@@ -68,7 +68,7 @@ Or download the portable ZIP:
 
 ### macOS (Recommended)
 
-Download the DMG installer for **v0.2.18** from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.18):
+Download the DMG installer for **v0.2.19** from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.19):
 - `DnDGameRolls-0.2.18-universal-apple-darwin.dmg` - Universal binary (Intel + Apple Silicon)
 - `DnDGameRolls-0.2.18-aarch64-apple-darwin.dmg` - Apple Silicon (M1/M2/M3)
 - `DnDGameRolls-0.2.18-x86_64-apple-darwin.dmg` - Intel Macs
@@ -80,7 +80,7 @@ Download the DMG installer for **v0.2.18** from [Releases](https://github.com/ed
 
 ### Linux (DEB Package)
 
-Download the `.deb` package for **v0.2.18** from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.18) and install:
+Download the `.deb` package for **v0.2.19** from [Releases](https://github.com/edgarhsanchez/dndgamerolls_windows/releases/tag/v0.2.19) and install:
 
 ```bash
 sudo dpkg -i dndgamerolls_*.deb

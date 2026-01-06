@@ -198,6 +198,7 @@ pub fn spawn_readonly_field(parent: &mut ChildSpawnerCommands, label: &str, valu
 /// Spawn a row for a custom field (editable name and value with delete button)
 pub fn spawn_custom_field_row(
     parent: &mut ChildSpawnerCommands,
+    field_id: &str,
     field_name: &str,
     field_value: &str,
     group_type: GroupType,
@@ -208,12 +209,12 @@ pub fn spawn_custom_field_row(
     // Determine editing fields based on group type
     let (label_field, value_field) = match &group_type {
         GroupType::BasicInfo => (
-            EditingField::CustomBasicInfoLabel(field_name.to_string()),
-            EditingField::CustomBasicInfo(field_name.to_string()),
+            EditingField::CustomBasicInfoLabel(field_id.to_string()),
+            EditingField::CustomBasicInfo(field_id.to_string()),
         ),
         GroupType::Combat => (
-            EditingField::CustomCombatLabel(field_name.to_string()),
-            EditingField::CustomCombat(field_name.to_string()),
+            EditingField::CustomCombatLabel(field_id.to_string()),
+            EditingField::CustomCombat(field_id.to_string()),
         ),
         _ => return, // Other groups don't use custom fields this way
     };
@@ -308,7 +309,7 @@ pub fn spawn_custom_field_row(
 
                 // Delete button
                 if is_editing {
-                    spawn_delete_button(right, group_type, field_name, icon_assets, theme);
+                    spawn_delete_button(right, group_type, field_id, icon_assets, theme);
                 }
             });
         });

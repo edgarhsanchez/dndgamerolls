@@ -51,6 +51,7 @@ use dndgamerolls::dice3d::{
     handle_dice_scale_slider_changes,
     handle_master_volume_slider_change,
     handle_expertise_toggle,
+    handle_proficiency_toggle,
     handle_group_add_click,
     handle_group_edit_toggle,
     handle_input,
@@ -681,6 +682,7 @@ fn run_3d_mode(cli: Cli) {
                 handle_stat_field_click,
                 handle_label_click,
                 handle_text_input,
+                handle_proficiency_toggle,
                 handle_expertise_toggle,
                 handle_group_edit_toggle,
                 handle_group_add_click,
@@ -881,37 +883,18 @@ fn run_cli_mode(cli: Cli) {
             }
         }
         Some(Commands::Save { ability }) => {
-            let ability_lower = ability.to_lowercase();
-            let (save_name, key) = match ability_lower.as_str() {
-                "str" | "strength" => ("Strength", "strength"),
-                "dex" | "dexterity" => ("Dexterity", "dexterity"),
-                "con" | "constitution" => ("Constitution", "constitution"),
-                "int" | "intelligence" => ("Intelligence", "intelligence"),
-                "wis" | "wisdom" => ("Wisdom", "wisdom"),
-                "cha" | "charisma" => ("Charisma", "charisma"),
-                _ => {
-                    eprintln!("{} Unknown ability '{}'", "Error:".red().bold(), ability);
-                    eprintln!("Use: str, dex, con, int, wis, cha");
-                    std::process::exit(1);
-                }
-            };
-
-            let Some(save) = sheet.saving_throws.get(key) else {
-                eprintln!(
-                    "{} Saving throw '{}' not found",
-                    "Error:".red().bold(),
-                    save_name
+            if let Some((save_name, save)) = get_save_by_name(&sheet.saving_throws, &ability) {
+                let proficiency_str = if save.proficient { " (Proficient)" } else { "" };
+                roll_ability_check(
+                    &format!("{} Save{}", save_name, proficiency_str),
+                    save.modifier,
+                    cli.advantage,
+                    cli.disadvantage,
                 );
+            } else {
+                eprintln!("{} Unknown saving throw '{}'", "Error:".red().bold(), ability);
                 std::process::exit(1);
-            };
-
-            let proficiency_str = if save.proficient { " (Proficient)" } else { "" };
-            roll_ability_check(
-                &format!("{} Save{}", save_name, proficiency_str),
-                save.modifier,
-                cli.advantage,
-                cli.disadvantage,
-            );
+            }
         }
         Some(Commands::Attack { weapon }) => {
             let weapon_lower = weapon.to_lowercase();
@@ -1340,30 +1323,39 @@ fn load_character_sheet(
 fn get_skill_by_name<'a>(
     skills: &'a std::collections::HashMap<String, dndgamerolls::dice3d::types::Skill>,
     name: &str,
-) -> Option<(&'static str, &'a dndgamerolls::dice3d::types::Skill)> {
-    let name_lower = name.to_lowercase().replace(' ', "");
+) -> Option<(String, &'a dndgamerolls::dice3d::types::Skill)> {
+    let normalized = normalize_query(name);
 
-    match name_lower.as_str() {
-        "acrobatics" => skills.get("acrobatics").map(|s| ("Acrobatics", s)),
-        "animalhandling" | "animal" => skills.get("animalHandling").map(|s| ("Animal Handling", s)),
-        "arcana" => skills.get("arcana").map(|s| ("Arcana", s)),
-        "athletics" => skills.get("athletics").map(|s| ("Athletics", s)),
-        "deception" => skills.get("deception").map(|s| ("Deception", s)),
-        "history" => skills.get("history").map(|s| ("History", s)),
-        "insight" => skills.get("insight").map(|s| ("Insight", s)),
-        "intimidation" => skills.get("intimidation").map(|s| ("Intimidation", s)),
-        "investigation" => skills.get("investigation").map(|s| ("Investigation", s)),
-        "medicine" => skills.get("medicine").map(|s| ("Medicine", s)),
-        "nature" => skills.get("nature").map(|s| ("Nature", s)),
-        "perception" => skills.get("perception").map(|s| ("Perception", s)),
-        "performance" => skills.get("performance").map(|s| ("Performance", s)),
-        "persuasion" => skills.get("persuasion").map(|s| ("Persuasion", s)),
-        "religion" => skills.get("religion").map(|s| ("Religion", s)),
-        "sleightofhand" | "sleight" => skills.get("sleightOfHand").map(|s| ("Sleight of Hand", s)),
-        "stealth" => skills.get("stealth").map(|s| ("Stealth", s)),
-        "survival" => skills.get("survival").map(|s| ("Survival", s)),
-        _ => None,
-    }
+    skills
+        .values()
+        .find(|s| normalize_query(&s.slug) == normalized || normalize_query(&s.name) == normalized)
+        .map(|s| (s.name.clone(), s))
+}
+
+fn get_save_by_name<'a>(
+    saves: &'a std::collections::HashMap<String, dndgamerolls::dice3d::types::SavingThrow>,
+    ability: &str,
+) -> Option<(String, &'a dndgamerolls::dice3d::types::SavingThrow)> {
+    let normalized = match normalize_query(ability).as_str() {
+        "str" => "strength".to_string(),
+        "dex" => "dexterity".to_string(),
+        "con" => "constitution".to_string(),
+        "int" => "intelligence".to_string(),
+        "wis" => "wisdom".to_string(),
+        "cha" => "charisma".to_string(),
+        other => other.to_string(),
+    };
+
+    saves
+        .values()
+        .find(|s| normalize_query(&s.slug) == normalized || normalize_query(&s.name) == normalized)
+        .map(|s| (s.name.clone(), s))
+}
+
+fn normalize_query(value: &str) -> String {
+    value
+        .to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric(), "")
 }
 
 fn display_stats(character: &dndgamerolls::dice3d::types::CharacterSheet) {

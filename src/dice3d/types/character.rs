@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 // ============================================================================
 // Character Schema Types - Full D&D 5e Character Sheet
@@ -22,7 +23,9 @@ pub struct CharacterSheet {
     #[serde(rename = "proficiencyBonus")]
     pub proficiency_bonus: i32,
     #[serde(rename = "savingThrows")]
+    #[serde(default, deserialize_with = "deserialize_saving_throws")]
     pub saving_throws: HashMap<String, SavingThrow>,
+    #[serde(default, deserialize_with = "deserialize_skills")]
     pub skills: HashMap<String, Skill>,
     #[serde(default)]
     pub equipment: Option<Equipment>,
@@ -30,15 +33,27 @@ pub struct CharacterSheet {
     pub features: Vec<Feature>,
     #[serde(default)]
     pub spells: Option<SpellCasting>,
-    /// Custom fields for Basic Info group (name -> value)
-    #[serde(rename = "customBasicInfo", default)]
-    pub custom_basic_info: HashMap<String, String>,
-    /// Custom attributes beyond the standard 6 (name -> score)
-    #[serde(rename = "customAttributes", default)]
-    pub custom_attributes: HashMap<String, i32>,
-    /// Custom combat stats (name -> value as string)
-    #[serde(rename = "customCombat", default)]
-    pub custom_combat: HashMap<String, String>,
+    /// Custom fields for Basic Info group
+    #[serde(
+        rename = "customBasicInfo",
+        default,
+        deserialize_with = "deserialize_custom_basic_info"
+    )]
+    pub custom_basic_info: HashMap<String, CustomStringField>,
+    /// Custom attributes beyond the standard 6
+    #[serde(
+        rename = "customAttributes",
+        default,
+        deserialize_with = "deserialize_custom_attributes"
+    )]
+    pub custom_attributes: HashMap<String, CustomIntField>,
+    /// Custom combat stats (string values)
+    #[serde(
+        rename = "customCombat",
+        default,
+        deserialize_with = "deserialize_custom_combat"
+    )]
+    pub custom_combat: HashMap<String, CustomStringField>,
 }
 
 /// Basic character information
@@ -149,6 +164,14 @@ pub struct DeathSaves {
 /// Saving throw data
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct SavingThrow {
+    #[serde(default = "new_id")]
+    pub id: String,
+    /// Display name (editable)
+    #[serde(default)]
+    pub name: String,
+    /// Canonical slug used for lookups (lowercase, no spaces)
+    #[serde(default)]
+    pub slug: String,
     pub proficient: bool,
     pub modifier: i32,
 }
@@ -156,12 +179,45 @@ pub struct SavingThrow {
 /// Skill data
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Skill {
+    #[serde(default = "new_id")]
+    pub id: String,
+    /// Display name (editable)
+    #[serde(default)]
+    pub name: String,
+    /// Canonical slug used for lookups (lowercase, no spaces)
+    #[serde(default)]
+    pub slug: String,
     pub proficient: bool,
     pub modifier: i32,
     #[serde(default)]
     pub expertise: Option<bool>,
     #[serde(rename = "proficiencyType", default)]
     pub proficiency_type: Option<String>,
+}
+
+/// Custom string field with stable id
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct CustomStringField {
+    #[serde(default = "new_id")]
+    pub id: String,
+    /// Display name
+    #[serde(default)]
+    pub name: String,
+    /// Stored value
+    #[serde(default)]
+    pub value: String,
+}
+
+/// Custom integer field with stable id
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct CustomIntField {
+    #[serde(default = "new_id")]
+    pub id: String,
+    /// Display name
+    #[serde(default)]
+    pub name: String,
+    /// Stored value
+    pub value: i32,
 }
 
 /// Equipment and inventory
@@ -436,9 +492,13 @@ impl CharacterData {
             ("charisma", cha_mod),
         ];
         for (ability, modifier) in mods {
+            let id = new_id();
             saves.insert(
-                ability.to_string(),
+                id.clone(),
                 SavingThrow {
+                    id,
+                    name: ability.to_string(),
+                    slug: ability.to_string(),
                     proficient: false,
                     modifier,
                 },
@@ -470,9 +530,13 @@ impl CharacterData {
             "survival",
         ];
         for name in skill_names {
+            let id = new_id();
             skills.insert(
-                name.to_string(),
+                id.clone(),
                 Skill {
+                    id,
+                    name: name.to_string(),
+                    slug: make_slug(name),
                     proficient: false,
                     modifier: 0,
                     ..Default::default()
@@ -486,7 +550,8 @@ impl CharacterData {
     pub fn get_skill_modifier(&self, skill: &str) -> Option<i32> {
         self.sheet
             .as_ref()
-            .and_then(|s| s.skills.get(skill).map(|sk| sk.modifier))
+            .and_then(|s| resolve_skill(&s.skills, skill))
+            .map(|sk| sk.modifier)
     }
 
     /// Get the modifier for an ability by name
@@ -501,19 +566,12 @@ impl CharacterData {
                 "wis" | "wisdom" => s.modifiers.wisdom,
                 "cha" | "charisma" => s.modifiers.charisma,
                 _ => {
-                    // Custom attributes store scores; derive modifier with the standard formula.
-                    if let Some(score) = s.custom_attributes.get(ability) {
-                        return Attributes::calculate_modifier(*score);
-                    }
-                    if let Some((_, score)) = s
-                        .custom_attributes
-                        .iter()
-                        .find(|(name, _)| name.to_lowercase() == key)
-                    {
-                        return Attributes::calculate_modifier(*score);
-                    }
-
-                    0
+                    // Custom attributes: search by slug/name
+                    s.custom_attributes
+                        .values()
+                        .find(|entry| make_slug(&entry.name) == key || entry.name.to_lowercase() == key)
+                        .map(|entry| Attributes::calculate_modifier(entry.value))
+                        .unwrap_or(0)
                 }
             }
         })
@@ -521,11 +579,287 @@ impl CharacterData {
 
     /// Get the modifier for a saving throw by ability name
     pub fn get_saving_throw_modifier(&self, ability: &str) -> Option<i32> {
-        self.sheet.as_ref().and_then(|s| {
-            s.saving_throws
-                .get(&ability.to_lowercase())
-                .map(|st| st.modifier)
+        self.sheet
+            .as_ref()
+            .and_then(|s| resolve_saving_throw(&s.saving_throws, ability))
+            .map(|st| st.modifier)
+    }
+}
+
+// ============================================================================
+// ID / Slug helpers
+// ============================================================================
+
+fn new_id() -> String {
+    Uuid::now_v7().to_string()
+}
+
+fn make_slug(name: &str) -> String {
+    name.to_lowercase().replace(|c: char| !c.is_alphanumeric(), "")
+}
+
+fn resolve_skill<'a>(
+    skills: &'a HashMap<String, Skill>,
+    query: &str,
+) -> Option<&'a Skill> {
+    let q = make_slug(query);
+    // direct id match
+    if let Some(sk) = skills.get(query) {
+        return Some(sk);
+    }
+    // Prefer the best-matching slug/name entry when duplicates exist.
+    skills
+        .values()
+        .filter(|s| s.slug == q || make_slug(&s.name) == q)
+        .max_by_key(|s| {
+            let proficiency_weight = if s.expertise.unwrap_or(false) {
+                2
+            } else if s.proficient {
+                1
+            } else {
+                0
+            };
+            (proficiency_weight, s.modifier)
         })
+}
+
+fn resolve_saving_throw<'a>(
+    saves: &'a HashMap<String, SavingThrow>,
+    query: &str,
+) -> Option<&'a SavingThrow> {
+    let q = make_slug(query);
+    if let Some(sv) = saves.get(query) {
+        return Some(sv);
+    }
+    saves.values().find(|s| s.slug == q || make_slug(&s.name) == q)
+}
+
+// ============================================================================
+// Migration helpers
+// ============================================================================
+
+fn migrate_skill_entry(key: String, mut skill: Skill) -> (String, Skill) {
+    if skill.id.is_empty() {
+        skill.id = new_id();
+    }
+    if skill.slug.is_empty() {
+        // Prefer existing slug from key to preserve canonical names.
+        skill.slug = make_slug(&key);
+    }
+    if skill.name.is_empty() {
+        skill.name = key.clone();
+    }
+    let id = skill.id.clone();
+    (id, skill)
+}
+
+fn migrate_save_entry(key: String, mut save: SavingThrow) -> (String, SavingThrow) {
+    if save.id.is_empty() {
+        save.id = new_id();
+    }
+    if save.slug.is_empty() {
+        save.slug = make_slug(&key);
+    }
+    if save.name.is_empty() {
+        save.name = key.clone();
+    }
+    let id = save.id.clone();
+    (id, save)
+}
+
+fn migrate_custom_string_entry(key: String, value: String) -> (String, CustomStringField) {
+    let id = new_id();
+    (
+        id.clone(),
+        CustomStringField {
+            id,
+            name: key,
+            value,
+        },
+    )
+}
+
+fn migrate_custom_int_entry(key: String, value: i32) -> (String, CustomIntField) {
+    let id = new_id();
+    (
+        id.clone(),
+        CustomIntField {
+            id,
+            name: key,
+            value,
+        },
+    )
+}
+
+impl CharacterSheet {
+    /// Migrate legacy name-keyed data to ID-keyed maps and ensure IDs/names/slugs are populated.
+    pub fn migrate_to_ids(&mut self) {
+        // Skills
+        let mut migrated_skills = HashMap::new();
+        for (key, skill) in std::mem::take(&mut self.skills) {
+            let (id, sk) = migrate_skill_entry(key, skill);
+            migrated_skills.insert(id, sk);
+        }
+        self.skills = migrated_skills;
+
+        // Saving throws
+        let mut migrated_saves = HashMap::new();
+        for (key, save) in std::mem::take(&mut self.saving_throws) {
+            let (id, sv) = migrate_save_entry(key, save);
+            migrated_saves.insert(id, sv);
+        }
+        self.saving_throws = migrated_saves;
+
+        // Custom basic info (string)
+        if !self.custom_basic_info.values().all(|v| !v.id.is_empty()) {
+            let mut migrated = HashMap::new();
+            for (key, entry) in std::mem::take(&mut self.custom_basic_info) {
+                let (id, val) = if entry.id.is_empty() && entry.name.is_empty() {
+                    migrate_custom_string_entry(key, entry.value)
+                } else {
+                    let mut v = entry;
+                    if v.id.is_empty() {
+                        v.id = new_id();
+                    }
+                    if v.name.is_empty() {
+                        v.name = key;
+                    }
+                    (v.id.clone(), v)
+                };
+                migrated.insert(id, val);
+            }
+            self.custom_basic_info = migrated;
+        }
+
+        // Custom attributes (int)
+        if !self.custom_attributes.values().all(|v| !v.id.is_empty()) {
+            let mut migrated = HashMap::new();
+            for (key, entry) in std::mem::take(&mut self.custom_attributes) {
+                let (id, val) = if entry.id.is_empty() && entry.name.is_empty() {
+                    migrate_custom_int_entry(key, entry.value)
+                } else {
+                    let mut v = entry;
+                    if v.id.is_empty() {
+                        v.id = new_id();
+                    }
+                    if v.name.is_empty() {
+                        v.name = key;
+                    }
+                    (v.id.clone(), v)
+                };
+                migrated.insert(id, val);
+            }
+            self.custom_attributes = migrated;
+        }
+
+        // Custom combat (string)
+        if !self.custom_combat.values().all(|v| !v.id.is_empty()) {
+            let mut migrated = HashMap::new();
+            for (key, entry) in std::mem::take(&mut self.custom_combat) {
+                let (id, val) = if entry.id.is_empty() && entry.name.is_empty() {
+                    migrate_custom_string_entry(key, entry.value)
+                } else {
+                    let mut v = entry;
+                    if v.id.is_empty() {
+                        v.id = new_id();
+                    }
+                    if v.name.is_empty() {
+                        v.name = key;
+                    }
+                    (v.id.clone(), v)
+                };
+                migrated.insert(id, val);
+            }
+            self.custom_combat = migrated;
+        }
+    }
+}
+
+// ============================================================================
+// Legacy-friendly deserializers
+// ============================================================================
+
+fn deserialize_skills<'de, D>(deserializer: D) -> Result<HashMap<String, Skill>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw: HashMap<String, Skill> = HashMap::deserialize(deserializer)?;
+    Ok(raw)
+}
+
+fn deserialize_saving_throws<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, SavingThrow>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw: HashMap<String, SavingThrow> = HashMap::deserialize(deserializer)?;
+    Ok(raw)
+}
+
+fn deserialize_custom_basic_info<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, CustomStringField>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Entry {
+        Legacy(HashMap<String, String>),
+        New(HashMap<String, CustomStringField>),
+    }
+
+    match Entry::deserialize(deserializer)? {
+        Entry::Legacy(map) => Ok(map
+            .into_iter()
+            .map(|(k, v)| migrate_custom_string_entry(k, v))
+            .collect()),
+        Entry::New(map) => Ok(map),
+    }
+}
+
+fn deserialize_custom_attributes<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, CustomIntField>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Entry {
+        Legacy(HashMap<String, i32>),
+        New(HashMap<String, CustomIntField>),
+    }
+
+    match Entry::deserialize(deserializer)? {
+        Entry::Legacy(map) => Ok(map
+            .into_iter()
+            .map(|(k, v)| migrate_custom_int_entry(k, v))
+            .collect()),
+        Entry::New(map) => Ok(map),
+    }
+}
+
+fn deserialize_custom_combat<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<String, CustomStringField>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Entry {
+        Legacy(HashMap<String, String>),
+        New(HashMap<String, CustomStringField>),
+    }
+
+    match Entry::deserialize(deserializer)? {
+        Entry::Legacy(map) => Ok(map
+            .into_iter()
+            .map(|(k, v)| migrate_custom_string_entry(k, v))
+            .collect()),
+        Entry::New(map) => Ok(map),
     }
 }
 

@@ -438,10 +438,11 @@ impl CharacterDatabase {
             })
         })?;
 
-        let Some(decoded) = doc else {
+        let Some(mut decoded) = doc else {
             return Err(format!("Character with id {} not found", id));
         };
 
+        decoded.sheet.migrate_to_ids();
         Ok(decoded.sheet)
     }
 

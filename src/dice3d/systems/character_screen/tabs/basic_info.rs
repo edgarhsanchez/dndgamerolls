@@ -121,11 +121,12 @@ pub fn spawn_basic_info_group(
             }
 
             // Custom fields
-            for (field_name, field_value) in sheet.custom_basic_info.iter() {
+            for (field_id, field) in sheet.custom_basic_info.iter() {
                 spawn_custom_field_row(
                     card,
-                    field_name,
-                    field_value,
+                    field_id,
+                    &field.name,
+                    &field.value,
                     GroupType::BasicInfo,
                     is_editing,
                     icon_assets,

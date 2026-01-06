@@ -110,17 +110,11 @@ pub fn spawn_attributes_group(
             }
 
             // Custom attributes
-            for (attr_name, attr_score) in sheet.custom_attributes.iter() {
-                let modifier = Attributes::calculate_modifier(*attr_score);
-                spawn_custom_attribute_row(
-                    card,
-                    attr_name,
-                    *attr_score,
-                    modifier,
-                    is_editing,
-                    icon_assets,
-                    theme,
-                );
+            let mut custom_attrs: Vec<_> = sheet.custom_attributes.values().collect();
+            custom_attrs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            for attr in custom_attrs {
+                let modifier = Attributes::calculate_modifier(attr.value);
+                spawn_custom_attribute_row(card, attr, modifier, is_editing, icon_assets, theme);
             }
 
             // Add button (shown when editing)
@@ -295,17 +289,16 @@ fn spawn_attribute_row(
 /// Spawn a row for a custom attribute (with delete button in edit mode)
 fn spawn_custom_attribute_row(
     parent: &mut ChildSpawnerCommands,
-    name: &str,
-    score: i32,
+    attr: &CustomIntField,
     modifier: i32,
     is_editing: bool,
     icon_assets: &IconAssets,
     theme: &MaterialTheme,
 ) {
     let dice_icon = icon_assets.icons.get(&IconType::Dice).cloned();
-    let attr_name = name.to_string();
-    let label_field = EditingField::CustomAttributeLabel(name.to_string());
-    let value_field = EditingField::CustomAttribute(name.to_string());
+    let attr_id = attr.id.clone();
+    let label_field = EditingField::CustomAttributeLabel(attr_id.clone());
+    let value_field = EditingField::CustomAttribute(attr_id.clone());
 
     parent
         .spawn(Node {
@@ -336,7 +329,7 @@ fn spawn_custom_attribute_row(
                                 .filled_tonal()
                                 .build(theme),
                             RollAttributeButton {
-                                attribute: attr_name.clone(),
+                                attribute: attr_id.clone(),
                             },
                         ))
                         .insert(Node {
@@ -375,10 +368,10 @@ fn spawn_custom_attribute_row(
                 if is_editing {
                     name_row
                         .spawn((
-                            MaterialButtonBuilder::new(name).text().build(theme),
+                            MaterialButtonBuilder::new(&attr.name).text().build(theme),
                             EditableLabelButton {
                                 field: label_field.clone(),
-                                current_name: name.to_string(),
+                                current_name: attr.name.clone(),
                             },
                         ))
                         .insert(Node {
@@ -388,7 +381,7 @@ fn spawn_custom_attribute_row(
                         .with_children(|btn| {
                             btn.spawn((
                                 bevy_material_ui::button::ButtonLabel,
-                                Text::new(name),
+                                Text::new(&attr.name),
                                 TextFont {
                                     font_size: 14.0,
                                     ..default()
@@ -399,7 +392,7 @@ fn spawn_custom_attribute_row(
                         });
                 } else {
                     name_row.spawn((
-                        Text::new(name),
+                        Text::new(&attr.name),
                         TextFont {
                             font_size: 14.0,
                             ..default()
@@ -418,7 +411,7 @@ fn spawn_custom_attribute_row(
             })
             .with_children(|values| {
                 // Score (editable)
-                let score_text = score.to_string();
+                let score_text = attr.value.to_string();
                 values
                     .spawn((
                         MaterialButtonBuilder::new(score_text.clone())
@@ -472,14 +465,14 @@ fn spawn_custom_attribute_row(
                         ..default()
                     },
                     TextColor(theme.on_surface_variant),
-                    AttributeRollResultText {
-                        attribute: attr_name.clone(),
-                    },
+                        AttributeRollResultText {
+                            attribute: attr_id.clone(),
+                        },
                 ));
 
                 // Delete button (shown in edit mode)
                 if is_editing {
-                    spawn_delete_button(values, GroupType::Attributes, name, icon_assets, theme);
+                    spawn_delete_button(values, GroupType::Attributes, &attr_id, icon_assets, theme);
                 }
             });
         });

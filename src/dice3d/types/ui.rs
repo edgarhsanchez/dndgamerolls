@@ -63,13 +63,13 @@ pub enum EditingField {
     HitPointsCurrent,
     HitPointsMaximum,
     ProficiencyBonus,
-    // Skills and saves are handled by name
+    // Skills and saves are addressed by stable ids
     Skill(String),
     SavingThrow(String),
     // Label editing (renaming skills/saves)
     SkillLabel(String),       // Editing the name of a skill
     SavingThrowLabel(String), // Editing the name of a saving throw
-    // Custom fields (name is the key in the HashMap)
+    // Custom fields (id is the key in the HashMap)
     CustomBasicInfo(String),      // Custom basic info value
     CustomBasicInfoLabel(String), // Renaming custom basic info
     CustomAttribute(String),      // Custom attribute score
@@ -173,14 +173,14 @@ pub struct GroupAddButton {
 #[derive(Component)]
 pub struct DeleteEntryButton {
     pub group_type: GroupType,
-    pub entry_id: String, // The key/name of the entry to delete
+    pub entry_id: String, // Stable id of the entry to delete
 }
 
 /// Marker for editable label (attribute name, skill name, etc.)
 #[derive(Component)]
 pub struct EditableLabel {
     pub group_type: GroupType,
-    pub label_id: String, // e.g., "strength", "acrobatics"
+    pub label_id: String, // id for custom fields; name for built-ins
 }
 
 /// Resource for tracking which groups are in edit mode
@@ -270,10 +270,10 @@ pub struct RollAttributeButton {
     pub attribute: String,
 }
 
-/// Marker for skill row
+/// Marker for skill row (stores skill id)
 #[derive(Component)]
 pub struct SkillRow {
-    pub skill_name: String,
+    pub skill_id: String,
 }
 
 /// Marker for proficiency checkbox (button-based)
@@ -285,20 +285,19 @@ pub struct ProficiencyCheckbox {
 /// What the proficiency checkbox targets
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProficiencyTarget {
-    Skill(String),
-    SavingThrow(String),
+    Skill(String),       // skill id
+    SavingThrow(String), // save id
 }
 
 /// Marker for expertise checkbox
 #[derive(Component)]
 pub struct ExpertiseCheckbox {
-    pub skill_name: String,
+    pub skill_id: String,
 }
-
-/// Marker for saving throw row
+/// Marker for saving throw row (stores save id)
 #[derive(Component)]
 pub struct SavingThrowRow {
-    pub ability: String,
+    pub save_id: String,
 }
 
 /// Marker for character list item text (for showing asterisk on unsaved changes)
@@ -860,7 +859,7 @@ pub struct QuickRollButton {
 /// Dice roll button for a skill check (from the character sheet).
 #[derive(Component)]
 pub struct RollSkillButton {
-    pub skill: String,
+    pub skill_id: String,
 }
 
 /// Text node that displays the last roll total for an attribute.
@@ -878,7 +877,7 @@ pub struct SkillRollResultText {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CharacterScreenRollTarget {
     Attribute(String),
-    Skill(String),
+    Skill(String), // skill id
 }
 
 /// Bridges character-sheet dice buttons to the dice roller and back.

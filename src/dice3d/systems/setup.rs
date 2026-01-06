@@ -1447,16 +1447,16 @@ pub fn spawn_quick_roll_panel(
 
                                 if !sheet.custom_attributes.is_empty() {
                                     let mut custom: Vec<_> =
-                                        sheet.custom_attributes.iter().collect();
-                                    custom.sort_by(|a, b| a.0.cmp(b.0));
+                                        sheet.custom_attributes.values().collect();
+                                    custom.sort_by(|a, b| a.name.cmp(&b.name));
 
-                                    for (name, score) in custom {
-                                        let modifier = Attributes::calculate_modifier(*score);
+                                    for attr in custom {
+                                        let modifier = Attributes::calculate_modifier(attr.value);
                                         let sign = if modifier >= 0 { "+" } else { "" };
                                         spawn_quick_roll_button(
                                             card,
-                                            &format!("{} ({}{}) ", name, sign, modifier),
-                                            QuickRollType::AbilityCheck(name.clone()),
+                                            &format!("{} ({}{}) ", attr.name, sign, modifier),
+                                            QuickRollType::AbilityCheck(attr.name.clone()),
                                             theme,
                                         );
                                     }
@@ -1521,16 +1521,15 @@ pub fn spawn_quick_roll_panel(
 
                                 // Sort skills alphabetically
                                 let mut skills: Vec<_> = sheet.skills.iter().collect();
-                                skills.sort_by(|a, b| a.0.cmp(b.0));
+                                skills.sort_by(|a, b| a.1.name.to_lowercase().cmp(&b.1.name.to_lowercase()));
 
-                                for (skill_name, skill) in skills {
+                                for (skill_id, skill) in skills {
                                     let sign = if skill.modifier >= 0 { "+" } else { "" };
-                                    // Format skill name nicely (camelCase to Title Case)
-                                    let display_name = format_skill_name(skill_name);
+                                    let display_name = skill.name.clone();
                                     spawn_quick_roll_button(
                                         card,
                                         &format!("{} ({}{}) ", display_name, sign, skill.modifier),
-                                        QuickRollType::Skill(skill_name.clone()),
+                                        QuickRollType::Skill(skill_id.clone()),
                                         theme,
                                     );
                                 }
@@ -1586,7 +1585,8 @@ fn spawn_quick_roll_button(
         });
 }
 
-/// Format skill name from camelCase to Title Case
+// Kept for potential future formatting tweaks; currently unused but retained for reference.
+#[allow(dead_code)]
 fn format_skill_name(name: &str) -> String {
     let mut result = String::new();
     for (i, c) in name.chars().enumerate() {

@@ -126,11 +126,12 @@ pub fn spawn_combat_group(
             }
 
             // Custom combat stats
-            for (stat_name, stat_value) in sheet.custom_combat.iter() {
+            for (stat_id, stat_value) in sheet.custom_combat.iter() {
                 spawn_custom_field_row(
                     card,
-                    stat_name,
-                    stat_value,
+                    stat_id,
+                    &stat_value.name,
+                    &stat_value.value,
                     GroupType::Combat,
                     is_editing,
                     icon_assets,

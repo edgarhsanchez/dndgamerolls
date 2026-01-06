@@ -1095,7 +1095,7 @@ pub fn handle_settings_ok_click(
             .editing_master_volume
             .clamp(0.0, 1.0);
 
-        if let Some(mut gv) = global_volume.as_deref_mut() {
+        if let Some(gv) = global_volume.as_deref_mut() {
             gv.volume = Volume::Linear(settings_state.settings.master_volume);
         }
 
@@ -1261,7 +1261,7 @@ pub fn handle_master_volume_slider_change(
         let value = event.value.clamp(0.0, 1.0);
         settings_state.editing_master_volume = value;
 
-        if let Some(mut gv) = global_volume.as_deref_mut() {
+        if let Some(gv) = global_volume.as_deref_mut() {
             gv.volume = Volume::Linear(value);
         }
     }
@@ -3214,7 +3214,7 @@ pub fn apply_initial_settings(
 ) {
     clear_color.0 = settings_state.settings.background_color.to_color();
 
-    if let Some(mut gv) = global_volume.as_deref_mut() {
+    if let Some(gv) = global_volume.as_deref_mut() {
         gv.volume = Volume::Linear(settings_state.settings.master_volume.clamp(0.0, 1.0));
     }
 

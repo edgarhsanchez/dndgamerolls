@@ -3254,6 +3254,7 @@ dependencies = [
  "serde_json",
  "surrealdb",
  "tokio",
+ "uuid",
  "winit",
  "winresource",
 ]

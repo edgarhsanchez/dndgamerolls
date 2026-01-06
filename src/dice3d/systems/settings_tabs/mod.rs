@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
 pub mod colors;
+pub mod colors_interactions;
 pub mod dice;
 pub mod layout;
 pub mod shake_curve;

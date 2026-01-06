@@ -8,7 +8,6 @@ use crate::dice3d::types::{
 };
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
-use bevy_material_ui::icons::MaterialIconFont;
 use bevy_material_ui::prelude::*;
 
 /// Initialize contributors data
@@ -21,7 +20,6 @@ pub fn init_contributors(mut commands: Commands) {
 pub fn setup_contributors_screen(
     mut commands: Commands,
     contributors_state: Res<ContributorsState>,
-    icon_font: Res<MaterialIconFont>,
     theme: Option<Res<MaterialTheme>>,
 ) {
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
@@ -67,16 +65,10 @@ pub fn setup_contributors_screen(
                             // Icon
                             let icon = MaterialIcon::from_name("groups")
                                 .or_else(|| MaterialIcon::from_name("group"))
-                                .unwrap_or_else(MaterialIcon::info);
-                            row.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: 36.0,
-                                    ..default()
-                                },
-                                TextColor(theme.primary),
-                            ));
+                                .or_else(|| MaterialIcon::from_name("info"));
+                            if let Some(icon) = icon {
+                                row.spawn(icon.with_color(theme.primary).with_size(36.0));
+                            }
 
                             row.spawn((
                                 Text::new("Contributors"),

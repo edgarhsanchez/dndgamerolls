@@ -18,6 +18,7 @@ mod box_highlight;
 mod camera;
 pub mod character_screen;
 mod collision_sfx;
+pub mod color_picker;
 mod container_centering;
 mod contributors_screen;
 mod dice;

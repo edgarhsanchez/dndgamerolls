@@ -16,7 +16,20 @@ pub fn spawn_saving_throws_content(
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
+    theme: &MaterialTheme,
+) {
+    spawn_saving_throws_group(parent, sheet, edit_state, adding_state, icon_assets, theme);
+}
+
+/// Spawn the Saving Throws group card.
+///
+/// This is intentionally reusable between the tabbed view and a future "page" view.
+pub fn spawn_saving_throws_group(
+    parent: &mut ChildSpawnerCommands,
+    sheet: &CharacterSheet,
+    edit_state: &GroupEditState,
+    adding_state: &AddingEntryState,
+    icon_assets: &IconAssets,
     theme: &MaterialTheme,
 ) {
     let group_type = GroupType::SavingThrows;
@@ -41,14 +54,7 @@ pub fn spawn_saving_throws_content(
         })
         .with_children(|card| {
             // Group header
-            spawn_group_header(
-                card,
-                "Saving Throws",
-                group_type.clone(),
-                edit_state,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_group_header(card, "Saving Throws", group_type.clone(), edit_state, theme);
 
             // Standard abilities
             let abilities = [
@@ -62,43 +68,20 @@ pub fn spawn_saving_throws_content(
 
             for ability in abilities {
                 if let Some(save) = sheet.saving_throws.get(ability) {
-                    spawn_saving_throw_row(
-                        card,
-                        ability,
-                        save,
-                        is_editing,
-                        icon_assets,
-                        icon_font.clone(),
-                        theme,
-                    );
+                    spawn_saving_throw_row(card, ability, save, is_editing, icon_assets, theme);
                 }
             }
 
             // Custom saving throws
             for (save_name, save) in sheet.saving_throws.iter() {
                 if !abilities.contains(&save_name.as_str()) {
-                    spawn_saving_throw_row(
-                        card,
-                        save_name,
-                        save,
-                        is_editing,
-                        icon_assets,
-                        icon_font.clone(),
-                        theme,
-                    );
+                    spawn_saving_throw_row(card, save_name, save, is_editing, icon_assets, theme);
                 }
             }
 
             // Add button (shown when editing)
             if is_editing {
-                spawn_group_add_button(
-                    card,
-                    group_type,
-                    adding_state,
-                    icon_assets,
-                    icon_font,
-                    theme,
-                );
+                spawn_group_add_button(card, group_type, adding_state, icon_assets, theme);
             }
         });
 }
@@ -110,7 +93,6 @@ fn spawn_saving_throw_row(
     save: &SavingThrow,
     is_editing: bool,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     let ability_owned = ability.to_string();
@@ -274,7 +256,6 @@ fn spawn_saving_throw_row(
                         GroupType::SavingThrows,
                         &ability_owned,
                         icon_assets,
-                        icon_font,
                         theme,
                     );
                 }

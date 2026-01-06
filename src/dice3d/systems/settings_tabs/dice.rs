@@ -1,6 +1,7 @@
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::slider::spawn_slider_control_with;
 use bevy_material_ui::tokens::CornerRadius;
 
 use crate::dice3d::systems::settings::spawn_dice_scale_slider;

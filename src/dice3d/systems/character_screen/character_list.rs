@@ -27,7 +27,6 @@ pub fn spawn_character_list_panel(
     character_manager: &CharacterManager,
     character_data: &CharacterData,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     let dice_icon = icon_assets.icons.get(&IconType::Dice).cloned();
@@ -50,7 +49,7 @@ pub fn spawn_character_list_panel(
         ))
         .with_children(|panel| {
             // Header row with "Characters" title and Roll All button
-            spawn_list_header(panel, dice_icon, icon_font, theme);
+            spawn_list_header(panel, dice_icon, theme);
 
             // New Character button
             spawn_new_character_button(panel, theme);
@@ -99,7 +98,6 @@ pub fn spawn_character_list_panel(
 fn spawn_list_header(
     panel: &mut ChildSpawnerCommands,
     dice_icon: Option<Handle<Image>>,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     panel
@@ -138,15 +136,7 @@ fn spawn_list_header(
 
                 icon_button.with_children(|btn| {
                     if let Some(icon) = MaterialIcon::from_name(icon_name) {
-                        btn.spawn((
-                            Text::new(icon.as_str()),
-                            TextFont {
-                                font: icon_font.clone(),
-                                font_size: 24.0,
-                                ..default()
-                            },
-                            TextColor(icon_color),
-                        ));
+                        btn.spawn(icon.with_color(icon_color).with_size(24.0));
                     } else if let Some(handle) = dice_icon {
                         btn.spawn((
                             ImageNode::new(handle),

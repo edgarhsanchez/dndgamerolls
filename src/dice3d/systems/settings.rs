@@ -11,6 +11,7 @@ use bevy::ui::{ComputedUiTargetCamera, UiGlobalTransform};
 
 use bevy::window::PrimaryWindow;
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::slider::{spawn_slider_control_with, SliderOrientation};
 use bevy_material_ui::theme::ThemeMode;
 use std::cmp::Ordering;
 
@@ -407,11 +408,7 @@ fn apply_theme_override(settings: &AppSettings, theme: &mut MaterialTheme) {
 }
 
 /// Spawn the settings (gear) icon button in the dice roller view.
-pub fn spawn_settings_button(
-    commands: &mut Commands,
-    theme: &MaterialTheme,
-    icon_font: Handle<Font>,
-) -> Entity {
+pub fn spawn_settings_button(commands: &mut Commands, theme: &MaterialTheme) -> Entity {
     commands
         .spawn((
             Node {
@@ -435,16 +432,16 @@ pub fn spawn_settings_button(
                 SettingsButton,
             ))
             .with_children(|b| {
-                let icon = MaterialIcon::from_name("settings").unwrap_or_else(MaterialIcon::search);
-                b.spawn((
-                    Text::new(icon.as_str()),
-                    TextFont {
-                        font: icon_font,
-                        font_size: ICON_SIZE,
-                        ..default()
-                    },
-                    TextColor(theme.on_surface_variant),
-                ));
+                let icon = MaterialIcon::from_name("settings")
+                    .or_else(|| MaterialIcon::from_name("tune"))
+                    .or_else(|| MaterialIcon::from_name("build"));
+
+                if let Some(icon) = icon {
+                    b.spawn(
+                        icon.with_color(theme.on_surface_variant)
+                            .with_size(ICON_SIZE),
+                    );
+                }
             });
         })
         .id()
@@ -766,6 +763,7 @@ fn spawn_settings_modal(
 }
 
 /// Helper to spawn a color slider row
+#[allow(dead_code)]
 pub(crate) fn spawn_color_slider(
     parent: &mut ChildSpawnerCommands,
     component: ColorComponent,

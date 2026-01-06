@@ -20,15 +20,10 @@ pub fn spawn_group_header(
     title: &str,
     group_type: GroupType,
     edit_state: &GroupEditState,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     let is_editing = edit_state.editing_groups.contains(&group_type);
-    let edit_icon = if is_editing {
-        MaterialIcon::check()
-    } else {
-        MaterialIcon::edit()
-    };
+    let edit_icon_name = if is_editing { "check" } else { "edit" };
 
     parent
         .spawn(Node {
@@ -55,10 +50,10 @@ pub fn spawn_group_header(
 
             // Edit toggle button
             {
-                let icon_color = MaterialIconButton::new(edit_icon.as_str())
+                let icon_color = MaterialIconButton::new(edit_icon_name)
                     .with_variant(IconButtonVariant::Standard)
                     .icon_color(theme);
-                let builder = IconButtonBuilder::new(edit_icon.as_str()).standard();
+                let builder = IconButtonBuilder::new(edit_icon_name).standard();
 
                 header
                     .spawn((
@@ -68,15 +63,9 @@ pub fn spawn_group_header(
                         },
                     ))
                     .with_children(|btn| {
-                        btn.spawn((
-                            Text::new(edit_icon.as_str()),
-                            TextFont {
-                                font: icon_font.clone(),
-                                font_size: ICON_SIZE,
-                                ..default()
-                            },
-                            TextColor(icon_color),
-                        ));
+                        if let Some(icon) = MaterialIcon::from_name(edit_icon_name) {
+                            btn.spawn(icon.with_color(icon_color).with_size(ICON_SIZE));
+                        }
                     });
             }
         });
@@ -98,7 +87,6 @@ pub fn spawn_stat_field(
     group_type: Option<GroupType>,
     entry_id: Option<&str>,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     parent
@@ -165,7 +153,7 @@ pub fn spawn_stat_field(
                 // Delete button (shown in edit mode)
                 if is_editing {
                     if let (Some(gt), Some(eid)) = (group_type, entry_id) {
-                        spawn_delete_button(right, gt, eid, icon_assets, icon_font.clone(), theme);
+                        spawn_delete_button(right, gt, eid, icon_assets, theme);
                     }
                 }
             });
@@ -215,7 +203,6 @@ pub fn spawn_custom_field_row(
     group_type: GroupType,
     is_editing: bool,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     // Determine editing fields based on group type
@@ -321,14 +308,7 @@ pub fn spawn_custom_field_row(
 
                 // Delete button
                 if is_editing {
-                    spawn_delete_button(
-                        right,
-                        group_type,
-                        field_name,
-                        icon_assets,
-                        icon_font.clone(),
-                        theme,
-                    );
+                    spawn_delete_button(right, group_type, field_name, icon_assets, theme);
                 }
             });
         });
@@ -344,7 +324,6 @@ pub fn spawn_delete_button(
     group_type: GroupType,
     entry_id: &str,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     let delete_icon = icon_assets.icons.get(&IconType::Delete).cloned();
@@ -372,15 +351,7 @@ pub fn spawn_delete_button(
         })
         .with_children(|btn| {
             if let Some(icon) = MaterialIcon::from_name(icon_name) {
-                btn.spawn((
-                    Text::new(icon.as_str()),
-                    TextFont {
-                        font: icon_font.clone(),
-                        font_size: 16.0,
-                        ..default()
-                    },
-                    TextColor(icon_color),
-                ));
+                btn.spawn(icon.with_color(icon_color).with_size(16.0));
             } else if let Some(handle) = delete_icon {
                 btn.spawn((
                     ImageNode::new(handle),
@@ -404,7 +375,6 @@ pub fn spawn_group_add_button(
     group_type: GroupType,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     let is_adding = adding_state.adding_to.as_ref() == Some(&group_type);
@@ -486,15 +456,7 @@ pub fn spawn_group_add_button(
                     })
                     .with_children(|btn| {
                         if let Some(icon) = MaterialIcon::from_name(icon_name) {
-                            btn.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.clone(),
-                                    font_size: 18.0,
-                                    ..default()
-                                },
-                                TextColor(icon_color),
-                            ));
+                            btn.spawn(icon.with_color(icon_color).with_size(18.0));
                         } else if let Some(handle) = check_icon {
                             btn.spawn((
                                 ImageNode::new(handle),
@@ -529,15 +491,7 @@ pub fn spawn_group_add_button(
                     })
                     .with_children(|btn| {
                         if let Some(icon) = MaterialIcon::from_name(icon_name) {
-                            btn.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.clone(),
-                                    font_size: 18.0,
-                                    ..default()
-                                },
-                                TextColor(icon_color),
-                            ));
+                            btn.spawn(icon.with_color(icon_color).with_size(18.0));
                         } else if let Some(handle) = cancel_icon {
                             btn.spawn((
                                 ImageNode::new(handle),
@@ -571,15 +525,7 @@ pub fn spawn_group_add_button(
             })
             .with_children(|btn| {
                 if let Some(icon) = MaterialIcon::from_name("add") {
-                    btn.spawn((
-                        Text::new(icon.as_str()),
-                        TextFont {
-                            font: icon_font.clone(),
-                            font_size: 18.0,
-                            ..default()
-                        },
-                        TextColor(theme.primary),
-                    ));
+                    btn.spawn(icon.with_color(theme.primary).with_size(18.0));
                 } else if let Some(handle) = add_icon {
                     btn.spawn((
                         ImageNode::new(handle),

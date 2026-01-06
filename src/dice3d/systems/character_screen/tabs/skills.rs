@@ -16,7 +16,20 @@ pub fn spawn_skills_content(
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
+    theme: &MaterialTheme,
+) {
+    spawn_skills_group(parent, sheet, edit_state, adding_state, icon_assets, theme);
+}
+
+/// Spawn the Skills group card.
+///
+/// This is intentionally reusable between the tabbed view and a future "page" view.
+pub fn spawn_skills_group(
+    parent: &mut ChildSpawnerCommands,
+    sheet: &CharacterSheet,
+    edit_state: &GroupEditState,
+    adding_state: &AddingEntryState,
+    icon_assets: &IconAssets,
     theme: &MaterialTheme,
 ) {
     let group_type = GroupType::Skills;
@@ -41,41 +54,19 @@ pub fn spawn_skills_content(
         })
         .with_children(|card| {
             // Group header
-            spawn_group_header(
-                card,
-                "Skills",
-                group_type.clone(),
-                edit_state,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_group_header(card, "Skills", group_type.clone(), edit_state, theme);
 
             // Sort skills alphabetically
             let mut skills: Vec<_> = sheet.skills.iter().collect();
             skills.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
 
             for (skill_name, skill) in skills {
-                spawn_skill_row(
-                    card,
-                    skill_name,
-                    skill,
-                    is_editing,
-                    icon_assets,
-                    icon_font.clone(),
-                    theme,
-                );
+                spawn_skill_row(card, skill_name, skill, is_editing, icon_assets, theme);
             }
 
             // Add button (shown when editing)
             if is_editing {
-                spawn_group_add_button(
-                    card,
-                    group_type,
-                    adding_state,
-                    icon_assets,
-                    icon_font,
-                    theme,
-                );
+                spawn_group_add_button(card, group_type, adding_state, icon_assets, theme);
             }
         });
 }
@@ -87,7 +78,6 @@ fn spawn_skill_row(
     skill: &Skill,
     is_editing: bool,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     let dice_icon = icon_assets.icons.get(&IconType::Dice).cloned();
@@ -142,15 +132,7 @@ fn spawn_skill_row(
                     })
                     .with_children(|btn| {
                         if let Some(icon) = MaterialIcon::from_name(icon_name) {
-                            btn.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.clone(),
-                                    font_size: 16.0,
-                                    ..default()
-                                },
-                                TextColor(icon_color),
-                            ));
+                            btn.spawn(icon.with_color(icon_color).with_size(16.0));
                         } else if let Some(handle) = dice_icon {
                             btn.spawn((
                                 ImageNode::new(handle),
@@ -315,7 +297,6 @@ fn spawn_skill_row(
                         GroupType::Skills,
                         &skill_name_owned,
                         icon_assets,
-                        icon_font,
                         theme,
                     );
                 }

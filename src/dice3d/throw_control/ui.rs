@@ -6,6 +6,7 @@ use super::state::*;
 use bevy::prelude::*;
 
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::slider::{spawn_slider_control_with, SliderDirection};
 
 /// Spawn the strength slider UI next to the zoom slider
 /// This should be called from the main setup function

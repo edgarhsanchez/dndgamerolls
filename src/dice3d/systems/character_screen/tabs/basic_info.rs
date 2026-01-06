@@ -16,7 +16,20 @@ pub fn spawn_basic_info_content(
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
+    theme: &MaterialTheme,
+) {
+    spawn_basic_info_group(parent, sheet, edit_state, adding_state, icon_assets, theme);
+}
+
+/// Spawn the Basic Info group card.
+///
+/// This is intentionally reusable between the tabbed view and a future "page" view.
+pub fn spawn_basic_info_group(
+    parent: &mut ChildSpawnerCommands,
+    sheet: &CharacterSheet,
+    edit_state: &GroupEditState,
+    adding_state: &AddingEntryState,
+    icon_assets: &IconAssets,
     theme: &MaterialTheme,
 ) {
     let group_type = GroupType::BasicInfo;
@@ -41,14 +54,7 @@ pub fn spawn_basic_info_content(
         })
         .with_children(|card| {
             // Group header
-            spawn_group_header(
-                card,
-                "Basic Info",
-                group_type.clone(),
-                edit_state,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_group_header(card, "Basic Info", group_type.clone(), edit_state, theme);
 
             // Core fields
             spawn_stat_field(
@@ -61,7 +67,6 @@ pub fn spawn_basic_info_content(
                 Some(group_type.clone()),
                 Some("name"),
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
 
@@ -75,7 +80,6 @@ pub fn spawn_basic_info_content(
                 Some(group_type.clone()),
                 Some("class"),
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
 
@@ -89,7 +93,6 @@ pub fn spawn_basic_info_content(
                 Some(group_type.clone()),
                 Some("race"),
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
 
@@ -103,7 +106,6 @@ pub fn spawn_basic_info_content(
                 Some(group_type.clone()),
                 Some("level"),
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
 
@@ -127,21 +129,13 @@ pub fn spawn_basic_info_content(
                     GroupType::BasicInfo,
                     is_editing,
                     icon_assets,
-                    icon_font.clone(),
                     theme,
                 );
             }
 
             // Add button (shown when editing)
             if is_editing {
-                spawn_group_add_button(
-                    card,
-                    group_type,
-                    adding_state,
-                    icon_assets,
-                    icon_font,
-                    theme,
-                );
+                spawn_group_add_button(card, group_type, adding_state, icon_assets, theme);
             }
         });
 }

@@ -978,6 +978,9 @@ pub struct ColorPreview;
 #[derive(Component)]
 pub struct HighlightColorPreview;
 
+#[derive(Component)]
+pub struct ThemeColorPreview;
+
 /// Marker for color slider
 #[derive(Component)]
 pub struct ColorSlider {

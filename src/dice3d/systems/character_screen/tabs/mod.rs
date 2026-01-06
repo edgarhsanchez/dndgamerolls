@@ -35,10 +35,10 @@ pub fn setup_character_screen(
     edit_state: Res<GroupEditState>,
     adding_state: Res<AddingEntryState>,
     icon_assets: Res<IconAssets>,
-    icon_font: Res<bevy_material_ui::prelude::MaterialIconFont>,
     theme: Option<Res<MaterialTheme>>,
 ) {
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
+    let selected_tab = SelectedCharacterSheetTab::default().current;
 
     // Root container (hidden by default, shown when tab is active)
     commands
@@ -63,7 +63,6 @@ pub fn setup_character_screen(
                 &character_manager,
                 &character_data,
                 &icon_assets,
-                icon_font.0.clone(),
                 &theme,
             );
 
@@ -74,7 +73,7 @@ pub fn setup_character_screen(
                 &edit_state,
                 &adding_state,
                 &icon_assets,
-                icon_font.0.clone(),
+                selected_tab,
                 &theme,
             );
         });
@@ -90,7 +89,7 @@ pub(crate) fn spawn_tabbed_content_panel(
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
+    selected_tab: CharacterSheetTab,
     theme: &MaterialTheme,
 ) {
     parent
@@ -104,7 +103,7 @@ pub(crate) fn spawn_tabbed_content_panel(
         ))
         .with_children(|container| {
             // Material Tabs bar
-            spawn_character_sheet_tabs(container, theme);
+            spawn_character_sheet_tabs(container, selected_tab, theme);
 
             // Tab content area
             spawn_tab_content_area(
@@ -113,19 +112,27 @@ pub(crate) fn spawn_tabbed_content_panel(
                 edit_state,
                 adding_state,
                 icon_assets,
-                icon_font,
                 theme,
             );
         });
 }
 
 /// Spawn the Material Design tabs bar for character sheet sections
-fn spawn_character_sheet_tabs(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme) {
+fn spawn_character_sheet_tabs(
+    parent: &mut ChildSpawnerCommands,
+    selected_tab: CharacterSheetTab,
+    theme: &MaterialTheme,
+) {
+    let selected_index = CharacterSheetTab::all()
+        .iter()
+        .position(|&t| t == selected_tab)
+        .unwrap_or(0);
+
     parent
         .spawn((
             MaterialTabs::new()
                 .with_variant(TabVariant::Secondary)
-                .selected(0),
+                .selected(selected_index),
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Px(TAB_HEIGHT_SECONDARY),
@@ -141,7 +148,7 @@ fn spawn_character_sheet_tabs(parent: &mut ChildSpawnerCommands, theme: &Materia
         ))
         .with_children(|tabs| {
             for (index, tab) in CharacterSheetTab::all().iter().enumerate() {
-                spawn_sheet_tab_button(tabs, *tab, index, index == 0, theme);
+                spawn_sheet_tab_button(tabs, *tab, index, *tab == selected_tab, theme);
             }
         });
 }
@@ -194,7 +201,6 @@ fn spawn_tab_content_area(
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     parent
@@ -234,7 +240,6 @@ fn spawn_tab_content_area(
                             edit_state,
                             adding_state,
                             icon_assets,
-                            icon_font,
                             theme,
                         );
                     } else {
@@ -328,7 +333,6 @@ fn spawn_all_tab_contents(
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     // Basic Info tab content
@@ -344,15 +348,7 @@ fn spawn_all_tab_contents(
             },
         ))
         .with_children(|content| {
-            spawn_basic_info_content(
-                content,
-                sheet,
-                edit_state,
-                adding_state,
-                icon_assets,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_basic_info_content(content, sheet, edit_state, adding_state, icon_assets, theme);
         });
 
     // Attributes tab content
@@ -369,15 +365,7 @@ fn spawn_all_tab_contents(
             },
         ))
         .with_children(|content| {
-            spawn_attributes_content(
-                content,
-                sheet,
-                edit_state,
-                adding_state,
-                icon_assets,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_attributes_content(content, sheet, edit_state, adding_state, icon_assets, theme);
         });
 
     // Combat tab content
@@ -394,15 +382,7 @@ fn spawn_all_tab_contents(
             },
         ))
         .with_children(|content| {
-            spawn_combat_content(
-                content,
-                sheet,
-                edit_state,
-                adding_state,
-                icon_assets,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_combat_content(content, sheet, edit_state, adding_state, icon_assets, theme);
         });
 
     // Saving Throws tab content
@@ -425,7 +405,6 @@ fn spawn_all_tab_contents(
                 edit_state,
                 adding_state,
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
         });
@@ -444,15 +423,7 @@ fn spawn_all_tab_contents(
             },
         ))
         .with_children(|content| {
-            spawn_skills_content(
-                content,
-                sheet,
-                edit_state,
-                adding_state,
-                icon_assets,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_skills_content(content, sheet, edit_state, adding_state, icon_assets, theme);
         });
 }
 
@@ -533,9 +504,14 @@ pub fn update_sheet_tab_styles(
     mut tabs_query: Query<&mut MaterialTabs, With<CharacterSheetTabBar>>,
     mut tab_query: Query<(&CharacterSheetTabButton, &mut MaterialTab)>,
     mut text_query: Query<&mut TextColor, With<CharacterSheetTabText>>,
+    added_tab_bar: Query<Entity, Added<CharacterSheetTabBar>>,
+    added_tab_buttons: Query<Entity, Added<CharacterSheetTabButton>>,
     theme: Option<Res<MaterialTheme>>,
 ) {
-    if !selected_tab.is_changed() {
+    let needs_refresh =
+        selected_tab.is_changed() || !added_tab_bar.is_empty() || !added_tab_buttons.is_empty();
+
+    if !needs_refresh {
         return;
     }
 
@@ -569,8 +545,12 @@ pub fn update_sheet_tab_visibility(
         &mut Node,
         (With<ScrollableContent>, Without<CharacterSheetTabContent>),
     >,
+    added_content: Query<Entity, Added<CharacterSheetTabContent>>,
 ) {
-    if !selected_tab.is_changed() {
+    let selected_changed = selected_tab.is_changed();
+    let needs_refresh = selected_changed || !added_content.is_empty();
+
+    if !needs_refresh {
         return;
     }
 
@@ -584,7 +564,9 @@ pub fn update_sheet_tab_visibility(
 
     // When switching tabs, reset scroll so the newly selected tab isn't hidden
     // due to a previous tab's scroll offset.
-    for mut node in scrollable_query.iter_mut() {
-        node.top = Val::Px(0.0);
+    if selected_changed {
+        for mut node in scrollable_query.iter_mut() {
+            node.top = Val::Px(0.0);
+        }
     }
 }

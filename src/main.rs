@@ -531,6 +531,7 @@ fn run_3d_mode(cli: Cli) {
         .insert_resource(DiceSpawnPointsApplied::default())
         .insert_resource(AvatarLoader::default())
         .insert_resource(DiceBoxLidAnimationController::default())
+        .insert_resource(dndgamerolls::dice3d::systems::color_picker::ColorPickerState::default())
         .add_systems(
             Startup,
             (
@@ -543,6 +544,7 @@ fn run_3d_mode(cli: Cli) {
                 init_contributors,
                 apply_initial_shake_config,
                 init_collision_sounds,
+                dndgamerolls::dice3d::systems::color_picker::setup_color_wheel_texture,
                 setup,
                 setup_tab_bar,
                 setup_character_screen,
@@ -752,6 +754,7 @@ fn run_3d_mode(cli: Cli) {
                     ),
                     (
                         update_color_ui,
+                        dndgamerolls::dice3d::systems::settings_tabs::colors_interactions::handle_color_preview_clicks,
                         update_dice_scale_ui,
                         update_dice_fx_param_ui,
                         sync_dice_scale_preview_dice,
@@ -787,6 +790,14 @@ fn run_3d_mode(cli: Cli) {
         )
         .add_systems(PostUpdate, tint_recent_theme_dropdown_items)
         .add_systems(PostUpdate, persist_settings_to_db)
+        .add_systems(
+            Update,
+            (
+                dndgamerolls::dice3d::systems::color_picker::spawn_color_picker_ui,
+                dndgamerolls::dice3d::systems::color_picker::handle_color_picker_interactions,
+                dndgamerolls::dice3d::systems::color_picker::update_color_picker_preview,
+            ),
+        )
         .run();
 }
 

@@ -8,7 +8,6 @@ use bevy::input::keyboard::KeyboardInput;
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
-use bevy_material_ui::icons::MaterialIconFont;
 use bevy_material_ui::prelude::*;
 use bevy_rapier3d::prelude::Velocity;
 use pulldown_cmark::{Event as MdEvent, Parser, Tag, TagEnd};
@@ -1452,7 +1451,6 @@ pub fn rebuild_character_list_on_change(
     character_manager: Res<CharacterManager>,
     character_data: Res<CharacterData>,
     icon_assets: Res<IconAssets>,
-    icon_font: Res<MaterialIconFont>,
     theme: Option<Res<MaterialTheme>>,
     screen_root: Query<Entity, With<CharacterScreenRoot>>,
     list_panel: Query<Entity, With<CharacterListPanel>>,
@@ -1471,7 +1469,6 @@ pub fn rebuild_character_list_on_change(
     }
 
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
-    let icon_font = icon_font.0.clone();
 
     // Rebuild the panel immediately so the left-side list stays in sync with the DB.
     commands.entity(root).with_children(|parent| {
@@ -1480,7 +1477,6 @@ pub fn rebuild_character_list_on_change(
             &character_manager,
             &character_data,
             &icon_assets,
-            icon_font,
             &theme,
         );
     });
@@ -1494,7 +1490,7 @@ pub fn rebuild_character_panel_on_change(
     edit_state: Res<GroupEditState>,
     adding_state: Res<AddingEntryState>,
     icon_assets: Res<IconAssets>,
-    icon_font: Res<MaterialIconFont>,
+    selected_tab: Option<Res<SelectedCharacterSheetTab>>,
     theme: Option<Res<MaterialTheme>>,
     screen_root: Query<Entity, With<CharacterScreenRoot>>,
     stats_panel: Query<Entity, With<CharacterStatsPanel>>,
@@ -1512,7 +1508,7 @@ pub fn rebuild_character_panel_on_change(
     };
 
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
-    let icon_font = icon_font.0.clone();
+    let selected_tab = selected_tab.as_ref().map(|t| t.current).unwrap_or_default();
 
     // Remove the old stats panel subtree
     for entity in stats_panel.iter() {
@@ -1527,7 +1523,7 @@ pub fn rebuild_character_panel_on_change(
             &edit_state,
             &adding_state,
             &icon_assets,
-            icon_font,
+            selected_tab,
             &theme,
         );
     });
@@ -1779,11 +1775,7 @@ struct MarkdownRenderState {
     code_buffer: String,
 }
 
-fn flush_markdown_buffer(
-    parent: &mut ChildSpawnerCommands,
-    state: &mut MarkdownRenderState,
-    icon_font: &Handle<Font>,
-) {
+fn flush_markdown_buffer(parent: &mut ChildSpawnerCommands, state: &mut MarkdownRenderState) {
     let text = state.buffer.trim();
     if text.is_empty() {
         state.buffer.clear();
@@ -1798,7 +1790,7 @@ fn flush_markdown_buffer(
             3 => 16.0,
             _ => 14.0,
         };
-        spawn_rich_text_line(parent, text, size, MD3_ON_SURFACE, Some(icon_font.clone()));
+        spawn_rich_text_line(parent, text, size, MD3_ON_SURFACE);
         state.buffer.clear();
         return;
     }
@@ -1813,26 +1805,14 @@ fn flush_markdown_buffer(
                 ..default()
             })
             .with_children(|row| {
-                spawn_rich_text_line(
-                    row,
-                    &format!("• {}", text),
-                    14.0,
-                    MD3_ON_SURFACE_VARIANT,
-                    Some(icon_font.clone()),
-                );
+                spawn_rich_text_line(row, &format!("• {}", text), 14.0, MD3_ON_SURFACE_VARIANT);
             });
         state.buffer.clear();
         return;
     }
 
     // Paragraph/default
-    spawn_rich_text_line(
-        parent,
-        text,
-        14.0,
-        MD3_ON_SURFACE_VARIANT,
-        Some(icon_font.clone()),
-    );
+    spawn_rich_text_line(parent, text, 14.0, MD3_ON_SURFACE_VARIANT);
     state.buffer.clear();
 }
 
@@ -1872,11 +1852,10 @@ fn spawn_rich_text_line(
     text: &str,
     font_size: f32,
     color: Color,
-    icon_font: Option<Handle<Font>>,
 ) {
     // Inline icon syntax: :icon(name):
     // Example: "Zoom :icon(zoom_in):"
-    if icon_font.is_none() || !text.contains(":icon(") {
+    if !text.contains(":icon(") {
         parent.spawn((
             Text::new(text.to_string()),
             TextFont {
@@ -1887,8 +1866,6 @@ fn spawn_rich_text_line(
         ));
         return;
     }
-
-    let icon_font = icon_font.unwrap();
 
     parent
         .spawn(Node {
@@ -1930,17 +1907,20 @@ fn spawn_rich_text_line(
 
                 let name = &after_start[..end];
                 let icon = MaterialIcon::from_name(name)
-                    .or_else(|| MaterialIcon::from_name(name.replace('-', "_").as_str()))
-                    .unwrap_or_else(MaterialIcon::search);
-                line.spawn((
-                    Text::new(icon.as_str()),
-                    TextFont {
-                        font: icon_font.clone(),
-                        font_size,
-                        ..default()
-                    },
-                    TextColor(color),
-                ));
+                    .or_else(|| MaterialIcon::from_name(name.replace('-', "_").as_str()));
+
+                if let Some(icon) = icon {
+                    line.spawn(icon.with_color(color).with_size(font_size));
+                } else {
+                    line.spawn((
+                        Text::new(format!("[{}]", name)),
+                        TextFont {
+                            font_size,
+                            ..default()
+                        },
+                        TextColor(color),
+                    ));
+                }
 
                 rest = &after_start[end + "):".len()..];
             }
@@ -1958,7 +1938,7 @@ fn spawn_rich_text_line(
         });
 }
 
-fn spawn_markdown(parent: &mut ChildSpawnerCommands, markdown: &str, icon_font: Handle<Font>) {
+fn spawn_markdown(parent: &mut ChildSpawnerCommands, markdown: &str) {
     let mut state = MarkdownRenderState::default();
     let parser = Parser::new(markdown);
 
@@ -1966,23 +1946,23 @@ fn spawn_markdown(parent: &mut ChildSpawnerCommands, markdown: &str, icon_font: 
         match event {
             MdEvent::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.heading_level = Some(level as u32);
                 }
                 Tag::Paragraph => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.in_paragraph = true;
                 }
                 Tag::List(_) => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.list_depth += 1;
                 }
                 Tag::Item => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.in_item = true;
                 }
                 Tag::CodeBlock(_kind) => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.in_code_block = true;
                     state.code_buffer.clear();
                 }
@@ -1996,19 +1976,19 @@ fn spawn_markdown(parent: &mut ChildSpawnerCommands, markdown: &str, icon_font: 
             },
             MdEvent::End(tag) => match tag {
                 TagEnd::Heading(_level) => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.heading_level = None;
                 }
                 TagEnd::Paragraph => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.in_paragraph = false;
                 }
                 TagEnd::List(_ordered) => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.list_depth = state.list_depth.saturating_sub(1);
                 }
                 TagEnd::Item => {
-                    flush_markdown_buffer(parent, &mut state, &icon_font);
+                    flush_markdown_buffer(parent, &mut state);
                     state.in_item = false;
                 }
                 TagEnd::CodeBlock => {
@@ -2041,7 +2021,7 @@ fn spawn_markdown(parent: &mut ChildSpawnerCommands, markdown: &str, icon_font: 
                 }
             }
             MdEvent::Rule => {
-                flush_markdown_buffer(parent, &mut state, &icon_font);
+                flush_markdown_buffer(parent, &mut state);
             }
             MdEvent::InlineMath(_) | MdEvent::DisplayMath(_) => {
                 // ignore
@@ -2055,11 +2035,11 @@ fn spawn_markdown(parent: &mut ChildSpawnerCommands, markdown: &str, icon_font: 
         }
     }
 
-    flush_markdown_buffer(parent, &mut state, &icon_font);
+    flush_markdown_buffer(parent, &mut state);
 }
 
 /// Setup the DnD info screen
-pub fn setup_dnd_info_screen(mut commands: Commands, icon_font: Res<MaterialIconFont>) {
+pub fn setup_dnd_info_screen(mut commands: Commands) {
     // Best-effort runtime override:
     // - in dev, this allows editing `DnDInfo.md` without touching Rust.
     // - in release, you can ship a `DnDInfo.md` alongside the binary to override.
@@ -2094,7 +2074,7 @@ pub fn setup_dnd_info_screen(mut commands: Commands, icon_font: Res<MaterialIcon
                     InfoScrollContent,
                 ))
                 .with_children(|content| {
-                    spawn_markdown(content, &markdown, icon_font.0.clone());
+                    spawn_markdown(content, &markdown);
                 });
         });
 }

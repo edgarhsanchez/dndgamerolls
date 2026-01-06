@@ -6,8 +6,9 @@
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
-use bevy_material_ui::icons::MaterialIconFont;
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::slider::{spawn_slider_control_with, SliderDirection};
+use bevy_material_ui::text_field::spawn_text_field_control_with;
 use bevy_rapier3d::prelude::*;
 use rand::Rng;
 
@@ -39,7 +40,6 @@ pub fn setup(
     shake_config: Res<ContainerShakeConfig>,
     throw_state: Res<ThrowControlState>,
     settings_state: Res<SettingsState>,
-    icon_font: Res<MaterialIconFont>,
     theme: Res<MaterialTheme>,
     container_style: Res<DiceContainerStyle>,
 ) {
@@ -380,17 +380,16 @@ pub fn setup(
                             DiceBoxControlsPanelRotateButton,
                         ))
                         .with_children(|b| {
-                            // U+E028 (good rotation icon)
-                            let icon = MaterialIcon::new('\u{E028}');
-                            b.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
+                            let icon_color = MaterialIconButton::new("rotate")
+                                .with_variant(IconButtonVariant::Standard)
+                                .icon_color(&theme);
+
+                            let icon = MaterialIcon::from_name("rotate")
+                                .or_else(|| MaterialIcon::from_name("rotate_right"))
+                                .or_else(|| MaterialIcon::from_name("refresh"));
+                            if let Some(icon) = icon {
+                                b.spawn(icon.with_color(icon_color).with_size(ICON_SIZE));
+                            }
                         });
 
                         // Shake
@@ -400,17 +399,16 @@ pub fn setup(
                             DiceBoxShakeBoxButton,
                         ))
                         .with_children(|b| {
-                            // U+EAF2 is a good shake icon.
-                            let icon = MaterialIcon::new('\u{EAF2}');
-                            b.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                            ));
+                            let icon_color = MaterialIconButton::new("vibration")
+                                .with_variant(IconButtonVariant::Standard)
+                                .icon_color(&theme);
+
+                            let icon = MaterialIcon::from_name("vibration")
+                                .or_else(|| MaterialIcon::from_name("waves"))
+                                .or_else(|| MaterialIcon::from_name("shutter_speed"));
+                            if let Some(icon) = icon {
+                                b.spawn(icon.with_color(icon_color).with_size(ICON_SIZE));
+                            }
                         });
 
                         // Toggle container
@@ -422,24 +420,27 @@ pub fn setup(
                             DiceBoxToggleContainerButton,
                         ))
                         .with_children(|b| {
-                            // Show a cup icon when the current mode is Box (i.e. click to switch to cup).
-                            // U+EA1B is a good cup icon.
+                            let icon_color = MaterialIconButton::new("swap_horiz")
+                                .with_variant(IconButtonVariant::Standard)
+                                .icon_color(&theme);
+
                             let icon = match *container_style {
-                                DiceContainerStyle::Box => MaterialIcon::new('\u{EA1B}'),
+                                DiceContainerStyle::Box => {
+                                    MaterialIcon::from_name("emoji_food_beverage")
+                                        .or_else(|| MaterialIcon::from_name("local_bar"))
+                                        .or_else(|| MaterialIcon::from_name("coffee"))
+                                        .or_else(|| MaterialIcon::from_name("swap_horiz"))
+                                }
                                 DiceContainerStyle::Cup => MaterialIcon::from_name("swap_horiz")
                                     .or_else(|| MaterialIcon::from_name("swap_horizontal_circle"))
-                                    .unwrap_or_else(MaterialIcon::search),
+                                    .or_else(|| MaterialIcon::from_name("swap_horiz")),
                             };
-                            b.spawn((
-                                Text::new(icon.as_str()),
-                                TextFont {
-                                    font: icon_font.0.clone(),
-                                    font_size: ICON_SIZE,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface_variant),
-                                DiceBoxToggleContainerIconText,
-                            ));
+                            if let Some(icon) = icon {
+                                b.spawn((
+                                    icon.with_color(icon_color).with_size(ICON_SIZE),
+                                    DiceBoxToggleContainerIconText,
+                                ));
+                            }
                         });
                     });
 
@@ -777,7 +778,7 @@ pub fn setup(
                             .with_children(|col| {
                                 let icon = MaterialIcon::from_name("zoom_in")
                                     .or_else(|| MaterialIcon::from_name("zoom_in_map"))
-                                    .unwrap_or_else(MaterialIcon::search);
+                                    .or_else(|| MaterialIcon::from_name("search"));
                                 col.spawn((
                                     Node {
                                         width: Val::Px(30.0),
@@ -791,15 +792,12 @@ pub fn setup(
                                     TooltipTrigger::new("Camera zoom").top(),
                                 ))
                                 .with_children(|tip| {
-                                    tip.spawn((
-                                        Text::new(icon.as_str()),
-                                        TextFont {
-                                            font: icon_font.0.clone(),
-                                            font_size: ICON_SIZE,
-                                            ..default()
-                                        },
-                                        TextColor(theme.on_surface_variant),
-                                    ));
+                                    if let Some(icon) = icon {
+                                        tip.spawn(
+                                            icon.with_color(theme.on_surface_variant)
+                                                .with_size(ICON_SIZE),
+                                        );
+                                    }
                                 });
 
                                 col.spawn((
@@ -825,7 +823,7 @@ pub fn setup(
 
                                 let icon = MaterialIcon::from_name("zoom_out")
                                     .or_else(|| MaterialIcon::from_name("zoom_out_map"))
-                                    .unwrap_or_else(MaterialIcon::search);
+                                    .or_else(|| MaterialIcon::from_name("search"));
                                 col.spawn((
                                     Node {
                                         width: Val::Px(30.0),
@@ -839,15 +837,12 @@ pub fn setup(
                                     TooltipTrigger::new("Camera zoom").bottom(),
                                 ))
                                 .with_children(|tip| {
-                                    tip.spawn((
-                                        Text::new(icon.as_str()),
-                                        TextFont {
-                                            font: icon_font.0.clone(),
-                                            font_size: ICON_SIZE,
-                                            ..default()
-                                        },
-                                        TextColor(theme.on_surface_variant),
-                                    ));
+                                    if let Some(icon) = icon {
+                                        tip.spawn(
+                                            icon.with_color(theme.on_surface_variant)
+                                                .with_size(ICON_SIZE),
+                                        );
+                                    }
                                 });
                             });
 
@@ -862,7 +857,8 @@ pub fn setup(
                             .with_children(|col| {
                                 let icon = MaterialIcon::from_name("north_east")
                                     .or_else(|| MaterialIcon::from_name("trending_up"))
-                                    .unwrap_or_else(MaterialIcon::arrow_upward);
+                                    .or_else(|| MaterialIcon::from_name("arrow_upward"))
+                                    .or_else(|| MaterialIcon::from_name("search"));
                                 col.spawn((
                                     Node {
                                         width: Val::Px(30.0),
@@ -876,15 +872,12 @@ pub fn setup(
                                     TooltipTrigger::new("Throw strength").top(),
                                 ))
                                 .with_children(|tip| {
-                                    tip.spawn((
-                                        Text::new(icon.as_str()),
-                                        TextFont {
-                                            font: icon_font.0.clone(),
-                                            font_size: ICON_SIZE,
-                                            ..default()
-                                        },
-                                        TextColor(theme.on_surface_variant),
-                                    ));
+                                    if let Some(icon) = icon {
+                                        tip.spawn(
+                                            icon.with_color(theme.on_surface_variant)
+                                                .with_size(ICON_SIZE),
+                                        );
+                                    }
                                 });
 
                                 col.spawn((
@@ -910,7 +903,8 @@ pub fn setup(
 
                                 let icon = MaterialIcon::from_name("south_west")
                                     .or_else(|| MaterialIcon::from_name("trending_down"))
-                                    .unwrap_or_else(MaterialIcon::arrow_downward);
+                                    .or_else(|| MaterialIcon::from_name("arrow_downward"))
+                                    .or_else(|| MaterialIcon::from_name("search"));
                                 col.spawn((
                                     Node {
                                         width: Val::Px(30.0),
@@ -924,15 +918,12 @@ pub fn setup(
                                     TooltipTrigger::new("Throw strength").bottom(),
                                 ))
                                 .with_children(|tip| {
-                                    tip.spawn((
-                                        Text::new(icon.as_str()),
-                                        TextFont {
-                                            font: icon_font.0.clone(),
-                                            font_size: ICON_SIZE,
-                                            ..default()
-                                        },
-                                        TextColor(theme.on_surface_variant),
-                                    ));
+                                    if let Some(icon) = icon {
+                                        tip.spawn(
+                                            icon.with_color(theme.on_surface_variant)
+                                                .with_size(ICON_SIZE),
+                                        );
+                                    }
                                 });
                             });
 
@@ -945,7 +936,9 @@ pub fn setup(
                             ..default()
                         },))
                             .with_children(|col| {
-                                let icon = MaterialIcon::new('\u{EAF2}');
+                                let icon = MaterialIcon::from_name("vibration")
+                                    .or_else(|| MaterialIcon::from_name("waves"))
+                                    .or_else(|| MaterialIcon::from_name("shutter_speed"));
                                 col.spawn((
                                     Node {
                                         width: Val::Px(30.0),
@@ -959,15 +952,12 @@ pub fn setup(
                                     TooltipTrigger::new("Shake strength").top(),
                                 ))
                                 .with_children(|tip| {
-                                    tip.spawn((
-                                        Text::new(icon.as_str()),
-                                        TextFont {
-                                            font: icon_font.0.clone(),
-                                            font_size: ICON_SIZE,
-                                            ..default()
-                                        },
-                                        TextColor(theme.on_surface_variant),
-                                    ));
+                                    if let Some(icon) = icon {
+                                        tip.spawn(
+                                            icon.with_color(theme.on_surface_variant)
+                                                .with_size(ICON_SIZE),
+                                        );
+                                    }
                                 });
 
                                 col.spawn((
@@ -1013,7 +1003,7 @@ pub fn setup(
                             .with_children(|col| {
                                 let icon = MaterialIcon::from_name("swap_horiz")
                                     .or_else(|| MaterialIcon::from_name("straighten"))
-                                    .unwrap_or_else(MaterialIcon::search);
+                                    .or_else(|| MaterialIcon::from_name("search"));
                                 col.spawn((
                                     Node {
                                         width: Val::Px(30.0),
@@ -1027,15 +1017,12 @@ pub fn setup(
                                     TooltipTrigger::new("Shake distance").top(),
                                 ))
                                 .with_children(|tip| {
-                                    tip.spawn((
-                                        Text::new(icon.as_str()),
-                                        TextFont {
-                                            font: icon_font.0.clone(),
-                                            font_size: ICON_SIZE,
-                                            ..default()
-                                        },
-                                        TextColor(theme.on_surface_variant),
-                                    ));
+                                    if let Some(icon) = icon {
+                                        tip.spawn(
+                                            icon.with_color(theme.on_surface_variant)
+                                                .with_size(ICON_SIZE),
+                                        );
+                                    }
                                 });
 
                                 col.spawn((
@@ -1085,7 +1072,7 @@ pub fn setup(
                             .with_children(|col| {
                                 let icon = MaterialIcon::from_name("speed")
                                     .or_else(|| MaterialIcon::from_name("schedule"))
-                                    .unwrap_or_else(MaterialIcon::clock);
+                                    .or_else(|| MaterialIcon::from_name("search"));
                                 col.spawn((
                                     Node {
                                         width: Val::Px(30.0),
@@ -1099,15 +1086,12 @@ pub fn setup(
                                     TooltipTrigger::new("Shake speed").top(),
                                 ))
                                 .with_children(|tip| {
-                                    tip.spawn((
-                                        Text::new(icon.as_str()),
-                                        TextFont {
-                                            font: icon_font.0.clone(),
-                                            font_size: ICON_SIZE,
-                                            ..default()
-                                        },
-                                        TextColor(theme.on_surface_variant),
-                                    ));
+                                    if let Some(icon) = icon {
+                                        tip.spawn(
+                                            icon.with_color(theme.on_surface_variant)
+                                                .with_size(ICON_SIZE),
+                                        );
+                                    }
                                 });
 
                                 col.spawn((
@@ -1157,12 +1141,11 @@ pub fn setup(
         &mut commands,
         &character_data,
         &theme,
-        icon_font.0.clone(),
         settings_state.settings.quick_roll_panel_position,
     );
 
     // Spawn the settings button
-    super::settings::spawn_settings_button(&mut commands, &theme, icon_font.0.clone());
+    super::settings::spawn_settings_button(&mut commands, &theme);
 }
 
 /// Calculate the spawn position for a die based on its index
@@ -1339,7 +1322,6 @@ pub fn spawn_quick_roll_panel(
     commands: &mut Commands,
     character_data: &CharacterData,
     theme: &MaterialTheme,
-    icon_font: Handle<Font>,
     position: UiPositionSetting,
 ) -> Entity {
     commands
@@ -1459,7 +1441,6 @@ pub fn spawn_quick_roll_panel(
                                         card,
                                         &format!("{} ({}{}) ", abbrev, sign, modifier),
                                         QuickRollType::AbilityCheck(name.to_string()),
-                                        icon_font.clone(),
                                         theme,
                                     );
                                 }
@@ -1476,7 +1457,6 @@ pub fn spawn_quick_roll_panel(
                                             card,
                                             &format!("{} ({}{}) ", name, sign, modifier),
                                             QuickRollType::AbilityCheck(name.clone()),
-                                            icon_font.clone(),
                                             theme,
                                         );
                                     }
@@ -1520,7 +1500,6 @@ pub fn spawn_quick_roll_panel(
                                             card,
                                             &format!("{} ({}{}) ", abbrev, sign, save.modifier),
                                             QuickRollType::SavingThrow(save_name.to_string()),
-                                            icon_font.clone(),
                                             theme,
                                         );
                                     }
@@ -1552,7 +1531,6 @@ pub fn spawn_quick_roll_panel(
                                         card,
                                         &format!("{} ({}{}) ", display_name, sign, skill.modifier),
                                         QuickRollType::Skill(skill_name.clone()),
-                                        icon_font.clone(),
                                         theme,
                                     );
                                 }
@@ -1577,7 +1555,6 @@ fn spawn_quick_roll_button(
     parent: &mut ChildSpawnerCommands,
     label: &str,
     roll_type: QuickRollType,
-    _icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     parent
@@ -1632,7 +1609,6 @@ pub fn rebuild_quick_roll_panel(
     theme: Res<MaterialTheme>,
     ui_state: Res<UiState>,
     settings_state: Res<SettingsState>,
-    icon_font: Res<MaterialIconFont>,
     panel_query: Query<Entity, With<QuickRollPanel>>,
 ) {
     if !character_data.is_changed() && !theme.is_changed() {
@@ -1649,7 +1625,6 @@ pub fn rebuild_quick_roll_panel(
         &mut commands,
         &character_data,
         &theme,
-        icon_font.0.clone(),
         settings_state.settings.quick_roll_panel_position,
     );
     commands

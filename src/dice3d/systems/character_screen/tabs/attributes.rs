@@ -16,7 +16,20 @@ pub fn spawn_attributes_content(
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
+    theme: &MaterialTheme,
+) {
+    spawn_attributes_group(parent, sheet, edit_state, adding_state, icon_assets, theme);
+}
+
+/// Spawn the Attributes group card.
+///
+/// This is intentionally reusable between the tabbed view and a future "page" view.
+pub fn spawn_attributes_group(
+    parent: &mut ChildSpawnerCommands,
+    sheet: &CharacterSheet,
+    edit_state: &GroupEditState,
+    adding_state: &AddingEntryState,
+    icon_assets: &IconAssets,
     theme: &MaterialTheme,
 ) {
     let group_type = GroupType::Attributes;
@@ -41,14 +54,7 @@ pub fn spawn_attributes_content(
         })
         .with_children(|card| {
             // Group header
-            spawn_group_header(
-                card,
-                "Attributes",
-                group_type.clone(),
-                edit_state,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_group_header(card, "Attributes", group_type.clone(), edit_state, theme);
 
             // Core attributes
             let attrs = [
@@ -99,7 +105,6 @@ pub fn spawn_attributes_content(
                     field,
                     is_editing,
                     icon_assets,
-                    icon_font.clone(),
                     theme,
                 );
             }
@@ -114,21 +119,13 @@ pub fn spawn_attributes_content(
                     modifier,
                     is_editing,
                     icon_assets,
-                    icon_font.clone(),
                     theme,
                 );
             }
 
             // Add button (shown when editing)
             if is_editing {
-                spawn_group_add_button(
-                    card,
-                    group_type,
-                    adding_state,
-                    icon_assets,
-                    icon_font,
-                    theme,
-                );
+                spawn_group_add_button(card, group_type, adding_state, icon_assets, theme);
             }
         });
 }
@@ -142,7 +139,6 @@ fn spawn_attribute_row(
     field: EditingField,
     is_editing: bool,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     let dice_icon = icon_assets.icons.get(&IconType::Dice).cloned();
@@ -189,15 +185,7 @@ fn spawn_attribute_row(
                         })
                         .with_children(|btn| {
                             if let Some(icon) = MaterialIcon::from_name(icon_name) {
-                                btn.spawn((
-                                    Text::new(icon.as_str()),
-                                    TextFont {
-                                        font: icon_font.clone(),
-                                        font_size: 16.0,
-                                        ..default()
-                                    },
-                                    TextColor(icon_color),
-                                ));
+                                btn.spawn(icon.with_color(icon_color).with_size(16.0));
                             } else if let Some(handle) = dice_icon {
                                 btn.spawn((
                                     ImageNode::new(handle),
@@ -312,7 +300,6 @@ fn spawn_custom_attribute_row(
     modifier: i32,
     is_editing: bool,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
     theme: &MaterialTheme,
 ) {
     let dice_icon = icon_assets.icons.get(&IconType::Dice).cloned();
@@ -361,15 +348,7 @@ fn spawn_custom_attribute_row(
                         })
                         .with_children(|btn| {
                             if let Some(icon) = MaterialIcon::from_name(icon_name) {
-                                btn.spawn((
-                                    Text::new(icon.as_str()),
-                                    TextFont {
-                                        font: icon_font.clone(),
-                                        font_size: 16.0,
-                                        ..default()
-                                    },
-                                    TextColor(icon_color),
-                                ));
+                                btn.spawn(icon.with_color(icon_color).with_size(16.0));
                             } else if let Some(handle) = dice_icon {
                                 btn.spawn((
                                     ImageNode::new(handle),
@@ -500,14 +479,7 @@ fn spawn_custom_attribute_row(
 
                 // Delete button (shown in edit mode)
                 if is_editing {
-                    spawn_delete_button(
-                        values,
-                        GroupType::Attributes,
-                        name,
-                        icon_assets,
-                        icon_font,
-                        theme,
-                    );
+                    spawn_delete_button(values, GroupType::Attributes, name, icon_assets, theme);
                 }
             });
         });

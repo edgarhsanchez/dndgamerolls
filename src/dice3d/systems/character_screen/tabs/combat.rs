@@ -16,7 +16,20 @@ pub fn spawn_combat_content(
     edit_state: &GroupEditState,
     adding_state: &AddingEntryState,
     icon_assets: &IconAssets,
-    icon_font: Handle<Font>,
+    theme: &MaterialTheme,
+) {
+    spawn_combat_group(parent, sheet, edit_state, adding_state, icon_assets, theme);
+}
+
+/// Spawn the Combat group card.
+///
+/// This is intentionally reusable between the tabbed view and a future "page" view.
+pub fn spawn_combat_group(
+    parent: &mut ChildSpawnerCommands,
+    sheet: &CharacterSheet,
+    edit_state: &GroupEditState,
+    adding_state: &AddingEntryState,
+    icon_assets: &IconAssets,
     theme: &MaterialTheme,
 ) {
     let group_type = GroupType::Combat;
@@ -41,14 +54,7 @@ pub fn spawn_combat_content(
         })
         .with_children(|card| {
             // Group header
-            spawn_group_header(
-                card,
-                "Combat",
-                group_type.clone(),
-                edit_state,
-                icon_font.clone(),
-                theme,
-            );
+            spawn_group_header(card, "Combat", group_type.clone(), edit_state, theme);
 
             // Armor Class
             spawn_stat_field(
@@ -61,7 +67,6 @@ pub fn spawn_combat_content(
                 Some(group_type.clone()),
                 Some("armor_class"),
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
 
@@ -84,7 +89,6 @@ pub fn spawn_combat_content(
                 Some(group_type.clone()),
                 Some("initiative"),
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
 
@@ -99,7 +103,6 @@ pub fn spawn_combat_content(
                 Some(group_type.clone()),
                 Some("speed"),
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
 
@@ -114,7 +117,6 @@ pub fn spawn_combat_content(
                 Some(group_type.clone()),
                 Some("proficiency_bonus"),
                 icon_assets,
-                icon_font.clone(),
                 theme,
             );
 
@@ -132,21 +134,13 @@ pub fn spawn_combat_content(
                     GroupType::Combat,
                     is_editing,
                     icon_assets,
-                    icon_font.clone(),
                     theme,
                 );
             }
 
             // Add button (shown when editing)
             if is_editing {
-                spawn_group_add_button(
-                    card,
-                    group_type,
-                    adding_state,
-                    icon_assets,
-                    icon_font,
-                    theme,
-                );
+                spawn_group_add_button(card, group_type, adding_state, icon_assets, theme);
             }
         });
 }

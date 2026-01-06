@@ -301,22 +301,28 @@ pub fn sync_dice_container_mode_text(
 /// When in Box mode, show the cup icon (U+EA1B) to indicate switching to Cup.
 pub fn sync_dice_container_toggle_icon(
     style: Res<DiceContainerStyle>,
-    mut texts: Query<&mut Text, With<DiceBoxToggleContainerIconText>>,
+    mut icons: Query<&mut MaterialIcon, With<DiceBoxToggleContainerIconText>>,
 ) {
     if !style.is_changed() {
         return;
     }
 
-    let icon_str = match *style {
-        DiceContainerStyle::Box => '\u{EA1B}'.to_string(),
+    let new_icon = match *style {
+        DiceContainerStyle::Box => MaterialIcon::from_name("emoji_food_beverage")
+            .or_else(|| MaterialIcon::from_name("local_bar"))
+            .or_else(|| MaterialIcon::from_name("coffee"))
+            .or_else(|| MaterialIcon::from_name("swap_horiz")),
         DiceContainerStyle::Cup => MaterialIcon::from_name("swap_horiz")
             .or_else(|| MaterialIcon::from_name("swap_horizontal_circle"))
-            .unwrap_or_else(MaterialIcon::search)
-            .as_str(),
+            .or_else(|| MaterialIcon::from_name("swap_horiz")),
     };
 
-    for mut text in texts.iter_mut() {
-        **text = icon_str.clone();
+    let Some(new_icon) = new_icon else {
+        return;
+    };
+
+    for mut icon in icons.iter_mut() {
+        icon.id = new_icon.id;
     }
 }
 

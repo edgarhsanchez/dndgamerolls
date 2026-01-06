@@ -2,6 +2,7 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::text_field::spawn_text_field_control_with;
 
 use crate::dice3d::types::{
     ContainerShakeConfig, SettingsState, ShakeAxis, ShakeCurveAxisChip, ShakeCurveEditMode,

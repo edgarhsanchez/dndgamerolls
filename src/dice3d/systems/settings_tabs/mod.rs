@@ -6,6 +6,7 @@ pub mod colors;
 pub mod colors_interactions;
 pub mod dice;
 pub mod layout;
+pub mod sound_video;
 pub mod shake_curve;
 
 /// Creates a per-tab scrollable content panel.

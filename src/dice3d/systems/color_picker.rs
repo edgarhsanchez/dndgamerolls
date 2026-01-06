@@ -430,7 +430,7 @@ pub fn spawn_color_picker_ui(
                     });
                 });
 
-            // Buttons
+            // Buttons (explicit slots so the label is always visible)
             container
                 .spawn(Node {
                     width: Val::Percent(100.0),
@@ -440,16 +440,58 @@ pub fn spawn_color_picker_ui(
                 })
                 .with_children(|btns| {
                     // Cancel
-                    btns.spawn((
-                        MaterialButtonBuilder::new("Cancel").text().build(&theme),
-                        ColorPickerCancelButton,
-                    ));
+                    btns
+                        .spawn(Node {
+                            width: Val::Px(100.0),
+                            height: Val::Px(36.0),
+                            ..default()
+                        })
+                        .with_children(|slot| {
+                            slot
+                                .spawn((
+                                    MaterialButtonBuilder::new("Cancel")
+                                        .text()
+                                        .build(&theme),
+                                    ColorPickerCancelButton,
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("Cancel"),
+                                        TextFont {
+                                            font_size: 14.0,
+                                            ..default()
+                                        },
+                                        TextColor(theme.primary),
+                                    ));
+                                });
+                        });
 
-                    // Select
-                    btns.spawn((
-                        MaterialButtonBuilder::new("Select").filled().build(&theme),
-                        ColorPickerSelectButton,
-                    ));
+                    // OK / Select
+                    btns
+                        .spawn(Node {
+                            width: Val::Px(100.0),
+                            height: Val::Px(36.0),
+                            ..default()
+                        })
+                        .with_children(|slot| {
+                            slot
+                                .spawn((
+                                    MaterialButtonBuilder::new("OK")
+                                        .filled()
+                                        .build(&theme),
+                                    ColorPickerSelectButton,
+                                ))
+                                .with_children(|btn| {
+                                    btn.spawn((
+                                        Text::new("OK"),
+                                        TextFont {
+                                            font_size: 14.0,
+                                            ..default()
+                                        },
+                                        TextColor(theme.on_primary),
+                                    ));
+                                });
+                        });
                 });
         });
     } else if !state.active && !root_query.is_empty() {

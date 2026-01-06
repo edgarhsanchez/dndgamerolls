@@ -2,6 +2,7 @@
 //!
 //! This module contains systems for the settings button, modal, and color picker.
 
+use bevy::audio::{GlobalVolume, Volume};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
@@ -9,7 +10,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::ui::{ComputedUiTargetCamera, UiGlobalTransform};
 
-use bevy::window::PrimaryWindow;
+use bevy::window::{PresentMode, PrimaryWindow};
 use bevy_material_ui::prelude::*;
 use bevy_material_ui::slider::{spawn_slider_control_with, SliderOrientation};
 use bevy_material_ui::theme::ThemeMode;
@@ -620,6 +621,19 @@ fn spawn_settings_modal(
                         BackgroundColor(Color::NONE),
                     ))
                     .with_children(|t| spawn_tab_label(t, theme, "Layout"));
+
+                    tabs.spawn((
+                        MaterialTab::new(4, "Sound & Video"),
+                        Button,
+                        Node {
+                            flex_grow: 1.0,
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::NONE),
+                    ))
+                    .with_children(|t| spawn_tab_label(t, theme, "Sound & Video"));
                 });
 
                 // Scrollable content area. Each tab is a scroll container.
@@ -694,6 +708,21 @@ fn spawn_settings_modal(
                             false,
                             |tab| {
                                 settings_tabs::layout::build_layout_tab(tab, theme);
+                            },
+                        );
+
+                        settings_tabs::spawn_scrollable_tab_content(
+                            tab_area,
+                            tabs_entity,
+                            4,
+                            false,
+                            |tab| {
+                                settings_tabs::sound_video::build_sound_video_tab(
+                                    tab,
+                                    theme,
+                                    settings_state.editing_master_volume,
+                                    settings_state.editing_vsync_enabled,
+                                );
                             },
                         );
                     });
@@ -900,6 +929,9 @@ pub fn handle_settings_button_click(
             settings_state.settings.dice_box_highlight_color.clone();
         settings_state.highlight_input_text = settings_state.editing_highlight_color.to_hex();
 
+        settings_state.editing_master_volume = settings_state.settings.master_volume;
+        settings_state.editing_vsync_enabled = settings_state.settings.vsync_enabled;
+
         settings_state.quick_roll_editing_die = settings_state.settings.quick_roll_default_die;
         settings_state.default_roll_uses_shake_editing =
             settings_state.settings.default_roll_uses_shake;
@@ -1029,6 +1061,8 @@ pub fn handle_settings_ok_click(
     mut clear_color: ResMut<ClearColor>,
     mut shake_config: ResMut<ContainerShakeConfig>,
     mut theme: ResMut<MaterialTheme>,
+    mut global_volume: Option<ResMut<GlobalVolume>>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
     db: Option<Res<CharacterDatabase>>,
 ) {
     for event in click_events.read() {
@@ -1055,6 +1089,25 @@ pub fn handle_settings_ok_click(
         settings_state.settings.dice_fx_plume_radius_multiplier = settings_state
             .editing_dice_fx_plume_radius_multiplier
             .clamp(0.25, 3.0);
+
+        // Audio
+        settings_state.settings.master_volume = settings_state
+            .editing_master_volume
+            .clamp(0.0, 1.0);
+
+        if let Some(mut gv) = global_volume.as_deref_mut() {
+            gv.volume = Volume::Linear(settings_state.settings.master_volume);
+        }
+
+        // Video
+        settings_state.settings.vsync_enabled = settings_state.editing_vsync_enabled;
+        if let Ok(mut window) = windows.single_mut() {
+            window.present_mode = if settings_state.settings.vsync_enabled {
+                PresentMode::AutoVsync
+            } else {
+                PresentMode::AutoNoVsync
+            };
+        }
 
         // Apply per-die/per-face Dice Roll FX mappings.
         let mut mappings = settings_state.editing_dice_roll_fx_mappings.clone();
@@ -1183,6 +1236,63 @@ pub fn handle_dice_fx_param_slider_changes(
                 settings_state.editing_dice_fx_plume_radius_multiplier =
                     event.value.clamp(0.25, 3.0);
             }
+        }
+    }
+}
+
+/// Handle master volume slider changes in the settings modal.
+pub fn handle_master_volume_slider_change(
+    mut events: MessageReader<SliderChangeEvent>,
+    slider_query: Query<(), With<MasterVolumeSlider>>,
+    mut settings_state: ResMut<SettingsState>,
+    mut global_volume: Option<ResMut<GlobalVolume>>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        if slider_query.get(event.entity).is_err() {
+            continue;
+        }
+
+        let value = event.value.clamp(0.0, 1.0);
+        settings_state.editing_master_volume = value;
+
+        if let Some(mut gv) = global_volume.as_deref_mut() {
+            gv.volume = Volume::Linear(value);
+        }
+    }
+}
+
+/// Handle VSync switch changes in the settings modal.
+pub fn handle_vsync_switch_change(
+    mut events: MessageReader<SwitchChangeEvent>,
+    switch_query: Query<(), With<VsyncSwitch>>,
+    mut settings_state: ResMut<SettingsState>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+) {
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for event in events.read() {
+        if switch_query.get(event.entity).is_err() {
+            continue;
+        }
+
+        settings_state.editing_vsync_enabled = event.selected;
+
+        if let Ok(mut window) = windows.single_mut() {
+            window.present_mode = if settings_state.editing_vsync_enabled {
+                PresentMode::AutoVsync
+            } else {
+                PresentMode::AutoNoVsync
+            };
         }
     }
 }
@@ -1327,6 +1437,36 @@ pub fn update_dice_fx_param_ui(
             DiceFxParamKind::PlumeRadius => settings_state.editing_dice_fx_plume_radius_multiplier,
         };
         *text = Text::new(format!("{:.2}", v));
+    }
+}
+
+/// Sync audio/video controls with the current editing state.
+pub fn update_sound_video_ui(
+    settings_state: Res<SettingsState>,
+    mut volume_sliders: Query<&mut MaterialSlider, With<MasterVolumeSlider>>,
+    mut volume_labels: Query<&mut Text, With<MasterVolumeValueLabel>>,
+    mut vsync_switches: Query<&mut MaterialSwitch, With<VsyncSwitch>>,
+) {
+    if !settings_state.is_changed() {
+        return;
+    }
+
+    if !(settings_state.show_modal
+        && settings_state.modal_kind == crate::dice3d::types::ActiveModalKind::DiceRollerSettings)
+    {
+        return;
+    }
+
+    for mut slider in volume_sliders.iter_mut() {
+        slider.value = settings_state.editing_master_volume.clamp(0.0, 1.0);
+    }
+
+    for mut text in volume_labels.iter_mut() {
+        *text = Text::new(format!("{:.0}%", settings_state.editing_master_volume * 100.0));
+    }
+
+    for mut switch in vsync_switches.iter_mut() {
+        switch.selected = settings_state.editing_vsync_enabled;
     }
 }
 
@@ -3069,8 +3209,22 @@ pub fn handle_shake_duration_text_input(
 pub fn apply_initial_settings(
     settings_state: Res<SettingsState>,
     mut clear_color: ResMut<ClearColor>,
+    mut global_volume: Option<ResMut<GlobalVolume>>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     clear_color.0 = settings_state.settings.background_color.to_color();
+
+    if let Some(mut gv) = global_volume.as_deref_mut() {
+        gv.volume = Volume::Linear(settings_state.settings.master_volume.clamp(0.0, 1.0));
+    }
+
+    if let Ok(mut window) = windows.single_mut() {
+        window.present_mode = if settings_state.settings.vsync_enabled {
+            PresentMode::AutoVsync
+        } else {
+            PresentMode::AutoNoVsync
+        };
+    }
 
     info!(
         "Applied startup background color: {}",

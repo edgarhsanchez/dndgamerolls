@@ -13,6 +13,15 @@ use super::ui::{
     ContainerShakeConfig, ShakeCurveBezierHandleKind, ShakeCurveEditMode, ShakeCurvePoint,
 };
 
+// Audio/Video defaults
+fn default_master_volume() -> f32 {
+    1.0
+}
+
+fn default_vsync_enabled() -> bool {
+    true
+}
+
 // ============================================================================
 // Dice Roll FX Mapping (hardcoded effects, no customization)
 // ============================================================================
@@ -525,6 +534,14 @@ pub struct AppSettings {
     /// Multiplier for the plume FX radius (fire/atomic).
     #[serde(default = "default_dice_fx_plume_radius_multiplier")]
     pub dice_fx_plume_radius_multiplier: f32,
+
+    /// Master volume for all in-game audio (independent of OS volume).
+    #[serde(default = "default_master_volume")]
+    pub master_volume: f32,
+
+    /// Whether to enable vertical sync (caps FPS to display refresh rate).
+    #[serde(default = "default_vsync_enabled")]
+    pub vsync_enabled: bool,
 }
 
 fn default_dice_fx_surface_opacity() -> f32 {
@@ -702,6 +719,8 @@ impl Default for AppSettings {
             dice_fx_surface_opacity: default_dice_fx_surface_opacity(),
             dice_fx_plume_height_multiplier: default_dice_fx_plume_height_multiplier(),
             dice_fx_plume_radius_multiplier: default_dice_fx_plume_radius_multiplier(),
+            master_volume: default_master_volume(),
+            vsync_enabled: default_vsync_enabled(),
         }
     }
 }
@@ -813,6 +832,10 @@ pub struct SettingsState {
     pub editing_color: ColorSetting,
     /// Temporary highlight color being edited in the modal
     pub editing_highlight_color: ColorSetting,
+    /// Editing master volume (0..1 linear)
+    pub editing_master_volume: f32,
+    /// Editing VSync toggle
+    pub editing_vsync_enabled: bool,
     /// Text input for color
     pub color_input_text: String,
     /// Text input for highlight color
@@ -890,6 +913,8 @@ impl Default for SettingsState {
         let editing_dice_fx_surface_opacity = settings.dice_fx_surface_opacity;
         let editing_dice_fx_plume_height_multiplier = settings.dice_fx_plume_height_multiplier;
         let editing_dice_fx_plume_radius_multiplier = settings.dice_fx_plume_radius_multiplier;
+        let editing_master_volume = settings.master_volume;
+        let editing_vsync_enabled = settings.vsync_enabled;
 
         Self {
             settings,
@@ -898,6 +923,8 @@ impl Default for SettingsState {
             modal_kind: ActiveModalKind::None,
             editing_color,
             editing_highlight_color,
+            editing_master_volume,
+            editing_vsync_enabled,
             color_input_text: String::new(),
             highlight_input_text: String::new(),
             theme_seed_input_text: String::new(),
@@ -944,6 +971,18 @@ pub struct DiceFxParamSlider {
 pub struct DiceFxParamValueLabel {
     pub kind: DiceFxParamKind,
 }
+
+/// Marker for master volume slider
+#[derive(Component)]
+pub struct MasterVolumeSlider;
+
+/// Marker for master volume value text
+#[derive(Component)]
+pub struct MasterVolumeValueLabel;
+
+/// Marker for VSync switch
+#[derive(Component)]
+pub struct VsyncSwitch;
 
 /// Color component for slider interaction
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

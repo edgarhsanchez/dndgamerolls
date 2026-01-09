@@ -110,11 +110,13 @@ use dndgamerolls::dice3d::{
     init_settings_ui_images,
     load_icons,
     load_settings_state_from_db,
+    load_dice_designer_state_from_db,
     manage_character_sheet_settings_modal,
     manage_dice_scale_preview_scene,
     manage_settings_modal,
     open_lid_on_roll_completed,
     persist_settings_to_db,
+    persist_dice_designer_state_to_db,
     play_dice_container_collision_sfx,
     process_avatar_loads,
     process_pending_roll_with_lid,
@@ -568,6 +570,7 @@ fn run_3d_mode(cli: Cli) {
                 init_dice_face_label_assets,
                 init_character_manager,
                 load_settings_state_from_db,
+                load_dice_designer_state_from_db,
                 init_dice_scale_preview_render_target,
                 init_dice_designer_preview_render_target,
                 init_settings_ui_images,
@@ -825,6 +828,7 @@ fn run_3d_mode(cli: Cli) {
         )
         .add_systems(PostUpdate, tint_recent_theme_dropdown_items)
         .add_systems(PostUpdate, persist_settings_to_db)
+        .add_systems(PostUpdate, persist_dice_designer_state_to_db)
         .add_systems(
             Update,
             (

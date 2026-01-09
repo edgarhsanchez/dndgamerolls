@@ -5,6 +5,7 @@
 //! (color, depth, normal) to each face.
 
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -24,6 +25,8 @@ pub struct DiceDesignerState {
     pub selected_face: Option<u32>,
     /// Per-dice-type face texture configurations
     pub dice_configs: HashMap<DiceType, DiceTextureConfig>,
+    /// Whether texture paths have changed and should be persisted.
+    pub is_modified: bool,
     /// Whether the 3D preview should auto-rotate
     pub auto_rotate: bool,
     /// Current rotation of the preview dice (euler angles in radians)
@@ -46,6 +49,7 @@ impl Default for DiceDesignerState {
             selected_dice: DiceType::D4,
             selected_face: None,
             dice_configs,
+            is_modified: false,
             auto_rotate: true,
             preview_rotation: Vec3::ZERO,
             is_dragging_rotation: false,
@@ -55,7 +59,7 @@ impl Default for DiceDesignerState {
 }
 
 /// Configuration for a single dice type's face textures
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiceTextureConfig {
     pub die_type: DiceType,
     /// Per-face texture paths. Key is face value (1-20), value is the texture set.
@@ -83,7 +87,7 @@ impl DiceTextureConfig {
 }
 
 /// Texture paths for a single die face (or default)
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FaceTextureSet {
     /// Path to the color/albedo texture (PNG)
     pub color_path: Option<PathBuf>,
@@ -91,6 +95,73 @@ pub struct FaceTextureSet {
     pub depth_path: Option<PathBuf>,
     /// Path to the normal map texture (PNG)
     pub normal_path: Option<PathBuf>,
+}
+
+// ============================================================================
+// Persistence Schema
+// ============================================================================
+
+/// Persisted dice designer configuration stored in SurrealDB.
+///
+/// Stores texture paths (color/depth/normal) for each dice type and face.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiceDesignerSavedConfig {
+    pub version: u32,
+    pub dice_configs: HashMap<DiceType, DiceTextureConfig>,
+}
+
+impl Default for DiceDesignerSavedConfig {
+    fn default() -> Self {
+        let mut dice_configs = HashMap::new();
+        for die_type in DiceType::all() {
+            dice_configs.insert(die_type, DiceTextureConfig::new(die_type));
+        }
+        Self {
+            version: 1,
+            dice_configs,
+        }
+    }
+}
+
+impl DiceDesignerState {
+    pub fn to_saved_config(&self) -> DiceDesignerSavedConfig {
+        DiceDesignerSavedConfig {
+            version: 1,
+            dice_configs: self.dice_configs.clone(),
+        }
+    }
+
+    /// Merge a saved config into the current state.
+    ///
+    /// This keeps runtime flags (preview rotation, dragging state) intact and ensures
+    /// any newly-added dice types/faces get default entries.
+    pub fn apply_saved_config(&mut self, saved: DiceDesignerSavedConfig) {
+        for die_type in DiceType::all() {
+            let Some(saved_cfg) = saved.dice_configs.get(&die_type) else {
+                continue;
+            };
+
+            let cfg = self
+                .dice_configs
+                .entry(die_type)
+                .or_insert_with(|| DiceTextureConfig::new(die_type));
+
+            cfg.default_textures = saved_cfg.default_textures.clone();
+
+            // Ensure all faces exist, then copy saved overrides.
+            let face_count = die_type.face_count();
+            for face in 1..=face_count {
+                cfg.face_textures.entry(face).or_default();
+            }
+            for (face, set) in saved_cfg.face_textures.iter() {
+                if *face >= 1 && *face <= face_count {
+                    cfg.face_textures.insert(*face, set.clone());
+                }
+            }
+        }
+
+        self.is_modified = false;
+    }
 }
 
 // ============================================================================

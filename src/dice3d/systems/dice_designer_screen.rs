@@ -21,12 +21,68 @@ use crate::dice3d::systems::dice_preview::{spawn_dice_preview_ui, DiceDesignerPr
 use crate::dice3d::types::{
     DiceDesignerListItem, DiceDesignerListPanel, DiceDesignerScreenRoot,
     DiceDesignerSettingsPanel, DiceDesignerState, DiceDesignerTextureSection,
-    DiceType, FaceSelectorDropdown, FaceSelectorItem, TextureFileInput,
+    DiceDesignerSavedConfig, DiceType, FaceSelectorDropdown, FaceSelectorItem, TextureFileInput,
     TexturePreviewImage, TextureType,
+    CharacterDatabase,
 };
 
 /// Height of the tab bar (matches other screens)
 const TAB_BAR_HEIGHT: f32 = 48.0;
+
+/// SurrealDB key where dice designer texture paths are persisted.
+const DICE_DESIGNER_DB_KEY: &str = "dice_designer_textures_v1";
+
+// ============================================================================
+// Persistence
+// ============================================================================
+
+/// Load persisted dice designer texture paths after the DB has been initialized.
+pub fn load_dice_designer_state_from_db(
+    mut state: ResMut<DiceDesignerState>,
+    db: Option<Res<CharacterDatabase>>,
+) {
+    let Some(db) = db else {
+        warn!("No CharacterDatabase resource; dice designer textures will not persist");
+        return;
+    };
+
+    if db.db_path.as_os_str().is_empty() {
+        warn!("CharacterDatabase is in-memory; dice designer textures will not persist across restarts");
+        return;
+    }
+
+    match db.get_setting::<DiceDesignerSavedConfig>(DICE_DESIGNER_DB_KEY) {
+        Ok(Some(saved)) => {
+            info!("Loaded dice designer textures from SurrealDB at {:?}", db.db_path);
+            state.apply_saved_config(saved);
+        }
+        Ok(None) => {
+            info!("No persisted dice designer textures found; using defaults");
+        }
+        Err(e) => {
+            warn!("Failed to load dice designer textures from SurrealDB: {}", e);
+        }
+    }
+}
+
+/// Persist dice designer texture paths when modified.
+pub fn persist_dice_designer_state_to_db(
+    mut state: ResMut<DiceDesignerState>,
+    db: Option<Res<CharacterDatabase>>,
+) {
+    if !state.is_modified {
+        return;
+    }
+
+    let Some(db) = db else {
+        return;
+    };
+
+    match db.set_setting(DICE_DESIGNER_DB_KEY, state.to_saved_config()) {
+        Ok(()) => state.is_modified = false,
+        Err(e) => warn!("Failed to persist dice designer textures to SurrealDB: {}", e),
+    }
+}
 
 // ============================================================================
 // File Picker Task Component
@@ -984,6 +1040,9 @@ pub fn poll_file_picker_tasks(
                         TextureType::Depth => texture_set.depth_path = Some(path),
                         TextureType::Normal => texture_set.normal_path = Some(path),
                     }
+
+                    // Persist on next flush.
+                    state.is_modified = true;
                 }
             }
         }

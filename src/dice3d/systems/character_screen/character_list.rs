@@ -297,10 +297,21 @@ pub fn handle_character_list_clicks(
         if let Some(entry) = character_manager.characters.get(list_item.index) {
             // Load the selected character
             let char_id = entry.id;
-            if let Ok(sheet) = db.load_character(char_id) {
+            if let Ok(mut sheet) = db.load_character(char_id) {
+                // Ensure older data (pre stable-uuid/id fields) is upgraded in-memory.
+                // This keeps UI components (skill/save/custom rows) stable across sessions.
+                sheet.migrate_to_ids();
+
+                // Persist the upgraded sheet so we don't regenerate ids every load.
+                if let Err(err) = db.save_character(Some(char_id), &sheet) {
+                    bevy::log::warn!("Failed to persist upgraded character {char_id}: {err}");
+                }
+
                 character_manager.current_character_id = Some(char_id);
+                character_data.character_id = Some(char_id);
                 character_data.sheet = Some(sheet);
                 character_data.is_modified = false;
+                character_data.needs_refresh = true;
             }
         }
     }

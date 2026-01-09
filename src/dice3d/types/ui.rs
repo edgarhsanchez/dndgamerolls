@@ -21,6 +21,7 @@ pub enum AppTab {
     #[default]
     DiceRoller,
     CharacterSheet,
+    DiceDesigner,
     DndInfo,
     Contributors,
 }

@@ -134,6 +134,40 @@ pub const DICE_FX_ELECTRIC_MASK_PATH: &str = concat!(
     "/fx/electric/mask.png"
 );
 
+// -----------------------------------------------------------------------------
+// Dice number atlas textures (embedded)
+// -----------------------------------------------------------------------------
+
+pub const DICE_NUMBER_ATLAS_COLOR_ASSET_PATH: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    "/textures/dice_numbers/atlas_color.png"
+);
+pub const DICE_NUMBER_ATLAS_COLOR_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/textures/dice_numbers/atlas_color.png"
+);
+
+pub const DICE_NUMBER_ATLAS_DEPTH_ASSET_PATH: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    "/textures/dice_numbers/atlas_depth.png"
+);
+pub const DICE_NUMBER_ATLAS_DEPTH_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/textures/dice_numbers/atlas_depth.png"
+);
+
+pub const DICE_NUMBER_ATLAS_NORMAL_ASSET_PATH: &str = concat!(
+    env!("CARGO_PKG_NAME"),
+    "/textures/dice_numbers/atlas_normal.png"
+);
+pub const DICE_NUMBER_ATLAS_NORMAL_PATH: &str = concat!(
+    "embedded://",
+    env!("CARGO_PKG_NAME"),
+    "/textures/dice_numbers/atlas_normal.png"
+);
+
 pub struct Dice3dEmbeddedAssetsPlugin;
 
 impl Plugin for Dice3dEmbeddedAssetsPlugin {
@@ -275,6 +309,30 @@ impl Plugin for Dice3dEmbeddedAssetsPlugin {
             PathBuf::from("assets/fx/electric/mask.png"),
             &asset_path,
             include_bytes!("../../assets/fx/electric/mask.png"),
+        );
+
+        // -----------------------------------------------------------------
+        // Dice number atlas textures (parallax labels)
+        // -----------------------------------------------------------------
+        let asset_path = Path::new(env!("CARGO_PKG_NAME")).join("textures/dice_numbers/atlas_color.png");
+        registry.insert_asset(
+            PathBuf::from("assets/textures/dice_numbers/atlas_color.png"),
+            &asset_path,
+            include_bytes!("../../assets/textures/dice_numbers/atlas_color.png"),
+        );
+
+        let asset_path = Path::new(env!("CARGO_PKG_NAME")).join("textures/dice_numbers/atlas_depth.png");
+        registry.insert_asset(
+            PathBuf::from("assets/textures/dice_numbers/atlas_depth.png"),
+            &asset_path,
+            include_bytes!("../../assets/textures/dice_numbers/atlas_depth.png"),
+        );
+
+        let asset_path = Path::new(env!("CARGO_PKG_NAME")).join("textures/dice_numbers/atlas_normal.png");
+        registry.insert_asset(
+            PathBuf::from("assets/textures/dice_numbers/atlas_normal.png"),
+            &asset_path,
+            include_bytes!("../../assets/textures/dice_numbers/atlas_normal.png"),
         );
     }
 }

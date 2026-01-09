@@ -42,22 +42,22 @@ pub fn start_container_shake(
     //   vmax ≈ A * max|d curve / d(progress)| / duration
     const MAX_CONTAINER_SHAKE_SPEED: f32 = 12.0;
 
-    let amplitude = shake_anim.amplitude.max(0.0);
-
-    // Duration is explicitly configured in the shake curve settings.
+    // Duration is explicitly configured in the shake curve settings and is treated as seconds.
+    // The animation should complete within this time.
     let duration_from_ui = shake_config.duration_seconds.max(0.01);
+    shake_anim.duration = duration_from_ui;
 
     // Cap max linear speed of the container based on the steepest curve segment.
+    // IMPORTANT: do not extend duration to satisfy the cap; instead scale amplitude down.
     let curve_slope = max_abs_curve_slope(&shake_config.curve_points_x)
         .max(max_abs_curve_slope(&shake_config.curve_points_y))
         .max(max_abs_curve_slope(&shake_config.curve_points_z));
-    let min_duration_from_speed_cap = if amplitude > 0.0001 {
-        (amplitude * curve_slope / MAX_CONTAINER_SHAKE_SPEED).max(0.0)
-    } else {
-        0.0
-    };
-
-    shake_anim.duration = duration_from_ui.max(min_duration_from_speed_cap);
+    let amplitude = shake_anim.amplitude.max(0.0);
+    if amplitude > 0.0001 {
+        let max_amplitude_for_speed =
+            (MAX_CONTAINER_SHAKE_SPEED * duration_from_ui / curve_slope.max(0.0001)).max(0.0);
+        shake_anim.amplitude = amplitude.min(max_amplitude_for_speed);
+    }
     shake_anim.base_positions.clear();
 
     for (entity, transform) in container_query.iter() {
@@ -729,5 +729,128 @@ pub fn handle_dice_box_toggle_container_click(
             rng.random_range(-1.5..1.5),
             rng.random_range(-1.5..1.5),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::prelude::{App, MinimalPlugins, Transform, Update};
+
+    #[test]
+    fn shake_duration_is_respected_and_amplitude_scales_for_speed_cap() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+
+        // One container entity to populate base positions.
+        app.world_mut().spawn((DiceBox, Transform::default()));
+
+        app.insert_resource(ShakeState { strength: 1.0 });
+        app.insert_resource(ContainerShakeAnimation::default());
+
+        // Force a very steep curve so the speed cap would normally push duration up.
+        // Values are clamped to [-1..1], so the only way to raise slope is to compress time.
+        let mut cfg = ContainerShakeConfig::default();
+        cfg.duration_seconds = 0.20;
+        cfg.distance = 10.0;
+        cfg.curve_points_x = vec![
+            ShakeCurvePoint {
+                id: 1,
+                t: 0.0,
+                value: 0.0,
+                in_handle: None,
+                out_handle: None,
+            },
+            ShakeCurvePoint {
+                id: 2,
+                t: 0.001,
+                value: 1.0,
+                in_handle: None,
+                out_handle: None,
+            },
+            ShakeCurvePoint {
+                id: 3,
+                t: 0.002,
+                value: -1.0,
+                in_handle: None,
+                out_handle: None,
+            },
+            ShakeCurvePoint {
+                id: 4,
+                t: 1.0,
+                value: 0.0,
+                in_handle: None,
+                out_handle: None,
+            },
+        ];
+        cfg.curve_points_y = vec![
+            ShakeCurvePoint {
+                id: 10,
+                t: 0.0,
+                value: 0.0,
+                in_handle: None,
+                out_handle: None,
+            },
+            ShakeCurvePoint {
+                id: 11,
+                t: 1.0,
+                value: 0.0,
+                in_handle: None,
+                out_handle: None,
+            },
+        ];
+        cfg.curve_points_z = cfg.curve_points_y.clone();
+        app.insert_resource(cfg);
+
+        // Run a one-shot system that starts the shake.
+        app.add_systems(
+            Update,
+            |
+                shake_state: Res<ShakeState>,
+                shake_config: Res<ContainerShakeConfig>,
+                mut shake_anim: ResMut<ContainerShakeAnimation>,
+                container_query: Query<(Entity, &Transform), With<DiceBox>>,
+            | {
+                let _started = start_container_shake(
+                    &shake_state,
+                    &shake_config,
+                    &mut shake_anim,
+                    &container_query,
+                );
+            },
+        );
+
+        app.update();
+
+        let shake_anim = app
+            .world()
+            .resource::<ContainerShakeAnimation>();
+        let shake_config = app
+            .world()
+            .resource::<ContainerShakeConfig>();
+
+        // Duration must exactly match the configured seconds (subject to the same min clamp).
+        let expected_duration = shake_config.duration_seconds.max(0.01);
+        assert!(
+            (shake_anim.duration - expected_duration).abs() < 1e-6,
+            "shake duration should be respected: expected {expected_duration}, got {}",
+            shake_anim.duration
+        );
+
+        // If speed-capping occurs, it must do so by reducing amplitude, not extending duration.
+        const MAX_CONTAINER_SHAKE_SPEED: f32 = 12.0;
+        let curve_slope = max_abs_curve_slope(&shake_config.curve_points_x)
+            .max(max_abs_curve_slope(&shake_config.curve_points_y))
+            .max(max_abs_curve_slope(&shake_config.curve_points_z));
+        let max_amplitude_for_speed =
+            (MAX_CONTAINER_SHAKE_SPEED * expected_duration / curve_slope.max(0.0001)).max(0.0);
+        assert!(
+            shake_anim.amplitude <= max_amplitude_for_speed + 1e-5,
+            "amplitude should be capped for speed: amplitude {}, max {}",
+            shake_anim.amplitude,
+            max_amplitude_for_speed
+        );
+        assert!(shake_anim.active);
+        assert!(!shake_anim.base_positions.is_empty());
     }
 }

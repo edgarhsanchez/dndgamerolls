@@ -27,6 +27,7 @@ use dndgamerolls::dice3d::{
     collect_dice_spawn_points_from_gltf,
     drag_shake_curve_bezier_handle,
     drag_shake_curve_point,
+    DiceDesignerTextureLoader,
     ensure_buttons_have_interaction,
     ensure_dice_box_lid_animation_assets,
     // Legacy SQLite -> SurrealDB conversion (character screen)
@@ -49,6 +50,8 @@ use dndgamerolls::dice3d::{
     handle_dice_fx_param_slider_changes,
     handle_dice_roll_fx_mapping_select_change,
     handle_dice_scale_slider_changes,
+    handle_dice_list_clicks,
+    handle_face_selector_clicks,
     handle_master_volume_slider_change,
     handle_expertise_toggle,
     handle_proficiency_toggle,
@@ -65,6 +68,8 @@ use dndgamerolls::dice3d::{
     handle_roll_all_stats_click,
     handle_roll_attribute_click,
     handle_roll_skill_click,
+    handle_gizmo_interactions,
+    handle_preview_drag_rotation,
     handle_save_click,
     handle_scroll_input,
     handle_settings_button_click,
@@ -87,12 +92,18 @@ use dndgamerolls::dice3d::{
     handle_strength_slider_changes,
     handle_tab_clicks,
     handle_text_input,
+    handle_texture_file_clicks,
+    poll_file_picker_tasks,
+    process_dice_designer_texture_loads,
+    update_texture_previews,
     handle_theme_seed_select_change,
     handle_vsync_switch_change,
     handle_zoom_slider_changes,
     init_character_manager,
     init_collision_sounds,
     init_contributors,
+    init_dice_designer_preview_render_target,
+    init_dice_face_label_assets,
     init_dice_scale_preview_render_target,
     init_settings_ui_images,
     load_icons,
@@ -118,6 +129,8 @@ use dndgamerolls::dice3d::{
     setup,
     setup_character_screen,
     setup_contributors_screen,
+    setup_dice_designer_screen,
+    setup_dice_preview,
     setup_dnd_info_screen,
     setup_tab_bar,
     spawn_colliders_from_gltf_guides,
@@ -134,6 +147,11 @@ use dndgamerolls::dice3d::{
     update_color_ui,
     update_dice_box_highlight,
     update_dice_fx_param_ui,
+    update_preview_die_type,
+    update_preview_rotation,
+    update_preview_visibility,
+    update_rotation_ring_transforms,
+    update_rotation_ring_visibility,
     update_dice_scale_ui,
     update_sound_video_ui,
     update_editing_display,
@@ -161,6 +179,7 @@ use dndgamerolls::dice3d::{
     DiceBoxLidAnimationController,
     DiceConfig,
     DiceContainerStyle,
+    DiceDesignerState,
     DiceFxPlugin,
     DiceResults,
     DiceSpawnPoints,
@@ -534,16 +553,20 @@ fn run_3d_mode(cli: Cli) {
         .insert_resource(DiceSpawnPoints::default())
         .insert_resource(DiceSpawnPointsApplied::default())
         .insert_resource(AvatarLoader::default())
+        .insert_resource(DiceDesignerTextureLoader::default())
         .insert_resource(DiceBoxLidAnimationController::default())
         .insert_resource(dndgamerolls::dice3d::systems::color_picker::ColorPickerState::default())
+        .insert_resource(DiceDesignerState::default())
         .add_systems(
             Startup,
             (
                 set_window_icon,
                 load_icons,
+                init_dice_face_label_assets,
                 init_character_manager,
                 load_settings_state_from_db,
                 init_dice_scale_preview_render_target,
+                init_dice_designer_preview_render_target,
                 init_settings_ui_images,
                 init_contributors,
                 apply_initial_shake_config,
@@ -552,6 +575,7 @@ fn run_3d_mode(cli: Cli) {
                 setup,
                 setup_tab_bar,
                 setup_character_screen,
+                setup_dice_designer_screen,
                 setup_dnd_info_screen,
                 setup_contributors_screen,
                 apply_initial_settings,
@@ -798,6 +822,26 @@ fn run_3d_mode(cli: Cli) {
         )
         .add_systems(PostUpdate, tint_recent_theme_dropdown_items)
         .add_systems(PostUpdate, persist_settings_to_db)
+        .add_systems(
+            Update,
+            (
+                // Dice Designer systems
+                setup_dice_preview,
+                handle_dice_list_clicks,
+                handle_face_selector_clicks,
+                handle_texture_file_clicks,
+                poll_file_picker_tasks,
+                process_dice_designer_texture_loads,
+                update_texture_previews,
+                update_preview_visibility,
+                update_preview_rotation,
+                update_preview_die_type,
+                update_rotation_ring_visibility,
+                update_rotation_ring_transforms,
+                handle_preview_drag_rotation,
+                handle_gizmo_interactions,
+            ),
+        )
         .add_systems(
             Update,
             (

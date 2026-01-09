@@ -7,16 +7,28 @@ use bevy::prelude::*;
 
 use crate::dice3d::types::DiceType;
 
-/// Get the offset distance for number labels from the die center
+/// Get the offset distance for number labels from the die center.
+///
+/// This should be the distance from the die's center to the face surface,
+/// plus a tiny epsilon to avoid z-fighting. The label quad is then placed
+/// at `normal * offset`.
 pub fn get_label_offset(die_type: DiceType) -> f32 {
-    // Offset from center of die - place label on face surface
+    // Small offset above the face surface to prevent z-fighting.
+    const EPSILON: f32 = 0.005;
+
     match die_type {
-        DiceType::D4 => 0.22,  // Modern D4 - numbers at vertices
-        DiceType::D6 => 0.33,  // Cube
-        DiceType::D8 => 0.25,  // Octahedron
-        DiceType::D10 => 0.28, // Pentagonal trapezohedron
-        DiceType::D12 => 0.28, // Dodecahedron
-        DiceType::D20 => 0.28, // Icosahedron
+        // D4 uses vertex normals for number positions; handled separately.
+        DiceType::D4 => 0.15 + EPSILON,
+        // D6 cube: half-extent = 0.3 (size 0.6)
+        DiceType::D6 => 0.30 + EPSILON,
+        // D8 octahedron: size=0.5, face distance = size/sqrt(3) ≈ 0.289
+        DiceType::D8 => 0.29 + EPSILON,
+        // D10: size=0.5, kite faces; approximate inscribed radius ~0.30
+        DiceType::D10 => 0.30 + EPSILON,
+        // D12: scale factor 0.35, phi-based; approximate face distance ~0.31
+        DiceType::D12 => 0.31 + EPSILON,
+        // D20: scale factor 0.35, phi-based; approximate face distance ~0.29
+        DiceType::D20 => 0.29 + EPSILON,
     }
 }
 
@@ -24,7 +36,7 @@ pub fn get_label_offset(die_type: DiceType) -> f32 {
 pub fn get_label_scale(die_type: DiceType) -> f32 {
     // Scale for number labels - clear and readable
     match die_type {
-        DiceType::D4 => 0.08, // Small numbers for 3-per-face layout
+        DiceType::D4 => 0.10, // Small numbers for 3-per-face layout
         DiceType::D6 => 0.24,
         DiceType::D8 => 0.18,
         DiceType::D10 => 0.15,
@@ -33,30 +45,41 @@ pub fn get_label_scale(die_type: DiceType) -> f32 {
     }
 }
 
-/// Calculate the rotation for a label to face outward from a die face
+/// Calculate the rotation for a label to face outward from a die face.
+///
+/// The quad mesh is in the XY plane facing +Z. After rotation:
+/// - The quad's +Z axis aligns with `normal` (facing outward).
+/// - The quad's +Y axis (text "up") points toward world +Y when possible,
+///   or toward +Z for top/bottom faces so text reads correctly from the camera.
 pub fn get_label_rotation(normal: Vec3) -> Quat {
-    // Calculate rotation so the label faces outward from the die face
-    // The label mesh has Z pointing forward (out of the mesh), so we need to rotate
-    // it to align with the face normal
-
-    // Handle the Y-axis cases specially to avoid gimbal lock
-    if normal.y.abs() > 0.99 {
+    // Choose an "up" hint that keeps text upright from common viewing angles.
+    let up_hint = if normal.y.abs() > 0.99 {
+        // Top or bottom face: use +Z as the reference up so text reads
+        // correctly when looking down at the die.
         if normal.y > 0.0 {
-            // Top face - rotate label to face up
-            Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+            Vec3::Z
         } else {
-            // Bottom face - rotate label to face down
-            Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)
+            Vec3::NEG_Z
         }
     } else {
-        // For side faces, use look rotation
-        Quat::from_rotation_arc(Vec3::Z, normal)
-            * Quat::from_rotation_z(if normal.x < -0.5 {
-                std::f32::consts::PI
-            } else {
-                0.0
-            })
-    }
+        // Side faces: use world +Y so text stands upright.
+        Vec3::Y
+    };
+
+    // Build a coordinate frame: forward = normal, up ≈ up_hint.
+    let forward = normal.normalize();
+    let right = up_hint.cross(forward).normalize_or_zero();
+    // If up_hint was parallel to forward, fall back to a perpendicular.
+    let right = if right.length_squared() < 0.001 {
+        forward.any_orthonormal_vector()
+    } else {
+        right
+    };
+    let up = forward.cross(right).normalize();
+
+    // The quad's local axes are: +X right, +Y up, +Z forward.
+    // Build a rotation matrix from those columns.
+    Quat::from_mat3(&Mat3::from_cols(right, up, forward))
 }
 
 /// Create a mesh handle for a number label

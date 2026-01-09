@@ -304,6 +304,77 @@ fn test_migrate_legacy_name_keyed_maps_to_ids() {
     assert!(!custom_combat.id.is_empty());
 }
 
+#[test]
+fn test_legacy_missing_ids_become_stable_after_resave() {
+    let db = CharacterDatabase::open_in_memory().expect("open in-memory db");
+
+    // Create a legacy-style sheet where map keys are names and entry ids are empty.
+    let sheet = CharacterSheet {
+        character: dndgamerolls::dice3d::types::CharacterInfo {
+            name: "Legacy Hero".to_string(),
+            class: "Rogue".to_string(),
+            race: "Elf".to_string(),
+            level: 3,
+            ..Default::default()
+        },
+        skills: HashMap::from([(
+            "stealth".to_string(),
+            Skill {
+                id: String::new(),
+                name: String::new(),
+                slug: String::new(),
+                proficient: true,
+                modifier: 4,
+                ..Default::default()
+            },
+        )]),
+        saving_throws: HashMap::from([(
+            "dexterity".to_string(),
+            SavingThrow {
+                id: String::new(),
+                name: String::new(),
+                slug: String::new(),
+                proficient: true,
+                modifier: 2,
+            },
+        )]),
+        ..Default::default()
+    };
+
+    let id = db.save_character(None, &sheet).expect("save legacy sheet");
+
+    // First load: migration should generate ids.
+    let loaded1 = db.load_character(id).expect("load migrated sheet");
+    let (skill_id_1, skill_1) = loaded1
+        .skills
+        .iter()
+        .next()
+        .expect("skill present");
+    assert!(!skill_id_1.is_empty());
+    assert_eq!(skill_id_1, &skill_1.id);
+    assert_eq!(skill_1.slug, "stealth");
+    assert_eq!(skill_1.name, "stealth");
+
+    let (save_id_1, save_1) = loaded1
+        .saving_throws
+        .iter()
+        .next()
+        .expect("save present");
+    assert!(!save_id_1.is_empty());
+    assert_eq!(save_id_1, &save_1.id);
+    assert_eq!(save_1.slug, "dexterity");
+    assert_eq!(save_1.name, "dexterity");
+
+    // Persist the migrated version (this is what the UI now does on selection).
+    db.save_character(Some(id), &loaded1)
+        .expect("persist migrated sheet");
+
+    // Second load: ids should be stable (no regeneration).
+    let loaded2 = db.load_character(id).expect("reload persisted sheet");
+    assert!(loaded2.skills.contains_key(skill_id_1));
+    assert!(loaded2.saving_throws.contains_key(save_id_1));
+}
+
 // ============================================================================
 // Scenario 8: Character modification tracking
 // ============================================================================

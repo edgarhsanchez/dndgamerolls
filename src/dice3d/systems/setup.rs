@@ -25,7 +25,7 @@ use crate::dice3d::types::*;
 
 use bevy::audio::SpatialListener;
 
-use super::rendering::{create_number_mesh, get_label_offset, get_label_rotation, get_label_scale};
+use super::rendering::{get_label_offset, get_label_rotation, get_label_scale};
 
 /// Main setup system - initializes the entire 3D scene
 pub fn setup(
@@ -33,6 +33,7 @@ pub fn setup(
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    label_assets: Res<DiceFaceLabelAssets>,
     dice_config: Res<DiceConfig>,
     character_data: Res<CharacterData>,
     zoom_state: Res<ZoomState>,
@@ -295,6 +296,7 @@ pub fn setup(
             &mut commands,
             &mut meshes,
             &mut materials,
+            &label_assets,
             *die_type,
             die_scale,
             position,
@@ -1170,6 +1172,7 @@ pub fn spawn_die(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
+    label_assets: &DiceFaceLabelAssets,
     die_type: DiceType,
     die_scale: f32,
     position: Vec3,
@@ -1200,20 +1203,6 @@ pub fn spawn_die(
         rng.random_range(-0.5..0.0),
         rng.random_range(-1.5..1.5),
     );
-
-    let outline_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.0, 0.0, 0.0),
-        unlit: true,
-        alpha_mode: AlphaMode::Opaque,
-        ..default()
-    });
-
-    let label_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 1.0, 1.0),
-        unlit: true,
-        alpha_mode: AlphaMode::Opaque,
-        ..default()
-    });
 
     let face_normals_clone = face_normals.clone();
 
@@ -1258,25 +1247,25 @@ pub fn spawn_die(
         if die_type == DiceType::D4 {
             let scale = get_label_scale(die_type);
             for (pos, rotation, value) in get_d4_number_positions() {
-                // Calculate the face normal from position (pointing outward)
-                let normal = pos.normalize();
+                // The D4 positions already include the surface offset, so we use
+                // the position directly without adding extra offset.
 
-                // Spawn black outline
-                let outline_mesh = create_number_mesh(value, meshes);
-                let outline_pos = pos - normal * 0.002;
-                parent.spawn((
-                    Mesh3d(outline_mesh),
-                    MeshMaterial3d(outline_material.clone()),
-                    Transform::from_translation(outline_pos)
-                        .with_rotation(rotation)
-                        .with_scale(Vec3::splat(scale * 1.2)),
-                ));
+                let label_mesh = label_assets
+                    .meshes_by_value
+                    .get(&value)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        // Fall back to 0 if a value isn't present.
+                        label_assets
+                            .meshes_by_value
+                            .get(&0)
+                            .expect("label mesh 0 exists")
+                            .clone()
+                    });
 
-                // Spawn white number
-                let label_mesh = create_number_mesh(value, meshes);
                 parent.spawn((
                     Mesh3d(label_mesh),
-                    MeshMaterial3d(label_material.clone()),
+                    MeshMaterial3d(label_assets.material.clone()),
                     Transform::from_translation(pos)
                         .with_rotation(rotation)
                         .with_scale(Vec3::splat(scale)),
@@ -1290,22 +1279,20 @@ pub fn spawn_die(
                 let scale = get_label_scale(die_type);
                 let label_pos = *normal * offset;
 
-                // Spawn black outline first
-                let outline_mesh = create_number_mesh(*value, meshes);
-                let outline_pos = *normal * (offset - 0.005);
-                parent.spawn((
-                    Mesh3d(outline_mesh),
-                    MeshMaterial3d(outline_material.clone()),
-                    Transform::from_translation(outline_pos)
-                        .with_rotation(label_rotation)
-                        .with_scale(Vec3::splat(scale * 1.25)),
-                ));
-
-                // Spawn white number on top
-                let label_mesh = create_number_mesh(*value, meshes);
+                let label_mesh = label_assets
+                    .meshes_by_value
+                    .get(value)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        label_assets
+                            .meshes_by_value
+                            .get(&0)
+                            .expect("label mesh 0 exists")
+                            .clone()
+                    });
                 parent.spawn((
                     Mesh3d(label_mesh),
-                    MeshMaterial3d(label_material.clone()),
+                    MeshMaterial3d(label_assets.material.clone()),
                     Transform::from_translation(label_pos)
                         .with_rotation(label_rotation)
                         .with_scale(Vec3::splat(scale)),

@@ -791,6 +791,8 @@ pub struct CharacterSheetRollParams<'w, 's> {
     pub container_style: Res<'w, DiceContainerStyle>,
     pub lid_ctrl: ResMut<'w, DiceBoxLidAnimationController>,
 
+    pub label_assets: Res<'w, DiceFaceLabelAssets>,
+
     pub shake_state: Res<'w, ShakeState>,
     pub shake_config: Res<'w, ContainerShakeConfig>,
     pub shake_anim: ResMut<'w, ContainerShakeAnimation>,
@@ -856,6 +858,7 @@ pub fn handle_roll_attribute_click(
                 &mut params.commands,
                 &mut params.meshes,
                 &mut params.materials,
+                &params.label_assets,
                 &mut params.dice_config,
                 &mut params.dice_results,
                 &mut params.roll_state,
@@ -936,6 +939,7 @@ pub fn handle_roll_skill_click(
             &mut params.commands,
             &mut params.meshes,
             &mut params.materials,
+            &params.label_assets,
             &mut params.dice_config,
             &mut params.dice_results,
             &mut params.roll_state,
@@ -967,6 +971,7 @@ fn start_character_sheet_roll(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
+    label_assets: &DiceFaceLabelAssets,
     dice_config: &mut ResMut<DiceConfig>,
     dice_results: &mut ResMut<DiceResults>,
     roll_state: &mut ResMut<RollState>,
@@ -1028,8 +1033,15 @@ fn start_character_sheet_roll(
 
     // Spawn new dice
     let position = super::super::calculate_dice_position(0, 1);
-    let die_entity =
-        super::super::spawn_die(commands, meshes, materials, die_type, die_scale, position);
+    let die_entity = super::super::spawn_die(
+        commands,
+        meshes,
+        materials,
+        label_assets,
+        die_type,
+        die_scale,
+        position,
+    );
 
     if use_shake {
         // No initial impulse; the shake animation will provide motion.

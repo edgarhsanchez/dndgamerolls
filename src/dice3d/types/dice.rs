@@ -4,6 +4,7 @@
 //! DiceBox, DiceResults, DiceConfig, and RollState.
 
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 /// Component attached to each die entity
 #[derive(Component)]
@@ -84,6 +85,13 @@ pub enum DiceContainerStyle {
 #[derive(Resource, Clone)]
 pub struct DiceContainerMaterials {
     pub crystal: Handle<StandardMaterial>,
+}
+
+/// Parallax-mapped dice face label assets (number atlas textures + per-number quad meshes).
+#[derive(Resource, Clone)]
+pub struct DiceFaceLabelAssets {
+    pub material: Handle<StandardMaterial>,
+    pub meshes_by_value: HashMap<u32, Handle<Mesh>>,
 }
 
 /// All supported dice types

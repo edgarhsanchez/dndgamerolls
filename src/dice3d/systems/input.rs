@@ -67,6 +67,8 @@ pub struct CommandInputParams<'w, 's> {
     pub container_style: Res<'w, DiceContainerStyle>,
     pub lid_ctrl: ResMut<'w, DiceBoxLidAnimationController>,
 
+    pub label_assets: Res<'w, DiceFaceLabelAssets>,
+
     pub meshes: ResMut<'w, Assets<Mesh>>,
     pub materials: ResMut<'w, Assets<StandardMaterial>>,
     pub dice_query: Query<'w, 's, Entity, With<Die>>,
@@ -91,6 +93,8 @@ pub struct CommandHistoryRerollParams<'w, 's> {
 
     pub container_style: Res<'w, DiceContainerStyle>,
     pub lid_ctrl: ResMut<'w, DiceBoxLidAnimationController>,
+
+    pub label_assets: Res<'w, DiceFaceLabelAssets>,
 
     pub meshes: ResMut<'w, Assets<Mesh>>,
     pub materials: ResMut<'w, Assets<StandardMaterial>>,
@@ -118,6 +122,8 @@ pub struct QuickRollParams<'w, 's> {
     pub shake_config: Res<'w, ContainerShakeConfig>,
     pub shake_anim: ResMut<'w, ContainerShakeAnimation>,
     pub container_query: Query<'w, 's, (Entity, &'static Transform), With<DiceBox>>,
+
+    pub label_assets: Res<'w, DiceFaceLabelAssets>,
 
     pub meshes: ResMut<'w, Assets<Mesh>>,
     pub materials: ResMut<'w, Assets<StandardMaterial>>,
@@ -318,6 +324,7 @@ pub fn handle_command_input(
                         &mut params.commands,
                         &mut params.meshes,
                         &mut params.materials,
+                        &params.label_assets,
                         *die_type,
                         die_scale,
                         position,
@@ -421,6 +428,7 @@ pub fn handle_command_history_item_clicks(
                     &mut params.commands,
                     &mut params.meshes,
                     &mut params.materials,
+                    &params.label_assets,
                     *die_type,
                     die_scale,
                     position,
@@ -659,6 +667,7 @@ pub fn handle_quick_roll_clicks(
             &mut params.commands,
             &mut params.meshes,
             &mut params.materials,
+            &params.label_assets,
             die_type,
             die_scale,
             calculate_dice_position(0, 1),

@@ -18,8 +18,9 @@ fn app_tab_from_index(index: usize) -> AppTab {
     match index {
         0 => AppTab::DiceRoller,
         1 => AppTab::CharacterSheet,
-        2 => AppTab::DndInfo,
-        3 => AppTab::Contributors,
+        2 => AppTab::DiceDesigner,
+        3 => AppTab::DndInfo,
+        4 => AppTab::Contributors,
         _ => AppTab::DiceRoller,
     }
 }
@@ -29,8 +30,9 @@ fn index_from_app_tab(tab: AppTab) -> usize {
     match tab {
         AppTab::DiceRoller => 0,
         AppTab::CharacterSheet => 1,
-        AppTab::DndInfo => 2,
-        AppTab::Contributors => 3,
+        AppTab::DiceDesigner => 2,
+        AppTab::DndInfo => 3,
+        AppTab::Contributors => 4,
     }
 }
 
@@ -83,6 +85,16 @@ pub fn setup_tab_bar(
                 1,
                 false,
             );
+            // Dice Designer Tab
+            spawn_app_tab(
+                parent,
+                &icon_assets,
+                &theme,
+                "Designer",
+                IconType::Dice,
+                2,
+                false,
+            );
             // DnD Info Tab
             spawn_app_tab(
                 parent,
@@ -90,7 +102,7 @@ pub fn setup_tab_bar(
                 &theme,
                 "DnD Info",
                 IconType::Info,
-                2,
+                3,
                 false,
             );
             // Contributors Tab
@@ -100,7 +112,7 @@ pub fn setup_tab_bar(
                 &theme,
                 "Contributors",
                 IconType::Character,
-                3,
+                4,
                 false,
             );
         });
@@ -221,6 +233,7 @@ pub fn update_tab_visibility(
         (
             With<DiceRollerRoot>,
             Without<CharacterScreenRoot>,
+            Without<DiceDesignerScreenRoot>,
             Without<DndInfoScreenRoot>,
             Without<ContributorsScreenRoot>,
         ),
@@ -230,6 +243,17 @@ pub fn update_tab_visibility(
         (
             With<CharacterScreenRoot>,
             Without<DiceRollerRoot>,
+            Without<DiceDesignerScreenRoot>,
+            Without<DndInfoScreenRoot>,
+            Without<ContributorsScreenRoot>,
+        ),
+    >,
+    mut dice_designer_screen: Query<
+        &mut Visibility,
+        (
+            With<DiceDesignerScreenRoot>,
+            Without<DiceRollerRoot>,
+            Without<CharacterScreenRoot>,
             Without<DndInfoScreenRoot>,
             Without<ContributorsScreenRoot>,
         ),
@@ -240,6 +264,7 @@ pub fn update_tab_visibility(
             With<DndInfoScreenRoot>,
             Without<DiceRollerRoot>,
             Without<CharacterScreenRoot>,
+            Without<DiceDesignerScreenRoot>,
             Without<ContributorsScreenRoot>,
         ),
     >,
@@ -249,6 +274,7 @@ pub fn update_tab_visibility(
             With<ContributorsScreenRoot>,
             Without<DiceRollerRoot>,
             Without<CharacterScreenRoot>,
+            Without<DiceDesignerScreenRoot>,
             Without<DndInfoScreenRoot>,
         ),
     >,
@@ -269,6 +295,15 @@ pub fn update_tab_visibility(
     // Character screen visibility
     for mut visibility in character_screen.iter_mut() {
         *visibility = if ui_state.active_tab == AppTab::CharacterSheet {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    // Dice designer screen visibility
+    for mut visibility in dice_designer_screen.iter_mut() {
+        *visibility = if ui_state.active_tab == AppTab::DiceDesigner {
             Visibility::Visible
         } else {
             Visibility::Hidden

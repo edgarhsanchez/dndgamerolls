@@ -31,6 +31,7 @@ pub struct PendingRollExecutionParams<'w, 's> {
     pub shake_config: Res<'w, ContainerShakeConfig>,
     pub shake_anim: ResMut<'w, ContainerShakeAnimation>,
     pub container_query: Query<'w, 's, (Entity, &'static Transform), With<DiceBox>>,
+    pub label_assets: Res<'w, DiceFaceLabelAssets>,
 
     pub dice_entities: Query<'w, 's, Entity, With<Die>>,
     pub meshes: ResMut<'w, Assets<Mesh>>,
@@ -560,6 +561,7 @@ pub fn process_pending_roll_with_lid(
                     &mut commands,
                     &mut exec.meshes,
                     &mut exec.materials,
+                    &exec.label_assets,
                     die_type,
                     die_scale,
                     calculate_dice_position(0, 1),
@@ -636,6 +638,7 @@ pub fn process_pending_roll_with_lid(
                         &mut commands,
                         &mut exec.meshes,
                         &mut exec.materials,
+                        &exec.label_assets,
                         die_type,
                         die_scale,
                         position,

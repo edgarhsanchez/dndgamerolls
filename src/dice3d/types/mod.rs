@@ -9,12 +9,14 @@
 //! - `settings` - Application settings and persistence
 //! - `icons` - Icon assets and icon button components
 //! - `contributors` - GitHub contributors data and display
+//! - `dice_designer` - Dice face customization types
 
 pub mod camera;
 pub mod character;
 pub mod contributors;
 pub mod database;
 pub mod dice;
+pub mod dice_designer;
 pub mod dice_fx;
 pub mod icons;
 pub mod settings;
@@ -27,6 +29,7 @@ pub use character::*;
 pub use contributors::*;
 pub use database::*;
 pub use dice::*;
+pub use dice_designer::*;
 pub use dice_fx::*;
 pub use icons::*;
 pub use settings::*;

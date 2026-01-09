@@ -13,9 +13,10 @@ use bevy::render::render_resource::{
 };
 
 use crate::dice3d::meshes::create_die_mesh_and_collider;
+use crate::dice3d::systems::DiceDesignerTextureLoader;
 use crate::dice3d::types::{
     AppTab, DiceDesignerState, DicePreviewContainer, DicePreviewDie,
-    DicePreviewRotationRing, DiceType, RotationAxis, UiState,
+    DicePreviewRotationRing, DiceType, RotationAxis, TextureType, UiState,
 };
 
 /// Size of the dice preview viewport in pixels
@@ -370,6 +371,80 @@ pub fn update_preview_die_type(
 
         let scale = die_type.uniform_size_scale_factor() * 1.5;
         transform.scale = Vec3::splat(scale);
+    }
+}
+
+/// Updates the preview die material textures based on the selected face (or All faces).
+///
+/// This is a preview-only mapping: when a face is selected, we show that face's texture
+/// on the whole die. When "All" is selected, we show the all-faces texture.
+pub fn update_preview_material_textures(
+    ui_state: Res<UiState>,
+    designer_state: Option<Res<DiceDesignerState>>,
+    mut texture_loader: ResMut<DiceDesignerTextureLoader>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    die_query: Query<&MeshMaterial3d<StandardMaterial>, With<DicePreviewDie>>,
+) {
+    if ui_state.active_tab != AppTab::DiceDesigner {
+        return;
+    }
+
+    let Some(state) = designer_state else {
+        return;
+    };
+
+    let config = match state.dice_configs.get(&state.selected_dice) {
+        Some(c) => c,
+        None => return,
+    };
+
+    // Resolve a path for the current preview scope, with per-face fallback to default.
+    let resolve_path = |texture_type: TextureType| -> Option<&std::path::PathBuf> {
+        if let Some(face) = state.selected_face {
+            let face_set = config.face_textures.get(&face);
+            let face_path = face_set.and_then(|ts| match texture_type {
+                TextureType::Color => ts.color_path.as_ref(),
+                TextureType::Depth => ts.depth_path.as_ref(),
+                TextureType::Normal => ts.normal_path.as_ref(),
+            });
+            if face_path.is_some() {
+                return face_path;
+            }
+        }
+
+        match texture_type {
+            TextureType::Color => config.default_textures.color_path.as_ref(),
+            TextureType::Depth => config.default_textures.depth_path.as_ref(),
+            TextureType::Normal => config.default_textures.normal_path.as_ref(),
+        }
+    };
+
+    let color_path = resolve_path(TextureType::Color);
+    let normal_path = resolve_path(TextureType::Normal);
+
+    if let Some(p) = color_path {
+        texture_loader.request(p, true);
+    }
+    if let Some(p) = normal_path {
+        texture_loader.request(p, false);
+    }
+
+    let color_handle = color_path.and_then(|p| texture_loader.get(p));
+    let normal_handle = normal_path.and_then(|p| texture_loader.get(p));
+
+    for mat_handle in die_query.iter() {
+        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+            let has_color_tex = color_handle.is_some();
+            mat.base_color_texture = color_handle.clone();
+            mat.normal_map_texture = normal_handle.clone();
+
+            // Avoid tinting textures: use white when a texture is present.
+            mat.base_color = if has_color_tex {
+                Color::WHITE
+            } else {
+                state.selected_dice.color()
+            };
+        }
     }
 }
 

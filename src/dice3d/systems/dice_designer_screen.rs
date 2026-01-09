@@ -184,10 +184,10 @@ pub fn setup_dice_designer_screen(
 ) {
     let theme = theme.map(|t| t.clone()).unwrap_or_default();
     let render_target_ref = render_target.as_deref();
-    let selected_dice = designer_state
+    let (selected_dice, selected_face) = designer_state
         .as_deref()
-        .map(|s| s.selected_dice)
-        .unwrap_or(DiceType::D4);
+        .map(|s| (s.selected_dice, s.selected_face))
+        .unwrap_or((DiceType::D4, None));
 
     commands
         .spawn((
@@ -220,7 +220,13 @@ pub fn setup_dice_designer_screen(
             ));
 
             // Right panel - settings for selected die
-            spawn_settings_panel(root, &theme, render_target_ref);
+            spawn_settings_panel(
+                root,
+                &theme,
+                render_target_ref,
+                selected_dice,
+                selected_face,
+            );
         });
 }
 
@@ -312,6 +318,8 @@ fn spawn_settings_panel(
     parent: &mut ChildSpawnerCommands,
     theme: &MaterialTheme,
     render_target: Option<&DiceDesignerPreviewRenderTarget>,
+    selected_dice: DiceType,
+    selected_face: Option<u32>,
 ) {
     parent
         .spawn((
@@ -342,10 +350,10 @@ fn spawn_settings_panel(
             ));
 
             // Section: Face selector
-            spawn_face_selector(panel, theme);
+            spawn_face_selector(panel, theme, selected_dice, selected_face);
 
             // Section: Texture inputs
-            spawn_texture_inputs_section(panel, theme);
+            spawn_texture_inputs_section(panel, theme, selected_face);
         });
 }
 
@@ -402,7 +410,12 @@ fn spawn_preview_section(
 }
 
 /// Spawns the face selector dropdown
-fn spawn_face_selector(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme) {
+fn spawn_face_selector(
+    parent: &mut ChildSpawnerCommands,
+    theme: &MaterialTheme,
+    selected_dice: DiceType,
+    selected_face: Option<u32>,
+) {
     parent
         .spawn((
             Node {
@@ -435,11 +448,16 @@ fn spawn_face_selector(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme)
                 ))
                 .with_children(|dropdown| {
                     // "All faces" option
-                    spawn_face_selector_chip(dropdown, theme, None, true);
+                    spawn_face_selector_chip(dropdown, theme, None, selected_face.is_none());
 
                     // Individual face options (will be populated based on selected die)
-                    for face in 1..=6 {
-                        spawn_face_selector_chip(dropdown, theme, Some(face), false);
+                    for face in 1..=selected_dice.face_count() {
+                        spawn_face_selector_chip(
+                            dropdown,
+                            theme,
+                            Some(face),
+                            selected_face == Some(face),
+                        );
                     }
                 });
         });
@@ -490,7 +508,11 @@ fn spawn_face_selector_chip(
 }
 
 /// Spawns the texture inputs section
-fn spawn_texture_inputs_section(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme) {
+fn spawn_texture_inputs_section(
+    parent: &mut ChildSpawnerCommands,
+    theme: &MaterialTheme,
+    selected_face: Option<u32>,
+) {
     parent
         .spawn((
             Node {
@@ -501,24 +523,142 @@ fn spawn_texture_inputs_section(parent: &mut ChildSpawnerCommands, theme: &Mater
             DiceDesignerTextureSection,
         ))
         .with_children(|section| {
+            build_texture_inputs_section(section, theme, selected_face, &[]);
+        });
+}
+
+fn build_texture_inputs_section(
+    section: &mut ChildSpawnerCommands,
+    theme: &MaterialTheme,
+    selected_face: Option<u32>,
+    overridden_faces: &[u32],
+) {
+    section.spawn((
+        Text::new("Face Textures"),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(theme.on_surface_variant),
+    ));
+
+    // All-faces (default) assignment.
+    section.spawn((
+        Text::new("All faces"),
+        TextFont {
+            font_size: 11.0,
+            ..default()
+        },
+        TextColor(theme.on_surface_variant),
+    ));
+
+    spawn_texture_input_row(section, theme, TextureType::Color, None);
+    spawn_texture_input_row(section, theme, TextureType::Depth, None);
+    spawn_texture_input_row(section, theme, TextureType::Normal, None);
+
+    match selected_face {
+        Some(face) => {
+            section.spawn(Node {
+                height: Val::Px(8.0),
+                ..default()
+            });
+
+            // Per-face override editor.
+            // Note: Bevy UI doesn't have font weights by default; we use primary color to
+            // visually emphasize this header as the "bold" equivalent.
             section.spawn((
-                Text::new("Face Textures"),
+                Text::new(format!("Face {} override", face)),
                 TextFont {
-                    font_size: 14.0,
+                    font_size: 11.0,
                     ..default()
                 },
-                TextColor(theme.on_surface_variant),
+                TextColor(theme.primary),
             ));
 
-            // Color map input
-            spawn_texture_input_row(section, theme, TextureType::Color, None);
+            spawn_texture_input_row(section, theme, TextureType::Color, Some(face));
+            spawn_texture_input_row(section, theme, TextureType::Depth, Some(face));
+            spawn_texture_input_row(section, theme, TextureType::Normal, Some(face));
+        }
+        None => {
+            // Show per-face overrides below "All" when present.
+            if !overridden_faces.is_empty() {
+                section.spawn(Node {
+                    height: Val::Px(8.0),
+                    ..default()
+                });
+                section.spawn((
+                    Text::new("Overrides"),
+                    TextFont {
+                        font_size: 12.0,
+                        ..default()
+                    },
+                    TextColor(theme.on_surface_variant),
+                ));
 
-            // Depth map input
-            spawn_texture_input_row(section, theme, TextureType::Depth, None);
+                for face in overridden_faces.iter().copied() {
+                    section.spawn(Node {
+                        height: Val::Px(6.0),
+                        ..default()
+                    });
+                    section.spawn((
+                        Text::new(format!("Face {}", face)),
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
+                        TextColor(theme.primary),
+                    ));
 
-            // Normal map input
-            spawn_texture_input_row(section, theme, TextureType::Normal, None);
+                    spawn_texture_input_row(section, theme, TextureType::Color, Some(face));
+                    spawn_texture_input_row(section, theme, TextureType::Depth, Some(face));
+                    spawn_texture_input_row(section, theme, TextureType::Normal, Some(face));
+                }
+            }
+        }
+    }
+}
+
+/// Rebuilds the texture inputs section to reflect All vs per-face override UI.
+pub fn rebuild_texture_inputs_section(
+    mut commands: Commands,
+    designer_state: Option<Res<DiceDesignerState>>,
+    section_query: Query<(Entity, &Children), With<DiceDesignerTextureSection>>,
+    theme: Option<Res<MaterialTheme>>,
+) {
+    let Some(state) = designer_state else {
+        return;
+    };
+
+    if !state.is_changed() {
+        return;
+    }
+
+    let theme = theme.map(|t| t.clone()).unwrap_or_default();
+    let config = match state.dice_configs.get(&state.selected_dice) {
+        Some(c) => c,
+        None => return,
+    };
+
+    let mut overridden_faces: Vec<u32> = config
+        .face_textures
+        .iter()
+        .filter_map(|(face, set)| {
+            let any = set.color_path.is_some() || set.depth_path.is_some() || set.normal_path.is_some();
+            any.then_some(*face)
+        })
+        .collect();
+    overridden_faces.sort_unstable();
+
+    for (section_entity, children) in section_query.iter() {
+        for child in children.iter() {
+            commands.entity(child).despawn();
+        }
+
+        let selected_face = state.selected_face;
+        commands.entity(section_entity).with_children(|section| {
+            build_texture_inputs_section(section, &theme, selected_face, &overridden_faces);
         });
+    }
 }
 
 /// Spawns a texture input row with file picker and preview
@@ -772,7 +912,9 @@ pub fn handle_texture_file_clicks(
         }
 
         let texture_type = input.texture_type;
-        let face_value = input.face_value.or(state.selected_face);
+        // `TextureFileInput.face_value == None` always means "All faces".
+        // Per-face overrides use `Some(face)` explicitly.
+        let face_value = input.face_value;
         let die_type = state.selected_dice;
 
         // Spawn an async task to open the file dialog

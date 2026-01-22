@@ -57,7 +57,7 @@ image = "0.25"
 rfd = "0.16.0"
 
 # Database
-surrealdb = { version = "2.4.0", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
+surrealdb = { version = "2.5.0", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "net", "io-util"] }
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 
